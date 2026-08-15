@@ -6,6 +6,8 @@
 <title>Tau Volantis — Mapa de Campo</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Oswald:wght@400;500;600;700&display=swap');
 
@@ -561,14 +563,30 @@
   }
 
   // ---------- storage helpers ----------
-  // Prefer the Claude artifact cloud storage (window.storage) when it's available
-  // (e.g. running inside a claude.ai artifact). When the file is opened directly
-  // in a browser (double-clicked, downloaded, run from disk) that API does not
-  // exist, so we fall back to localStorage — which persists on this device across
-  // page refreshes, exactly like the cloud storage would.
-  const hasCloudStorage = (typeof window !== 'undefined') &&
-    !!window.storage && typeof window.storage.get === 'function' && typeof window.storage.set === 'function';
+  // O mapa é compartilhado em tempo real entre todos que abrem o site, usando o
+  // Firebase Realtime Database. Preencha firebaseConfig abaixo com as chaves do
+  // SEU projeto Firebase (veja instruções no README / conversa que gerou este arquivo).
+  const firebaseConfig = {
+    apiKey: "AIzaSyAcvhEVhvTHDoIXr_Q4w_7Kj5U5p4_3iRQ",
+    authDomain: "tau-volantis-mapa.firebaseapp.com",
+    databaseURL: "https://tau-volantis-mapa-default-rtdb.firebaseio.com",
+    projectId: "tau-volantis-mapa",
+    storageBucket: "tau-volantis-mapa.firebasestorage.app",
+    messagingSenderId: "625162616810",
+    appId: "1:625162616810:web:55255b2ab4ec3b0fc27c93"
+  };
 
+  const firebaseReady = firebaseConfig.apiKey !== "COLE_AQUI_SUA_API_KEY";
+  let db = null;
+  if(firebaseReady){
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  } else {
+    console.warn('Firebase não configurado — preencha firebaseConfig no index.html. O mapa vai funcionar só localmente, sem compartilhar com outros jogadores.');
+  }
+
+  // Fallback local (usado só se o Firebase não estiver configurado, ou se uma
+  // gravação falhar) — assim o mapa nunca fica totalmente quebrado.
   function loadLocal(key){
     try{
       const raw = localStorage.getItem(key);
@@ -576,33 +594,39 @@
     }catch(e){ return []; }
   }
   function saveLocal(key, data){
-    try{
-      localStorage.setItem(key, JSON.stringify(data));
-      return true;
-    }catch(e){ console.error('Erro ao salvar localmente', key, e); return false; }
+    try{ localStorage.setItem(key, JSON.stringify(data)); return true; }
+    catch(e){ console.error('Erro ao salvar localmente', key, e); return false; }
   }
 
   async function loadKey(key){
-    if(hasCloudStorage){
+    if(db){
       try{
-        const r = await window.storage.get(key, true);
-        if(r) return JSON.parse(r.value);
-      }catch(e){ /* cai pro localStorage abaixo */ }
+        const snap = await db.ref(key).get();
+        if(snap.exists()) return snap.val();
+      }catch(e){ console.error('Erro ao carregar do Firebase', key, e); }
     }
     return loadLocal(key);
   }
   async function saveKey(key, data){
     let cloudOk = false;
-    if(hasCloudStorage){
+    if(db){
       try{
-        const r = await window.storage.set(key, JSON.stringify(data), true);
-        cloudOk = !!r;
-      }catch(e){ cloudOk = false; }
+        await db.ref(key).set(data);
+        cloudOk = true;
+      }catch(e){ console.error('Erro ao salvar no Firebase', key, e); cloudOk = false; }
     }
-    // sempre grava local também, assim funciona igual quando o arquivo é aberto
-    // direto no navegador (sem window.storage) e recarregado depois
+    // grava local também como cache/backup e para o fallback funcionar
     saveLocal(key, data);
-    if(hasCloudStorage && !cloudOk) console.error('Falha ao salvar na nuvem, usando apenas local', key);
+    if(db && !cloudOk) console.error('Falha ao salvar em tempo real, usando apenas local', key);
+  }
+
+  // Escuta mudanças em tempo real vindas de OUTROS jogadores/abas e chama o
+  // callback com os dados atualizados sempre que algo muda no Firebase.
+  function listenKey(key, onChange){
+    if(!db) return;
+    db.ref(key).on('value', (snap) => {
+      onChange(snap.exists() ? snap.val() : []);
+    });
   }
 
   // ---------- map setup ----------
@@ -1312,7 +1336,7 @@
     renderPins(); renderTokens(); renderShapes(); renderRoutes();
   });
 
-  // ---------- initial load ----------
+  // ---------- initial load + sincronização em tempo real ----------
   (async function init(){
     try{
       const [p, t, s, r] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES)]);
@@ -1323,6 +1347,14 @@
     }finally{
       document.getElementById('map-loading').style.display = 'none';
     }
+
+    // A partir daqui, qualquer mudança feita por QUALQUER pessoa no site
+    // (outra aba, outro celular, outro jogador) chega aqui e atualiza o mapa
+    // na hora, sem precisar recarregar a página.
+    listenKey(KEY_PINS, (data) => { pins = data; renderPins(); });
+    listenKey(KEY_TOKENS, (data) => { tokens = data; renderTokens(); });
+    listenKey(KEY_SHAPES, (data) => { shapes = data; renderShapes(); });
+    listenKey(KEY_ROUTES, (data) => { routes = data; renderRoutes(); });
   })();
 
 })();
