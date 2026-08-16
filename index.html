@@ -464,6 +464,20 @@
     border-radius:var(--r-lg);
     box-shadow:0 20px 50px rgba(0,0,0,0.6);
   }
+  /* modal de nome de jogador — ancorado perto do topo (não centralizado na
+     vertical) de propósito: centralizar com top:50% quebra em celular porque,
+     quando o teclado abre, o navegador não recalcula esse "50%" em cima da
+     área visível de verdade, e o modal acaba nascendo atrás do teclado */
+  #player-name-modal{
+    position:fixed; top:6vh; left:50%; right:auto;
+    transform:translateX(-50%);
+    z-index:2100;
+    width:min(280px, 88vw);
+    max-height:80vh;
+    overflow-y:auto;
+    border-radius:var(--r-lg);
+    box-shadow:0 20px 50px rgba(0,0,0,0.6);
+  }
   .icon-picker{
     display:grid; grid-template-columns:repeat(auto-fill, minmax(30px, 1fr)); gap:0.35rem;
   }
@@ -917,7 +931,7 @@
     <div class="icon-popover" id="player-name-modal">
       <div class="vs-group-label">Nome de Jogador</div>
       <p>Esse é o nome que vai identificar o que você criar no mapa (pins, tokens, etc).</p>
-      <input type="text" id="player-name-input" placeholder="Como você quer ser chamado?" maxlength="24">
+      <input type="text" id="player-name-input" placeholder="Como você quer ser chamado?" maxlength="24" autocomplete="off">
       <div class="popup-actions" style="margin-top:0.6rem;">
         <button class="save" id="player-name-save-btn" type="button">Salvar</button>
       </div>
@@ -3261,4 +3275,3 @@
 </script>
 </body>
 </html>
-
