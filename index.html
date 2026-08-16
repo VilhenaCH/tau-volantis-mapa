@@ -6,8 +6,6 @@
 <title>Tau Volantis — Mapa de Campo</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Oswald:wght@400;500;600;700&display=swap');
 
@@ -41,6 +39,18 @@
     --trap:#a05a3a;
     --vehicle:#5a7a94;
     --neutral:#c7d2d8;
+
+    /* -------- design tokens (forma / profundidade / movimento) -------- */
+    --r-xs:6px;
+    --r-sm:9px;
+    --r-md:14px;
+    --r-lg:18px;
+    --r-pill:999px;
+    --shadow-1:0 2px 8px rgba(0,0,0,0.28);
+    --shadow-2:0 10px 28px rgba(0,0,0,0.38), 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-glow:0 0 0 1px rgba(143,215,232,0.12), 0 10px 28px rgba(0,0,0,0.4);
+    --ease-soft:cubic-bezier(.25,.8,.4,1);
+    --tap-min:44px;
   }
 
   *{box-sizing:border-box;}
@@ -70,6 +80,7 @@
     background:var(--bg-1); color:var(--ink-dim);
     font-size:0.78rem; text-transform:uppercase; letter-spacing:0.16em;
     z-index:2000;
+    transition:opacity 0.2s ease;
   }
 
   .draw-hint{
@@ -90,15 +101,26 @@
     backdrop-filter:blur(10px) saturate(1.1);
     -webkit-backdrop-filter:blur(10px) saturate(1.1);
     border:1px solid var(--hud-line);
-    opacity:0.62;
-    transition:opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+    border-radius:var(--r-lg);
+    box-shadow:var(--shadow-1);
+    opacity:0.68;
+    transition:opacity 0.2s var(--ease-soft), background 0.2s var(--ease-soft), border-color 0.2s var(--ease-soft), box-shadow 0.2s var(--ease-soft);
     z-index:900;
   }
   .hud-panel:hover, .hud-panel:focus-within{
     opacity:1;
     background:var(--hud-bg-active);
     border-color:var(--ice-300);
+    box-shadow:var(--shadow-2);
   }
+
+  /* Em telas largas o cluster não existe visualmente (display:contents):
+     cada painel mantém a posição absoluta original, ancorada nos 4 cantos.
+     Em telas estreitas (media query abaixo) o cluster vira uma coluna real,
+     empilhando os painéis do topo em vez de deixá-los flutuar livres — isso
+     é o que garante que eles nunca se sobreponham, não importa o quanto o
+     conteúdo de cada um cresça (nomes longos, mais stats, etc). */
+  .hud-top-cluster{ display:contents; }
 
   .hud-identity{
     top:1rem; left:1rem;
@@ -110,6 +132,15 @@
     display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;
   }
   .hud-identity .eyebrow::before{ content:""; width:6px; height:6px; background:var(--hazard); display:inline-block; animation:pulse 2.2s infinite ease-in-out; flex-shrink:0; }
+  .sync-status{
+    margin-top:0.4rem; font-size:0.58rem; text-transform:uppercase; letter-spacing:0.08em;
+    color:var(--ink-dim); display:flex; align-items:center; gap:0.4rem;
+  }
+  .sync-status::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--ink-dim); flex-shrink:0; }
+  .sync-status.live{ color:var(--safe, #7fb98a); }
+  .sync-status.live::before{ background:var(--safe, #7fb98a); }
+  .sync-status.offline{ color:var(--hazard); }
+  .sync-status.offline::before{ background:var(--hazard); }
   .hud-identity h1{
     font-size:1.1rem; font-weight:600; margin:0 0 0.5rem; color:var(--ink); text-transform:uppercase; line-height:1.15;
   }
@@ -117,6 +148,41 @@
   .hud-stats{ display:flex; gap:0.85rem; flex-wrap:wrap; }
   .hud-stats div{ font-size:0.58rem; color:var(--ink-dim); text-transform:uppercase; letter-spacing:0.1em; }
   .hud-stats b{ display:block; font-family:'Oswald',sans-serif; font-size:0.95rem; color:var(--frost); letter-spacing:0; }
+
+  /* ---------- conta / login com Google ---------- */
+  .hud-account{ margin-top:0.55rem; padding-top:0.5rem; border-top:1px solid var(--hud-line); }
+  #google-login-btn{ width:100%; justify-content:center; }
+  .hud-account-user{ display:none; align-items:center; gap:0.5rem; }
+  .hud-account-avatar{
+    flex-shrink:0; width:26px; height:26px; border-radius:50%;
+    background-color:var(--bg-1); background-size:cover; background-position:center;
+    border:1px solid var(--ice-300);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Oswald',sans-serif; font-size:0.72rem; font-weight:600; color:var(--frost);
+  }
+  .hud-account-info{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .hud-account-name{
+    font-family:'Oswald',sans-serif; font-size:0.78rem; color:var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .hud-account-edit, .hud-account-logout{
+    background:none; border:none; padding:0; color:var(--ink-dim);
+    font-family:'Space Mono',monospace; font-size:0.6rem; text-transform:uppercase; letter-spacing:0.06em;
+    cursor:pointer; text-align:left;
+  }
+  .hud-account-edit:hover{ color:var(--frost); }
+  .hud-account-logout{ flex-shrink:0; }
+  .hud-account-logout:hover{ color:var(--hazard); }
+
+  /* ---------- modal de nome de jogador (mesmo padrão do view-settings-popover) ---------- */
+  #player-name-modal input[type=text]{
+    width:100%; background:var(--bg-1); border:1px solid var(--line); border-radius:var(--r-xs); color:var(--ink);
+    font-family:'Space Mono',monospace; font-size:0.78rem; padding:0.55rem 0.6rem; box-sizing:border-box;
+    outline:none; transition:border-color 0.15s var(--ease-soft);
+  }
+  #player-name-modal input[type=text]:focus{ border-color:var(--frost); }
+  #player-name-modal p{ font-size:0.68rem; color:var(--ink-dim); line-height:1.4; margin:0 0 0.6rem; }
+  .popup-owner{ font-size:0.62rem; color:var(--ink-dim); margin:-0.15rem 0 0.5rem; }
 
   .hud-layer{
     top:1rem; right:1rem;
@@ -131,8 +197,9 @@
     width:min(320px, 62vw);
   }
   .hud-search input{
-    width:100%; background:rgba(16,24,32,0.75); border:1px solid var(--line); color:var(--ink);
+    width:100%; min-height:2.3rem; background:rgba(16,24,32,0.75); border:1px solid var(--line); border-radius:var(--r-sm); color:var(--ink);
     font-family:'Space Mono',monospace; font-size:0.72rem; padding:0.45rem 0.6rem; outline:none;
+    transition:border-color 0.15s var(--ease-soft);
   }
   .hud-search input:focus{ border-color:var(--frost); }
   .hud-search input::placeholder{ color:var(--ink-dim); }
@@ -141,8 +208,10 @@
     border-top:1px solid var(--line);
   }
   .search-result{
-    padding:0.4rem 0.15rem; cursor:pointer; border-bottom:1px solid rgba(38,51,61,0.5);
+    padding:0.5rem 0.4rem; cursor:pointer; border-bottom:1px solid rgba(38,51,61,0.5);
+    border-radius:var(--r-xs);
     display:flex; flex-direction:column; gap:0.15rem;
+    transition:background 0.15s var(--ease-soft);
   }
   .search-result:last-child{ border-bottom:none; }
   .search-result:hover{ background:rgba(143,215,232,0.1); }
@@ -167,9 +236,11 @@
   .tool-btn{
     background:rgba(22,31,40,0.6);
     border:1px solid var(--line);
+    border-radius:var(--r-sm);
     color:var(--ink-dim);
     font-family:'Space Mono',monospace;
     font-size:0.68rem;
+    min-height:2.15rem;
     padding:0.42rem 0.7rem;
     cursor:pointer;
     text-transform:uppercase;
@@ -177,22 +248,26 @@
     display:flex;
     align-items:center;
     gap:0.4rem;
-    transition:0.15s;
+    transition:border-color 0.15s var(--ease-soft), color 0.15s var(--ease-soft), background 0.15s var(--ease-soft), transform 0.15s var(--ease-soft);
   }
-  .tool-btn:hover{ border-color:var(--ice-300); color:var(--ink); }
+  .tool-btn:hover{ border-color:var(--ice-300); color:var(--ink); transform:translateY(-1px); }
+  .tool-btn:active{ transform:translateY(0); }
   .tool-btn.active{ border-color:var(--frost); color:var(--frost); background:rgba(143,215,232,0.1); }
   .tool-btn .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0; }
-  .toolbar-divider{ width:1px; align-self:stretch; background:var(--line); }
+  .toolbar-divider{ width:1px; align-self:stretch; background:var(--line); border-radius:var(--r-pill); }
   .reset-link{
     background:none;
     border:1px solid var(--line);
+    border-radius:var(--r-sm);
     color:var(--ink-dim);
     font-family:'Space Mono',monospace;
     font-size:0.62rem;
     text-transform:uppercase;
     letter-spacing:0.06em;
     cursor:pointer;
+    min-height:2.15rem;
     padding:0.4rem 0.6rem;
+    transition:border-color 0.15s var(--ease-soft), color 0.15s var(--ease-soft);
   }
   .reset-link:hover{ color:var(--hazard); border-color:var(--hazard); }
 
@@ -206,43 +281,98 @@
   .hud-credits a{ color:var(--ink-dim); pointer-events:auto; }
 
   @media (max-width:720px){
-    .hud-identity{ max-width:44vw; padding:0.5rem 0.7rem; }
-    .hud-identity h1{ font-size:0.85rem; }
-    .hud-stats{ gap:0.5rem; }
-    .hud-layer{ padding:0.4rem; }
-    .hud-search{ width:min(300px, 78vw); top:4.4rem; }
-    .draw-hint{ top:8rem; font-size:0.6rem; }
-    .hud-toolbar{ bottom:0.6rem; padding:0.55rem 0.6rem; gap:0.45rem 0.7rem; max-width:96vw; overflow-x:auto; flex-wrap:nowrap; justify-content:flex-start; }
+    /* O cluster do topo vira uma coluna real: identidade, busca e camadas
+       empilham em ordem, cada uma ocupando a largura toda. Como a altura de
+       cada painel some ao fluxo (não é mais posição absoluta independente),
+       é fisicamente impossível um cobrir o outro, mesmo com texto maior,
+       nome de jogador longo, teclado aberto etc. */
+    .hud-top-cluster{
+      display:flex;
+      flex-direction:column;
+      align-items:stretch;
+      gap:0.5rem;
+      position:absolute;
+      top:0.65rem; left:0.65rem; right:0.65rem;
+      z-index:900;
+      pointer-events:none;
+    }
+    .hud-top-cluster .hud-panel{
+      position:static;
+      width:100%;
+      max-width:none;
+      pointer-events:auto;
+    }
+    .hud-identity{ padding:0.6rem 0.8rem 0.65rem; }
+    .hud-identity h1{ font-size:0.92rem; }
+    .hud-stats{ gap:0.6rem; }
+    .hud-search{ transform:none; }
+    .hud-search input{ font-size:0.78rem; }
+    .hud-layer{
+      flex-direction:row; flex-wrap:wrap; align-items:center;
+      padding:0.5rem;
+    }
+    .draw-hint{
+      position:static; top:auto; left:auto; transform:none;
+      align-self:center; width:fit-content; max-width:92vw;
+      pointer-events:auto;
+    }
+    .leaflet-control-zoom{ display:none !important; } /* toque/pinça já cobre o zoom; libera espaço de tela */
+    .hud-toolbar{ bottom:0.6rem; padding:0.55rem 0.6rem; gap:0.45rem 0.7rem; max-width:96vw; overflow-x:auto; flex-wrap:nowrap; justify-content:flex-start; -webkit-overflow-scrolling:touch; scroll-padding:0.6rem; }
     .toolbar-label{ display:none; }
-    .tool-btn{ font-size:0.62rem; padding:0.38rem 0.55rem; flex-shrink:0; }
+    .tool-btn{ font-size:0.66rem; min-height:var(--tap-min); padding:0.4rem 0.65rem; flex-shrink:0; }
+    .reset-link{ min-height:var(--tap-min); }
     .hud-credits{ display:none; }
   }
 
   /* leaflet overrides */
   .leaflet-draw.leaflet-control{ display:none !important; }
-  .leaflet-control-zoom{ margin-top:6.5rem !important; }
-  .leaflet-popup-content-wrapper{ background:var(--bg-2); color:var(--ink); border:1px solid var(--line); border-radius:0; }
+  .leaflet-control-zoom{ margin-top:6.5rem !important; border-radius:var(--r-sm) !important; overflow:hidden; box-shadow:var(--shadow-1) !important; }
+  .leaflet-popup-content-wrapper{ background:var(--bg-2); color:var(--ink); border:1px solid var(--line); border-radius:var(--r-md); box-shadow:var(--shadow-2); }
   .leaflet-popup-tip{ background:var(--bg-2); border:1px solid var(--line); }
   .leaflet-popup-content{ margin:0.9rem 0.9rem; width:220px !important; }
   .leaflet-popup-content input, .leaflet-popup-content textarea{
-    width:100%; background:var(--bg-1); border:1px solid var(--line); color:var(--ink);
+    width:100%; background:var(--bg-1); border:1px solid var(--line); border-radius:var(--r-xs); color:var(--ink);
     font-family:'Space Mono',monospace; font-size:0.76rem; padding:0.4rem;
     margin-bottom:0.4rem; box-sizing:border-box; resize:vertical;
   }
   .popup-kicker{ font-size:0.62rem; text-transform:uppercase; letter-spacing:0.14em; color:var(--ink-dim); margin-bottom:0.4rem; }
   .popup-actions{ display:flex; gap:0.4rem; margin-top:0.2rem; }
   .popup-actions button{
-    flex:1; background:var(--bg-1); border:1px solid var(--line); color:var(--ink);
-    font-family:'Space Mono',monospace; font-size:0.66rem; padding:0.42rem;
+    flex:1; background:var(--bg-1); border:1px solid var(--line); border-radius:var(--r-xs); color:var(--ink);
+    font-family:'Space Mono',monospace; font-size:0.66rem; padding:0.5rem 0.42rem; min-height:var(--tap-min);
     cursor:pointer; text-transform:uppercase; letter-spacing:0.04em;
+    transition:border-color 0.15s var(--ease-soft);
   }
   .popup-actions button.save{ border-color:var(--frost); color:var(--frost); }
   .popup-actions button.del{ border-color:var(--hazard); color:var(--hazard); }
+  .popup-actions button.lock{ border-color:var(--ice-300); color:var(--ice-300); }
+
+  .token-popup-row{ display:flex; gap:0.6rem; align-items:flex-start; margin:0.5rem 0; }
+  .token-preview-wrap{ flex-shrink:0; }
+  .token-preview{
+    width:64px; height:64px; border-radius:var(--r-sm); border:2px solid var(--frost);
+    background:var(--bg-2); display:flex; align-items:center; justify-content:center;
+    overflow:hidden; font-family:'Oswald',sans-serif; font-weight:700; font-size:16px; color:var(--ink);
+  }
+  .token-preview img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .token-popup-fields{ flex:1; display:flex; flex-direction:column; gap:0.25rem; min-width:0; }
+  .token-field-label{ font-size:0.6rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-dim); margin-top:0.2rem; }
+  .token-popup-fields input[type=color]{
+    width:100%; height:1.8rem; padding:0.1rem; background:var(--bg-2); border:1px solid var(--line); cursor:pointer;
+  }
+  .token-popup-fields input[type=file]{
+    width:100%; font-size:0.65rem; color:var(--ink-dim); font-family:'Space Mono',monospace;
+  }
+  .token-image-clear{
+    align-self:flex-start; background:none; border:1px solid var(--line); border-radius:var(--r-xs); color:var(--ink-dim);
+    font-family:'Space Mono',monospace; font-size:0.62rem; padding:0.25rem 0.5rem; cursor:pointer; margin-top:0.15rem;
+  }
+  .token-image-clear:hover{ border-color:var(--hazard); color:var(--hazard); }
   .leaflet-container a.leaflet-popup-close-button{ color:var(--ink-dim); }
   .shape-label{
     background:var(--bg-2) !important; border:1px solid var(--hazard) !important; color:var(--ink) !important;
     font-family:'Space Mono',monospace; font-size:0.66rem; text-transform:uppercase; letter-spacing:0.06em;
-    box-shadow:none !important; border-radius:0 !important; padding:0.2rem 0.5rem !important;
+    box-shadow:var(--shadow-1) !important; border-radius:var(--r-xs) !important; padding:0.22rem 0.55rem !important;
   }
   .shape-label::before{ display:none !important; }
   .route-label{ border-color:var(--frost) !important; }
@@ -260,6 +390,16 @@
     position:relative; width:30px; height:30px;
     display:flex; align-items:center; justify-content:center;
   }
+  /* NPCs usam um badge maior para ficarem visualmente equivalentes aos tokens
+     de jogador (mesma "área" no mapa), mesmo sendo um círculo em vez de um quadrado */
+  .pin-wrap-npc{ width:44px; height:44px; }
+  .pin-wrap-npc .pin-badge{ width:44px; height:44px; }
+  .pin-wrap-npc .pin-badge svg{ width:22px; height:22px; }
+  /* Veículo e abrigo recebem o mesmo tratamento — ficam do tamanho dos
+     NPCs/tokens, já que também podem "conter" jogadores e NPCs dentro deles */
+  .pin-wrap-abrigo, .pin-wrap-veiculo{ width:44px; height:44px; }
+  .pin-wrap-abrigo .pin-badge, .pin-wrap-veiculo .pin-badge{ width:44px; height:44px; }
+  .pin-wrap-abrigo .pin-badge svg, .pin-wrap-veiculo .pin-badge svg{ width:22px; height:22px; }
   .pin-badge{
     position:relative; z-index:2;
     width:30px; height:30px; border-radius:50%;
@@ -271,1093 +411,28 @@
   }
   .pin-wrap:hover .pin-badge{ transform:scale(1.18) translateY(-2px); }
   .pin-badge svg{ width:16px; height:16px; stroke:var(--bg-0); }
+  .pin-badge-photo{ overflow:hidden; }
+  .pin-badge-photo img{ width:100%; height:100%; object-fit:cover; display:block; border-radius:50%; }
+  .pin-wrap.locked .pin-badge::after{
+    content:"🔒"; position:absolute; bottom:-5px; right:-5px; font-size:9px; line-height:1;
+    background:var(--bg-0); border:1px solid var(--ice-300); border-radius:50%;
+    width:14px; height:14px; display:flex; align-items:center; justify-content:center;
+  }
   .pin-ping{
     position:absolute; z-index:1; inset:0; border-radius:50%;
     border:2px solid var(--hazard);
     animation:radarPing 1.8s infinite ease-out;
   }
-
-  /* ---------- floating popovers (view settings, icon picker) ---------- */
-  .icon-popover{
-    position:absolute;
-    background:var(--bg-2); border:1px solid var(--line);
-    padding:0.6rem; z-index:1100; display:none;
-    box-shadow:0 10px 24px rgba(0,0,0,0.5);
-    width:min(230px, 82vw);
-  }
-  .icon-popover.open{ display:block; }
-  .icon-popover.popover-down{ top:calc(100% + 0.5rem); right:0; }
-
-  /* view settings popover is promoted to a centered modal (see #view-settings-popover
-     below) instead of an anchored dropdown, so it can never overlap the HUD panels
-     around it regardless of toolbar position, compact mode, or screen size. */
-  .vs-backdrop{
-    position:fixed; inset:0; background:rgba(6,10,13,0.55);
-    z-index:2050; display:none;
-  }
-  .vs-backdrop.open{ display:block; }
-  #view-settings-popover{
-    position:fixed; top:50%; left:50%; right:auto;
-    transform:translate(-50%,-50%);
-    z-index:2100;
-    width:min(260px, 86vw);
-    max-height:80vh;
-    overflow-y:auto;
-    box-shadow:0 20px 50px rgba(0,0,0,0.6);
-  }
-  .icon-picker{
-    display:grid; grid-template-columns:repeat(auto-fill, minmax(30px, 1fr)); gap:0.35rem;
-  }
-  .icon-picker-inline{ margin-bottom:0.5rem; }
-  .icon-picker-label{ font-size:0.58rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-dim); margin:0.2rem 0 0.35rem; }
-  .icon-picker-btn{
-    width:30px; height:30px; border-radius:50%; padding:0;
-    border:2px solid transparent;
-    background:var(--picker-color, var(--ice-100));
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer; transition:transform 0.15s ease, border-color 0.15s ease;
-  }
-  .icon-picker-btn svg{ width:14px; height:14px; stroke:var(--bg-0); }
-  .icon-picker-btn:hover{ transform:scale(1.12); }
-  .icon-picker-btn.active{ border-color:var(--ink); box-shadow:0 0 0 2px var(--bg-2); }
-
-  /* ---------- view settings popover (toolbar position + compact mode) ---------- */
-  .vs-group-label{ font-size:0.58rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-dim); margin:0.55rem 0 0.3rem; }
-  .vs-group-label:first-child{ margin-top:0; }
-  .vs-btn-row{ display:flex; gap:0.4rem; flex-wrap:wrap; }
-  .vs-btn{
-    background:rgba(22,31,40,0.6); border:1px solid var(--line); color:var(--ink-dim);
-    font-family:'Space Mono',monospace; font-size:0.64rem; padding:0.4rem 0.6rem;
-    cursor:pointer; text-transform:uppercase; letter-spacing:0.03em; white-space:nowrap;
-  }
-  .vs-btn:hover{ border-color:var(--ice-300); color:var(--ink); }
-  .vs-btn.active{ border-color:var(--frost); color:var(--frost); background:rgba(143,215,232,0.1); }
-
-  /* ---------- toolbar on the side instead of bottom ---------- */
-  body.toolbar-side .hud-toolbar{
-    left:auto; right:1rem; bottom:1rem;
-    top:var(--toolbar-side-top, 9rem); transform:none;
-    max-width:min(230px, 88vw);
-    max-height:max(160px, calc(100vh - var(--toolbar-side-top, 9rem) - 1rem));
-    flex-direction:column; align-items:stretch; flex-wrap:nowrap;
-    overflow-y:auto;
-    z-index:950;
-  }
-  body.toolbar-side .toolbar-group{ flex-direction:column; align-items:stretch; }
-  body.toolbar-side .toolbar-divider{ width:auto; height:1px; margin:0.15rem 0; }
-  body.toolbar-side .tool-btn{ width:100%; justify-content:flex-start; }
-  @media (max-width:720px){
-    body.toolbar-side .hud-toolbar{ top:auto; bottom:0.6rem; right:0.6rem; max-height:min(60vh, 420px); }
+  /* etiqueta de nome do NPC, abaixo do badge — mesmo visual/regra da etiqueta
+     de nome dos tokens (token-name-tag), só que posicionada em absolute pq
+     o pin-wrap não usa layout em coluna como o token-wrap */
+  .pin-name-tag{
+    position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:2px;
+    max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-family:'Space Mono',monospace; font-size:0.58rem; font-weight:700; color:#fff;
+    background:rgba(10,14,18,0.72); border:1px solid rgba(255,255,255,0.15);
+    border-radius:4px; padding:1px 5px; text-shadow:0 1px 2px rgba(0,0,0,0.8);
+    line-height:1.3; pointer-events:none; z-index:2; white-space:nowrap;
   }
 
-  /* ---------- compact / mobile-friendly display mode ---------- */
-  body.compact-mode .hud-panel{ opacity:0.92; }
-  body.compact-mode .hud-panel:hover, body.compact-mode .hud-panel:focus-within{ opacity:1; }
-  body.compact-mode .tool-btn{ font-size:0.8rem; padding:0.6rem 0.9rem; gap:0.55rem; }
-  body.compact-mode .tool-btn .dot{ width:11px; height:11px; }
-  body.compact-mode .toolbar-label{ font-size:0.66rem; }
-  body.compact-mode .hud-toolbar{ gap:0.75rem 1.05rem; padding:0.85rem 1rem; }
-  body.compact-mode .reset-link{ font-size:0.7rem; padding:0.5rem 0.75rem; }
-  body.compact-mode .hud-identity{ padding:0.85rem 1.1rem 0.9rem; }
-  body.compact-mode .hud-identity h1{ font-size:1.25rem; }
-  body.compact-mode .hud-stats div{ font-size:0.64rem; }
-  body.compact-mode .hud-stats b{ font-size:1.05rem; }
-  body.compact-mode .hud-search input{ font-size:0.85rem; padding:0.6rem 0.75rem; }
-  body.compact-mode .hud-layer{ padding:0.8rem; gap:0.55rem; }
-  body.compact-mode .vs-btn{ font-size:0.7rem; padding:0.5rem 0.7rem; }
-
-
-  /* ---------- route travel-time estimates ---------- */
-  .route-times{ margin:0.5rem 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:0.5rem 0; }
-  .route-times-label{ font-size:0.58rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-dim); margin-bottom:0.3rem; }
-  .route-time-row{ display:flex; justify-content:space-between; gap:0.5rem; font-size:0.72rem; padding:0.12rem 0; }
-  .route-time-row span:first-child{ color:var(--ink-dim); }
-  .route-time-row span:last-child{ color:var(--frost); }
-
-  .token-icon{
-    width:22px; height:22px; background:var(--bg-2); border:2px solid var(--frost);
-    display:flex; align-items:center; justify-content:center;
-    font-size:9px; color:var(--frost); font-family:'Oswald',sans-serif; font-weight:700;
-    text-transform:uppercase;
-    animation:pinDrop 0.35s cubic-bezier(.34,1.56,.64,1);
-    box-shadow:0 3px 8px rgba(0,0,0,0.5);
-  }
-</style>
-</head>
-<body>
-
-<main>
-  <div id="map-wrap">
-    <div id="map"></div>
-    <div class="map-loading" id="map-loading">Carregando mapa...</div>
-    <div class="draw-hint" id="draw-hint" style="display:none;"></div>
-
-    <div class="hud-panel hud-identity">
-      <div class="eyebrow">Tau Volantis // Campo</div>
-      <h1>Mapa de <span>Sobrevivência</span></h1>
-      <div class="hud-stats">
-        <div>Pins<b id="stat-pins">0</b></div>
-        <div>Tokens<b id="stat-tokens">0</b></div>
-        <div>Rotas<b id="stat-routes">0</b></div>
-        <div>Camada<b id="stat-layer">Ruas</b></div>
-      </div>
-    </div>
-
-    <div class="hud-panel hud-search" id="hud-search">
-      <input type="text" id="search-input" placeholder="Buscar cidade, local ou pin..." autocomplete="off">
-      <div class="search-results" id="search-results"></div>
-    </div>
-
-    <div class="hud-panel hud-layer" id="hud-layer">
-      <button class="tool-btn active" id="layer-streets" data-layer="streets">Ruas</button>
-      <button class="tool-btn" id="layer-topo" data-layer="topo">Relevo</button>
-      <button class="reset-link" id="reset-btn">Reiniciar</button>
-      <div class="toolbar-divider" style="width:auto;height:1px;margin:0.1rem 0;"></div>
-      <button class="tool-btn" id="view-settings-toggle" type="button">Visual</button>
-    </div>
-    <div class="vs-backdrop" id="view-settings-backdrop"></div>
-    <div class="icon-popover" id="view-settings-popover">
-      <div class="vs-group-label">Posição da barra</div>
-      <div class="vs-btn-row">
-        <button type="button" class="vs-btn active" data-pos="bottom">Embaixo</button>
-        <button type="button" class="vs-btn" data-pos="side">Lateral</button>
-      </div>
-      <div class="vs-group-label">Modo de exibição</div>
-      <div class="vs-btn-row">
-        <button type="button" class="vs-btn active" data-mode="normal">Padrão</button>
-        <button type="button" class="vs-btn" data-mode="compact">Compacto (celular)</button>
-      </div>
-    </div>
-
-    <div class="hud-panel hud-toolbar" id="hud-toolbar">
-      <div class="toolbar-group" id="pin-buttons">
-        <span class="toolbar-label">Marcar</span>
-        <!-- pin type buttons injected by JS -->
-      </div>
-
-      <div class="toolbar-divider"></div>
-
-      <div class="toolbar-group">
-        <button class="tool-btn" id="tool-token"><span class="dot" style="background:var(--frost)"></span>Token</button>
-      </div>
-
-      <div class="toolbar-divider"></div>
-
-      <div class="toolbar-group">
-        <span class="toolbar-label">Área</span>
-        <button class="tool-btn" id="tool-area-polygon"><span class="dot" style="background:var(--hazard)"></span>Livre</button>
-        <button class="tool-btn" id="tool-area-rect"><span class="dot" style="background:var(--hazard)"></span>Retângulo</button>
-        <button class="tool-btn" id="tool-area-circle"><span class="dot" style="background:var(--hazard)"></span>Círculo</button>
-      </div>
-
-      <div class="toolbar-divider"></div>
-
-      <div class="toolbar-group">
-        <span class="toolbar-label">Medir</span>
-        <button class="tool-btn" id="tool-route"><span class="dot" style="background:var(--frost)"></span>Rota</button>
-      </div>
-    </div>
-
-    <div class="hud-credits">
-      Dados: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors · relevo: <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (CC-BY-SA) · busca de lugares via Nominatim/OSM
-    </div>
-  </div>
-</main>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-<script>
-(function(){
-  const PIN_ICONS = {
-    saque:        '<path d="M6 8a6 6 0 0 1 12 0v11a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><path d="M9 13h6"/>',
-    perigo:       '<path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v5"/><path d="M12 18h.01"/>',
-    abrigo:       '<path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/>',
-    npc:          '<circle cx="12" cy="7" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/>',
-    agua:         '<path d="M12 2.5s6.5 7.2 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 9.7 12 2.5 12 2.5Z"/>',
-    suprimentos:  '<path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v9l9 5V13"/><path d="M21 8v9l-9 5"/>',
-    combustivel:  '<path d="M7 3h7l3 3v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M10 3v3h4"/><path d="M8 12h6"/><path d="M8 16h6"/>',
-    medico:       '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 7.5v9M7.5 12h9"/>',
-    municao:      '<rect x="6" y="2" width="4" height="9" rx="1.4"/><rect x="14" y="2" width="4" height="9" rx="1.4"/><path d="M3 12h18v9H3z"/>',
-    radiacao:     '<circle cx="12" cy="12" r="2.6"/><path d="M12 2v4.6M12 17.4V22M3.5 7.2l4 2.3M16.5 14.5l4 2.3M20.5 7.2l-4 2.3M7.5 14.5l-4 2.3"/>',
-    ameaca:       '<path d="M12 2a8 8 0 0 0-8 8c0 3 1.6 5 3 6.1V19a1 1 0 0 0 1 1h1v-2.2h2V20h2v-2.2h2V20h1a1 1 0 0 0 1-1v-2.9c1.4-1.1 3-3.1 3-6.1a8 8 0 0 0-8-8Z"/><circle cx="9" cy="10" r="1.3"/><circle cx="15" cy="10" r="1.3"/>',
-    extracao:     '<path d="M5 3v18"/><path d="M5 4h13l-3 4 3 4H5"/>',
-    comunicacao:  '<path d="M12 3v5"/><circle cx="12" cy="13" r="2.6"/><path d="M6 9.5a8.5 8.5 0 0 1 0 7M18 9.5a8.5 8.5 0 0 1 0 7M8.8 11.3a4.5 4.5 0 0 0 0 3.4M15.2 11.3a4.5 4.5 0 0 0 0 3.4"/>',
-    armadilha:    '<path d="M3 12h18"/><path d="M6.5 12V7.2a2.3 2.3 0 0 1 4.6 0V12"/><path d="M12.9 12V7.2a2.3 2.3 0 0 1 4.6 0V12"/><path d="M4.5 12l1.6 8h11.8l1.6-8"/>',
-    veiculo:      '<path d="M5 11 6.7 5.4A2 2 0 0 1 8.6 4h6.8a2 2 0 0 1 1.9 1.4L19 11"/><rect x="3" y="11" width="18" height="7" rx="2"/><circle cx="7.5" cy="18.3" r="1.6"/><circle cx="16.5" cy="18.3" r="1.6"/>',
-    nota:         '<path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3"/><path d="M9 12h6M9 16h6"/>',
-    pin:          '<path d="M12 21s-7-7.2-7-12a7 7 0 0 1 14 0c0 4.8-7 12-7 12Z"/><circle cx="12" cy="9" r="2.4"/>'
-  };
-  const PIN_TYPES = [
-    { id:'saque',        label:'Saque',        color:'var(--frost)' },
-    { id:'perigo',       label:'Perigo',       color:'var(--hazard)' },
-    { id:'abrigo',       label:'Abrigo',       color:'var(--safe)' },
-    { id:'npc',          label:'NPC',          color:'var(--ice-300)' },
-    { id:'agua',         label:'Água',         color:'var(--water)' },
-    { id:'suprimentos',  label:'Suprimentos',  color:'var(--supply)' },
-    { id:'combustivel',  label:'Combustível',  color:'var(--fuel)' },
-    { id:'medico',       label:'Médico',       color:'var(--medic)' },
-    { id:'municao',      label:'Munição',      color:'var(--ammo)' },
-    { id:'radiacao',     label:'Radiação',     color:'var(--rad)' },
-    { id:'ameaca',       label:'Ameaça',       color:'var(--threat)' },
-    { id:'extracao',     label:'Extração',     color:'var(--extract)' },
-    { id:'comunicacao',  label:'Rádio',        color:'var(--comm)' },
-    { id:'armadilha',    label:'Armadilha',    color:'var(--trap)' },
-    { id:'veiculo',      label:'Veículo',      color:'var(--vehicle)' },
-    { id:'nota',         label:'Nota',         color:'var(--ice-100)' },
-    { id:'pin',          label:'Pino',         color:'var(--neutral)' }
-  ];
-  const PING_TYPES = ['perigo', 'radiacao', 'ameaca', 'armadilha'];
-  const KEY_PINS = 'tv-map:pins';
-  const KEY_TOKENS = 'tv-map:tokens';
-  const KEY_SHAPES = 'tv-map:shapes';
-  const KEY_ROUTES = 'tv-map:routes';
-
-  const SP_CENTER = [-23.5505, -46.6333];
-  const SHAPE_STYLE = { color: 'var(--hazard)', weight: 2, fillColor: 'var(--hazard)', fillOpacity: 0.1, dashArray: '6 4' };
-
-  let pins = [];
-  let tokens = [];
-  let shapes = [];
-  let routes = [];
-  let selectedPinType = null;
-  let tokenModeOn = false;
-  let circleModeOn = false;
-  let routeModeOn = false;
-  let idCounter = 1;
-
-  function newId(){ return 'id' + (Date.now()) + '-' + (idCounter++); }
-  function escapeHtml(str){
-    const d = document.createElement('div');
-    d.textContent = str || '';
-    return d.innerHTML;
-  }
-  function formatDistance(meters){
-    if(meters < 1000) return Math.round(meters) + ' m';
-    return (meters/1000).toFixed(2) + ' km';
-  }
-  function totalDistanceOf(points){
-    let d = 0;
-    for(let i=1;i<points.length;i++){
-      d += L.latLng(points[i-1]).distanceTo(L.latLng(points[i]));
-    }
-    return d;
-  }
-
-  // ---------- travel-time estimates for the route tool ----------
-  // The route tool measures straight-line (geodesic) distance between the
-  // clicked points — there's no road/trail routing engine here — so these
-  // times are estimates based on average speed per mode, not a real route.
-  const SPEED_PROFILES = [
-    { id:'pe',      label:'A pé',      kmh:5  },
-    { id:'corrida', label:'Corrida',   kmh:10 },
-    { id:'bike',    label:'Bicicleta', kmh:16 },
-    { id:'carro',   label:'Carro',     kmh:60 }
-  ];
-  function estimateHours(meters, kmh){ return (meters / 1000) / kmh; }
-  function formatDuration(hours){
-    const totalMin = Math.max(1, Math.round(hours * 60));
-    if(totalMin < 60) return totalMin + ' min';
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    return h + 'h' + (m > 0 ? ' ' + m + 'min' : '');
-  }
-
-  // ---------- storage helpers ----------
-  // O mapa é compartilhado em tempo real entre todos que abrem o site, usando o
-  // Firebase Realtime Database. Preencha firebaseConfig abaixo com as chaves do
-  // SEU projeto Firebase (veja instruções no README / conversa que gerou este arquivo).
-  const firebaseConfig = {
-    apiKey: "AIzaSyAcvhEVhvTHDoIXr_Q4w_7Kj5U5p4_3iRQ",
-    authDomain: "tau-volantis-mapa.firebaseapp.com",
-    databaseURL: "https://tau-volantis-mapa-default-rtdb.firebaseio.com",
-    projectId: "tau-volantis-mapa",
-    storageBucket: "tau-volantis-mapa.firebasestorage.app",
-    messagingSenderId: "625162616810",
-    appId: "1:625162616810:web:55255b2ab4ec3b0fc27c93"
-  };
-
-  const firebaseReady = firebaseConfig.apiKey !== "COLE_AQUI_SUA_API_KEY";
-  let db = null;
-  if(firebaseReady){
-    firebase.initializeApp(firebaseConfig);
-    db = firebase.database();
-  } else {
-    console.warn('Firebase não configurado — preencha firebaseConfig no index.html. O mapa vai funcionar só localmente, sem compartilhar com outros jogadores.');
-  }
-
-  // Fallback local (usado só se o Firebase não estiver configurado, ou se uma
-  // gravação falhar) — assim o mapa nunca fica totalmente quebrado.
-  function loadLocal(key){
-    try{
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : [];
-    }catch(e){ return []; }
-  }
-  function saveLocal(key, data){
-    try{ localStorage.setItem(key, JSON.stringify(data)); return true; }
-    catch(e){ console.error('Erro ao salvar localmente', key, e); return false; }
-  }
-
-  async function loadKey(key){
-    if(db){
-      try{
-        const snap = await db.ref(key).get();
-        if(snap.exists()) return snap.val();
-      }catch(e){ console.error('Erro ao carregar do Firebase', key, e); }
-    }
-    return loadLocal(key);
-  }
-  async function saveKey(key, data){
-    let cloudOk = false;
-    if(db){
-      try{
-        await db.ref(key).set(data);
-        cloudOk = true;
-      }catch(e){ console.error('Erro ao salvar no Firebase', key, e); cloudOk = false; }
-    }
-    // grava local também como cache/backup e para o fallback funcionar
-    saveLocal(key, data);
-    if(db && !cloudOk) console.error('Falha ao salvar em tempo real, usando apenas local', key);
-  }
-
-  // Escuta mudanças em tempo real vindas de OUTROS jogadores/abas e chama o
-  // callback com os dados atualizados sempre que algo muda no Firebase.
-  function listenKey(key, onChange){
-    if(!db) return;
-    db.ref(key).on('value', (snap) => {
-      onChange(snap.exists() ? snap.val() : []);
-    });
-  }
-
-  // ---------- map setup ----------
-  const map = L.map('map', { zoomControl:true }).setView(SP_CENTER, 12);
-  const mapEl = document.getElementById('map');
-  mapEl.classList.add('dark-streets');
-
-  const streetsLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19
-  }).addTo(map);
-
-  const topoLayer = L.tileLayer('https://tile.opentopomap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenTopoMap (CC-BY-SA)',
-    maxZoom: 17
-  });
-
-  const pinsLayer = L.layerGroup().addTo(map);
-  const tokensLayer = L.layerGroup().addTo(map);
-  const shapesLayer = L.layerGroup().addTo(map);
-  const routesLayer = L.layerGroup().addTo(map);
-
-  document.getElementById('layer-streets').addEventListener('click', () => setLayer('streets'));
-  document.getElementById('layer-topo').addEventListener('click', () => setLayer('topo'));
-
-  function setLayer(which){
-    document.querySelectorAll('#layer-streets, #layer-topo').forEach(b => b.classList.remove('active'));
-    if(which === 'streets'){
-      if(map.hasLayer(topoLayer)) map.removeLayer(topoLayer);
-      if(!map.hasLayer(streetsLayer)) streetsLayer.addTo(map);
-      mapEl.classList.add('dark-streets');
-      document.getElementById('layer-streets').classList.add('active');
-      document.getElementById('stat-layer').textContent = 'Ruas';
-    } else {
-      if(map.hasLayer(streetsLayer)) map.removeLayer(streetsLayer);
-      if(!map.hasLayer(topoLayer)) topoLayer.addTo(map);
-      mapEl.classList.remove('dark-streets');
-      document.getElementById('layer-topo').classList.add('active');
-      document.getElementById('stat-layer').textContent = 'Relevo';
-    }
-  }
-
-  // ---------- pin toolbar: only the "named" types get a button; the rest of
-  // PIN_TYPES are icon options only, offered in the icon picker (see below) so
-  // players can reskin any pin without the toolbar being flooded with buttons ----------
-  const TOOLBAR_PIN_IDS = ['saque', 'perigo', 'abrigo', 'npc', 'nota', 'pin'];
-
-  function buildIconPickerHtml(currentType){
-    return PIN_TYPES.map(pt => `
-      <button type="button" class="icon-picker-btn ${pt.id===currentType?'active':''}" data-type="${pt.id}" style="--picker-color:${pt.color}" title="${pt.label}">
-        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PIN_ICONS[pt.id] || PIN_ICONS.nota}</svg>
-      </button>`).join('');
-  }
-
-  const pinButtonsWrap = document.getElementById('pin-buttons');
-  PIN_TYPES.filter(pt => TOOLBAR_PIN_IDS.includes(pt.id)).forEach(pt => {
-    const btn = document.createElement('button');
-    btn.className = 'tool-btn';
-    btn.dataset.pinType = pt.id;
-    btn.innerHTML = `<span class="dot" style="background:${pt.color}"></span>${pt.label}`;
-    btn.addEventListener('click', () => {
-      const isActive = btn.classList.contains('active');
-      clearModes();
-      if(!isActive){
-        selectedPinType = pt.id;
-        btn.classList.add('active');
-      }
-    });
-    pinButtonsWrap.appendChild(btn);
-  });
-
-  const tokenBtn = document.getElementById('tool-token');
-  tokenBtn.addEventListener('click', () => {
-    const isActive = tokenBtn.classList.contains('active');
-    clearModes();
-    if(!isActive){
-      tokenModeOn = true;
-      tokenBtn.classList.add('active');
-    }
-  });
-
-  function clearModes(){
-    selectedPinType = null;
-    tokenModeOn = false;
-    stopCircleMode();
-    stopRouteMode();
-    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(map.hasLayer(topoLayer) ? 'layer-topo' : 'layer-streets').classList.add('active');
-    hideDrawHint();
-  }
-
-  // ---------- view settings: toolbar position + compact (mobile) mode ----------
-  const VIEW_PREFS_KEY = 'tv-map:view-prefs';
-  function loadViewPrefs(){
-    try{
-      const raw = localStorage.getItem(VIEW_PREFS_KEY);
-      return raw ? JSON.parse(raw) : { position:'bottom', compact:false };
-    }catch(e){ return { position:'bottom', compact:false }; }
-  }
-  function saveViewPrefs(prefs){
-    try{ localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify(prefs)); }catch(e){}
-  }
-  let viewPrefs = loadViewPrefs();
-
-  // Keeps the side toolbar from ever overlapping the layer/visual panel above it:
-  // instead of a hardcoded "top" offset, measure the real bottom edge of
-  // #hud-layer (which changes size depending on content/compact mode/screen
-  // width) and push the side toolbar below it, with a small gap.
-  function syncToolbarSideOffset(){
-    const layer = document.getElementById('hud-layer');
-    if(!layer) return;
-    const gap = 16; // px, ~1rem
-    const bottom = layer.getBoundingClientRect().bottom;
-    document.documentElement.style.setProperty('--toolbar-side-top', `${Math.round(bottom + gap)}px`);
-  }
-
-  function applyViewPrefs(){
-    document.body.classList.toggle('toolbar-side', viewPrefs.position === 'side');
-    document.body.classList.toggle('compact-mode', !!viewPrefs.compact);
-    document.querySelectorAll('.vs-btn[data-pos]').forEach(b => b.classList.toggle('active', b.dataset.pos === viewPrefs.position));
-    document.querySelectorAll('.vs-btn[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === (viewPrefs.compact ? 'compact' : 'normal')));
-    // compact-mode / position changes affect the layer panel's height, so
-    // recompute the offset after the browser applies the new classes.
-    requestAnimationFrame(syncToolbarSideOffset);
-  }
-  applyViewPrefs();
-  syncToolbarSideOffset();
-  window.addEventListener('resize', syncToolbarSideOffset);
-  window.addEventListener('load', syncToolbarSideOffset);
-  if('ResizeObserver' in window){
-    new ResizeObserver(syncToolbarSideOffset).observe(document.getElementById('hud-layer'));
-  }
-
-  const viewSettingsToggle = document.getElementById('view-settings-toggle');
-  const viewSettingsPopover = document.getElementById('view-settings-popover');
-  const viewSettingsBackdrop = document.getElementById('view-settings-backdrop');
-  function openViewSettings(){
-    viewSettingsPopover.classList.add('open');
-    viewSettingsBackdrop.classList.add('open');
-  }
-  function closeViewSettings(){
-    viewSettingsPopover.classList.remove('open');
-    viewSettingsBackdrop.classList.remove('open');
-  }
-  viewSettingsToggle.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    viewSettingsPopover.classList.contains('open') ? closeViewSettings() : openViewSettings();
-  });
-  viewSettingsBackdrop.addEventListener('click', closeViewSettings);
-  document.addEventListener('click', (e) => {
-    if(viewSettingsPopover.classList.contains('open') && !viewSettingsPopover.contains(e.target) && e.target !== viewSettingsToggle){
-      closeViewSettings();
-    }
-  });
-  viewSettingsPopover.querySelectorAll('.vs-btn[data-pos]').forEach(b => {
-    b.addEventListener('click', () => {
-      viewPrefs.position = b.dataset.pos;
-      saveViewPrefs(viewPrefs);
-      applyViewPrefs();
-    });
-  });
-  viewSettingsPopover.querySelectorAll('.vs-btn[data-mode]').forEach(b => {
-    b.addEventListener('click', () => {
-      viewPrefs.compact = b.dataset.mode === 'compact';
-      saveViewPrefs(viewPrefs);
-      applyViewPrefs();
-    });
-  });
-
-  // ---------- pin icon factory ----------
-  function pinIcon(typeId){
-    const svgPath = PIN_ICONS[typeId] || PIN_ICONS.nota;
-    const color = (PIN_TYPES.find(t => t.id === typeId) || {}).color || 'var(--ice-100)';
-    const ping = PING_TYPES.includes(typeId) ? `<div class="pin-ping" style="border-color:${color}"></div>` : '';
-    return L.divIcon({
-      className: '',
-      html: `<div class="pin-wrap">${ping}<div class="pin-badge" style="background:${color}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svgPath}</svg></div></div>`,
-      iconSize: [30,30],
-      iconAnchor: [15,26],
-      popupAnchor: [0,-24]
-    });
-  }
-  function tokenIcon(label){
-    const short = (label || 'TK').slice(0,2).toUpperCase();
-    return L.divIcon({
-      className: '',
-      html: `<div class="token-icon">${short}</div>`,
-      iconSize: [22,22],
-      iconAnchor: [11,11]
-    });
-  }
-
-  // ---------- pin popup (create/edit) ----------
-  function buildPinPopupContent(pin){
-    const container = document.createElement('div');
-    const typeLabel = (PIN_TYPES.find(t => t.id === pin.type) || {label:pin.type}).label;
-    container.innerHTML = `
-      <div class="popup-kicker">${typeLabel}</div>
-      <input type="text" class="pin-title" placeholder="Título" value="${escapeHtml(pin.title || '')}">
-      <textarea class="pin-note" rows="3" placeholder="Anotação...">${escapeHtml(pin.note || '')}</textarea>
-      <div class="icon-picker-label">Alterar ícone</div>
-      <div class="icon-picker icon-picker-inline">${buildIconPickerHtml(pin.type)}</div>
-      <div class="popup-actions">
-        <button class="save">Salvar</button>
-        <button class="del">Excluir</button>
-      </div>
-    `;
-    container.querySelectorAll('.icon-picker-btn').forEach(b => {
-      b.addEventListener('click', async () => {
-        const newType = b.dataset.type;
-        if(newType === pin.type) return;
-        // preserve whatever the person already typed before swapping the icon
-        const titleVal = container.querySelector('.pin-title').value.trim();
-        const noteVal = container.querySelector('.pin-note').value.trim();
-        if(titleVal) pin.title = titleVal;
-        pin.note = noteVal;
-        pin.type = newType;
-        await saveKey(KEY_PINS, pins);
-        renderPins();
-        openPinPopupById(pin.id);
-      });
-    });
-    container.querySelector('.save').addEventListener('click', async () => {
-      pin.title = container.querySelector('.pin-title').value.trim() || typeLabel;
-      pin.note = container.querySelector('.pin-note').value.trim();
-      await saveKey(KEY_PINS, pins);
-      renderPins();
-      map.closePopup();
-    });
-    container.querySelector('.del').addEventListener('click', async () => {
-      pins = pins.filter(p => p.id !== pin.id);
-      await saveKey(KEY_PINS, pins);
-      renderPins();
-      map.closePopup();
-    });
-    return container;
-  }
-
-  function buildTokenPopupContent(token){
-    const container = document.createElement('div');
-    container.innerHTML = `
-      <div class="popup-kicker">Token</div>
-      <input type="text" class="token-label" placeholder="Nome" value="${escapeHtml(token.label || '')}">
-      <div class="popup-actions">
-        <button class="save">Salvar</button>
-        <button class="del">Remover</button>
-      </div>
-    `;
-    container.querySelector('.save').addEventListener('click', async () => {
-      token.label = container.querySelector('.token-label').value.trim() || 'Token';
-      await saveKey(KEY_TOKENS, tokens);
-      renderTokens();
-      map.closePopup();
-    });
-    container.querySelector('.del').addEventListener('click', async () => {
-      tokens = tokens.filter(t => t.id !== token.id);
-      await saveKey(KEY_TOKENS, tokens);
-      renderTokens();
-      map.closePopup();
-    });
-    return container;
-  }
-
-  function buildShapePopupContent(shape){
-    const container = document.createElement('div');
-    container.innerHTML = `
-      <div class="popup-kicker">Área</div>
-      <input type="text" class="shape-title" placeholder="Nome da área" value="${escapeHtml(shape.label || '')}">
-      <textarea class="shape-note" rows="3" placeholder="Anotação...">${escapeHtml(shape.note || '')}</textarea>
-      <div class="popup-actions">
-        <button class="save">Salvar</button>
-        <button class="del">Excluir</button>
-      </div>
-    `;
-    container.querySelector('.save').addEventListener('click', async () => {
-      shape.label = container.querySelector('.shape-title').value.trim() || 'Área sem nome';
-      shape.note = container.querySelector('.shape-note').value.trim();
-      await saveKey(KEY_SHAPES, shapes);
-      renderShapes();
-    });
-    container.querySelector('.del').addEventListener('click', async () => {
-      shapes = shapes.filter(s => s.id !== shape.id);
-      await saveKey(KEY_SHAPES, shapes);
-      renderShapes();
-      map.closePopup();
-    });
-    return container;
-  }
-
-  function buildRoutePopupContent(route){
-    const container = document.createElement('div');
-    const dist = route.distance != null ? route.distance : totalDistanceOf(route.points.map(p => L.latLng(p)));
-    const timesHtml = SPEED_PROFILES.map(sp => `
-      <div class="route-time-row"><span>${sp.label}</span><span>${formatDuration(estimateHours(dist, sp.kmh))}</span></div>
-    `).join('');
-    container.innerHTML = `
-      <div class="popup-kicker">Rota · ${formatDistance(dist)}</div>
-      <input type="text" class="route-title" placeholder="Nome da rota" value="${escapeHtml(route.label || '')}">
-      <textarea class="route-note" rows="3" placeholder="Anotação...">${escapeHtml(route.note || '')}</textarea>
-      <div class="route-times">
-        <div class="route-times-label">Tempo estimado (linha reta)</div>
-        ${timesHtml}
-      </div>
-      <div class="popup-actions">
-        <button class="save">Salvar</button>
-        <button class="del">Excluir</button>
-      </div>
-    `;
-    container.querySelector('.save').addEventListener('click', async () => {
-      route.label = container.querySelector('.route-title').value.trim() || 'Rota sem nome';
-      route.note = container.querySelector('.route-note').value.trim();
-      await saveKey(KEY_ROUTES, routes);
-      renderRoutes();
-    });
-    container.querySelector('.del').addEventListener('click', async () => {
-      routes = routes.filter(r => r.id !== route.id);
-      await saveKey(KEY_ROUTES, routes);
-      renderRoutes();
-      map.closePopup();
-    });
-    return container;
-  }
-
-  // ---------- render ----------
-  function renderPins(){
-    pinsLayer.clearLayers();
-    pins.forEach(pin => {
-      const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin.type) });
-      marker._pinId = pin.id;
-      marker.bindPopup(() => buildPinPopupContent(pin));
-      marker.addTo(pinsLayer);
-    });
-    document.getElementById('stat-pins').textContent = pins.length;
-  }
-  function openPinPopupById(id){
-    pinsLayer.eachLayer(l => {
-      if(l._pinId === id && l.openPopup) l.openPopup();
-    });
-  }
-
-  function renderTokens(){
-    tokensLayer.clearLayers();
-    tokens.forEach(token => {
-      const marker = L.marker([token.lat, token.lng], { icon: tokenIcon(token.label), draggable:true });
-      marker.on('dragend', async (e) => {
-        const pos = e.target.getLatLng();
-        token.lat = pos.lat; token.lng = pos.lng;
-        await saveKey(KEY_TOKENS, tokens);
-      });
-      marker.bindPopup(() => buildTokenPopupContent(token));
-      marker.addTo(tokensLayer);
-    });
-    document.getElementById('stat-tokens').textContent = tokens.length;
-  }
-
-  function renderShapes(){
-    shapesLayer.clearLayers();
-    shapes.forEach(shape => {
-      let layer;
-      if(shape.type === 'circle' && shape.center && typeof shape.radius === 'number'){
-        layer = L.circle(shape.center, Object.assign({ radius: shape.radius }, SHAPE_STYLE));
-      } else {
-        layer = L.geoJSON(shape.geojson, { style: SHAPE_STYLE });
-      }
-      layer._shapeId = shape.id;
-      if(shape.label){
-        layer.bindTooltip(shape.label, { permanent:true, direction:'center', className:'shape-label' });
-      }
-      layer.bindPopup(() => buildShapePopupContent(shape));
-      layer.addTo(shapesLayer);
-    });
-  }
-
-  function renderRoutes(){
-    routesLayer.clearLayers();
-    routes.forEach(route => {
-      const layer = L.polyline(route.points, { color:'var(--frost)', weight:3, opacity:0.85, dashArray:'2 8' });
-      layer._routeId = route.id;
-      const dist = route.distance != null ? route.distance : totalDistanceOf(route.points.map(p => L.latLng(p)));
-      const walkTime = formatDuration(estimateHours(dist, 5));
-      const label = (route.label || 'Rota') + ' · ' + formatDistance(dist) + ' · ~' + walkTime + ' a pé';
-      layer.bindTooltip(label, { permanent:true, direction:'center', className:'shape-label route-label' });
-      layer.bindPopup(() => buildRoutePopupContent(route));
-      layer.addTo(routesLayer);
-    });
-    document.getElementById('stat-routes').textContent = routes.length;
-  }
-
-  function openShapePopupById(id){
-    shapesLayer.eachLayer(l => {
-      if(l._shapeId === id && l.openPopup){
-        l.openPopup(l.getBounds ? l.getBounds().getCenter() : (l.getLatLng ? l.getLatLng() : undefined));
-      }
-    });
-  }
-  function openRoutePopupById(id){
-    routesLayer.eachLayer(l => {
-      if(l._routeId === id && l.openPopup){
-        l.openPopup(l.getBounds ? l.getBounds().getCenter() : undefined);
-      }
-    });
-  }
-
-  // ---------- area drawing: circle (custom, click-based — leaflet-draw's own
-  // circle tool is unreliable on this Leaflet version, and dragging.disable()
-  // has side-effects here, so this uses two ordinary clicks instead of a drag) ----------
-  let circleCenter = null;
-  let circlePreview = null;
-
-  function stopCircleMode(){
-    circleModeOn = false;
-    circleCenter = null;
-    if(circlePreview){ map.removeLayer(circlePreview); circlePreview = null; }
-    map.off('mousemove', onCircleMouseMove);
-  }
-
-  document.getElementById('tool-area-circle').addEventListener('click', () => {
-    const btn = document.getElementById('tool-area-circle');
-    const isActive = btn.classList.contains('active');
-    clearModes();
-    if(!isActive){
-      circleModeOn = true;
-      btn.classList.add('active');
-      showDrawHint('Clique no centro do círculo. ESC cancela.');
-    }
-  });
-
-  function onCircleMouseMove(e){
-    if(!circlePreview || !circleCenter) return;
-    circlePreview.setRadius(circleCenter.distanceTo(e.latlng));
-  }
-
-  // ---------- route / distance measuring tool (click to add points, double-click to finish) ----------
-  let routePoints = [];
-  let routePreviewLine = null;
-
-  function stopRouteMode(){
-    routeModeOn = false;
-    routePoints = [];
-    if(routePreviewLine){ map.removeLayer(routePreviewLine); routePreviewLine = null; }
-    map.doubleClickZoom.enable();
-  }
-
-  document.getElementById('tool-route').addEventListener('click', () => {
-    const btn = document.getElementById('tool-route');
-    const isActive = btn.classList.contains('active');
-    clearModes();
-    if(!isActive){
-      routeModeOn = true;
-      btn.classList.add('active');
-      map.doubleClickZoom.disable();
-      showDrawHint('Clique pra marcar pontos da rota. Dê 2 cliques pra concluir. ESC cancela.');
-    }
-  });
-
-  map.on('dblclick', async (e) => {
-    if(!routeModeOn) return;
-    // a double click also fires two ordinary click events right before it, which
-    // already appended points at (or very near) this same spot — drop those so we
-    // don't end the route with a bogus near-zero-length last segment
-    while(routePoints.length >= 2){
-      const a = routePoints[routePoints.length - 1];
-      const b = routePoints[routePoints.length - 2];
-      if(a.distanceTo(b) < 3) routePoints.pop();
-      else break;
-    }
-    if(routePoints.length < 2){ clearModes(); return; }
-    const distance = totalDistanceOf(routePoints);
-    const route = { id:newId(), points: routePoints.map(p => [p.lat, p.lng]), distance, label:'Nova rota', note:'' };
-    routes.push(route);
-    await saveKey(KEY_ROUTES, routes);
-    renderRoutes();
-    openRoutePopupById(route.id);
-    clearModes();
-  });
-
-  // ---------- map click: circle/route steps, or place pin/token ----------
-  map.on('click', async (e) => {
-    if(circleModeOn){
-      if(!circleCenter){
-        circleCenter = e.latlng;
-        circlePreview = L.circle(circleCenter, Object.assign({ radius: 1 }, SHAPE_STYLE)).addTo(map);
-        map.on('mousemove', onCircleMouseMove);
-        showDrawHint('Clique novamente pra definir o raio. ESC cancela.');
-      } else {
-        const radius = circleCenter.distanceTo(e.latlng);
-        map.off('mousemove', onCircleMouseMove);
-        if(circlePreview){ map.removeLayer(circlePreview); circlePreview = null; }
-        const center = circleCenter;
-        circleCenter = null;
-        if(radius >= 5){
-          const shape = { id:newId(), type:'circle', center:[center.lat, center.lng], radius, label:'Nova área', note:'' };
-          shapes.push(shape);
-          await saveKey(KEY_SHAPES, shapes);
-          renderShapes();
-          openShapePopupById(shape.id);
-        }
-        clearModes();
-      }
-      return;
-    }
-
-    if(routeModeOn){
-      routePoints.push(e.latlng);
-      if(routePreviewLine){ routePreviewLine.setLatLngs(routePoints); }
-      else{ routePreviewLine = L.polyline(routePoints, { color:'var(--frost)', weight:3, dashArray:'2 8' }).addTo(map); }
-      if(routePoints.length > 1){
-        showDrawHint(`Distância parcial: ${formatDistance(totalDistanceOf(routePoints))}. 2 cliques pra concluir. ESC cancela.`);
-      }
-      return;
-    }
-
-    if(selectedPinType){
-      const typeLabel = (PIN_TYPES.find(t => t.id === selectedPinType) || {}).label || selectedPinType;
-      const pin = {
-        id: newId(),
-        lat: e.latlng.lat,
-        lng: e.latlng.lng,
-        type: selectedPinType,
-        title: typeLabel,
-        note: ''
-      };
-      pins.push(pin);
-      await saveKey(KEY_PINS, pins);
-      renderPins();
-      // open the new pin's popup for immediate editing
-      openPinPopupById(pin.id);
-    } else if(tokenModeOn){
-      const token = { id:newId(), lat:e.latlng.lat, lng:e.latlng.lng, label:'Token' };
-      tokens.push(token);
-      await saveKey(KEY_TOKENS, tokens);
-      renderTokens();
-    }
-  });
-
-  // ---------- area drawing: polygon & rectangle via Leaflet.draw engine ----------
-  const drawControl = new L.Control.Draw({
-    edit: false,
-    draw: {
-      polygon: { shapeOptions: { color: 'var(--hazard)' } },
-      rectangle: { shapeOptions: { color: 'var(--hazard)' } },
-      circle: false, marker: false, polyline: false, circlemarker: false
-    }
-  });
-  map.addControl(drawControl); // control itself hidden via CSS; used only for engine
-
-  const drawHint = document.getElementById('draw-hint');
-  function showDrawHint(text){
-    drawHint.innerHTML = `<span class="dot"></span>${text}`;
-    drawHint.style.display = 'flex';
-  }
-  function hideDrawHint(){ drawHint.style.display = 'none'; }
-
-  document.getElementById('tool-area-polygon').addEventListener('click', () => {
-    const btn = document.getElementById('tool-area-polygon');
-    const isActive = btn.classList.contains('active');
-    clearModes();
-    if(!isActive){
-      btn.classList.add('active');
-      new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
-      showDrawHint('Clique pra marcar os vértices, dê 2 cliques pra fechar. ESC cancela.');
-    }
-  });
-  document.getElementById('tool-area-rect').addEventListener('click', () => {
-    const btn = document.getElementById('tool-area-rect');
-    const isActive = btn.classList.contains('active');
-    clearModes();
-    if(!isActive){
-      btn.classList.add('active');
-      new L.Draw.Rectangle(map, drawControl.options.draw.rectangle).enable();
-      showDrawHint('Clique e arraste para desenhar o retângulo. ESC cancela.');
-    }
-  });
-
-  map.on(L.Draw.Event.CREATED, async (e) => {
-    hideDrawHint();
-    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(map.hasLayer(topoLayer) ? 'layer-topo' : 'layer-streets').classList.add('active');
-    const layer = e.layer;
-    const geojson = layer.toGeoJSON();
-    const shape = { id:newId(), geojson, label:'Nova área', note:'' };
-    shapes.push(shape);
-    await saveKey(KEY_SHAPES, shapes);
-    renderShapes();
-    openShapePopupById(shape.id);
-  });
-  map.on(L.Draw.Event.DRAWSTOP, hideDrawHint);
-
-  // ESC cancels any active drawing/measuring mode
-  document.addEventListener('keydown', (e) => {
-    if(e.key === 'Escape' && (circleModeOn || routeModeOn)) clearModes();
-  });
-
-  // ---------- search: local pins/áreas/rotas + place search via Nominatim (OSM) ----------
-  const searchInput = document.getElementById('search-input');
-  const searchResultsEl = document.getElementById('search-results');
-  let searchDebounce = null;
-  let searchSeq = 0;
-
-  function clearSearchResults(){
-    searchResultsEl.innerHTML = '';
-    searchResultsEl.style.display = 'none';
-  }
-
-  function renderSearchResults(items){
-    if(!items.length){
-      searchResultsEl.innerHTML = '<div class="search-empty">Nada encontrado.</div>';
-      searchResultsEl.style.display = 'block';
-      return;
-    }
-    searchResultsEl.innerHTML = items.map((it, idx) => `
-      <div class="search-result" data-idx="${idx}">
-        <span class="search-result-kicker">${escapeHtml(it.kicker)}</span>
-        <span class="search-result-label">${escapeHtml(it.label)}</span>
-      </div>
-    `).join('');
-    searchResultsEl.style.display = 'block';
-    searchResultsEl.querySelectorAll('.search-result').forEach(el => {
-      el.addEventListener('click', () => {
-        goToSearchResult(items[Number(el.dataset.idx)]);
-        clearSearchResults();
-      });
-    });
-  }
-
-  function goToSearchResult(item){
-    if(item.bounds){
-      map.fitBounds(item.bounds, { maxZoom:16 });
-    } else {
-      map.setView(item.latlng, Math.max(map.getZoom(), 15));
-    }
-    if(item.openPopup) setTimeout(item.openPopup, 250);
-  }
-
-  function searchLocal(query){
-    const q = query.toLowerCase();
-    const results = [];
-    pins.forEach(p => {
-      if((p.title||'').toLowerCase().includes(q) || (p.note||'').toLowerCase().includes(q)){
-        results.push({ kicker:'Pin no mapa', label:p.title || 'Pin', latlng:[p.lat,p.lng],
-          openPopup: () => { pinsLayer.eachLayer(l => { if(l.getLatLng && l.getLatLng().lat===p.lat && l.getLatLng().lng===p.lng) l.openPopup(); }); } });
-      }
-    });
-    shapes.forEach(s => {
-      if((s.label||'').toLowerCase().includes(q)){
-        let center = null;
-        if(s.type === 'circle' && s.center) center = s.center;
-        else if(s.geojson){ try{ center = L.geoJSON(s.geojson).getBounds().getCenter(); }catch(e){} }
-        if(center) results.push({ kicker:'Área', label:s.label, latlng:center, openPopup:() => openShapePopupById(s.id) });
-      }
-    });
-    routes.forEach(r => {
-      if((r.label||'').toLowerCase().includes(q) && r.points && r.points.length){
-        const mid = r.points[Math.floor(r.points.length/2)];
-        results.push({ kicker:'Rota', label:r.label, latlng:mid, openPopup:() => openRoutePopupById(r.id) });
-      }
-    });
-    return results;
-  }
-
-  async function searchPlaces(query){
-    try{
-      const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=5&q=' + encodeURIComponent(query);
-      const res = await fetch(url, { headers: { 'Accept':'application/json' } });
-      if(!res.ok) return [];
-      const data = await res.json();
-      return data.map(d => {
-        let bounds = null;
-        if(d.boundingbox && d.boundingbox.length === 4){
-          const bb = d.boundingbox.map(Number);
-          bounds = [[bb[0], bb[2]], [bb[1], bb[3]]];
-        }
-        return { kicker:'Lugar (OSM)', label:d.display_name, latlng:[parseFloat(d.lat), parseFloat(d.lon)], bounds };
-      });
-    }catch(e){ return []; }
-  }
-
-  searchInput.addEventListener('input', () => {
-    clearTimeout(searchDebounce);
-    const q = searchInput.value.trim();
-    if(!q){ clearSearchResults(); return; }
-    const mySeq = ++searchSeq;
-    const local = searchLocal(q);
-    renderSearchResults(local);
-    searchDebounce = setTimeout(async () => {
-      const places = await searchPlaces(q);
-      if(mySeq !== searchSeq) return; // resposta antiga, ignora
-      renderSearchResults([...local, ...places]);
-    }, 400);
-  });
-  searchInput.addEventListener('keydown', (e) => {
-    if(e.key === 'Escape'){ searchInput.blur(); clearSearchResults(); }
-    if(e.key === 'Enter'){
-      const first = searchResultsEl.querySelector('.search-result');
-      if(first) first.click();
-    }
-  });
-  document.addEventListener('click', (e) => {
-    if(!document.getElementById('hud-search').contains(e.target)) clearSearchResults();
-  });
-
-  // ---------- reset ----------
-  document.getElementById('reset-btn').addEventListener('click', async () => {
-    if(!window.confirm('Isso remove todos os pins, tokens, áreas e rotas do mapa para todos. Confirmar?')) return;
-    pins = []; tokens = []; shapes = []; routes = [];
-    await Promise.all([saveKey(KEY_PINS, pins), saveKey(KEY_TOKENS, tokens), saveKey(KEY_SHAPES, shapes), saveKey(KEY_ROUTES, routes)]);
-    renderPins(); renderTokens(); renderShapes(); renderRoutes();
-  });
-
-  // ---------- initial load + sincronização em tempo real ----------
-  (async function init(){
-    try{
-      const [p, t, s, r] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES)]);
-      pins = p; tokens = t; shapes = s; routes = r;
-      renderPins(); renderTokens(); renderShapes(); renderRoutes();
-    }catch(e){
-      console.error('Falha ao carregar dados do mapa', e);
-    }finally{
-      document.getElementById('map-loading').style.display = 'none';
-    }
-
-    // A partir daqui, qualquer mudança feita por QUALQUER pessoa no site
-    // (outra aba, outro celular, outro jogador) chega aqui e atualiza o mapa
-    // na hora, sem precisar recarregar a página.
-    listenKey(KEY_PINS, (data) => { pins = data; renderPins(); });
-    listenKey(KEY_TOKENS, (data) => { tokens = data; renderTokens(); });
-    listenKey(KEY_SHAPES, (data) => { shapes = data; renderShapes(); });
-    listenKey(KEY_ROUTES, (data) => { routes = data; renderRoutes(); });
-  })();
-
-})();
-</script>
-</body>
-</html>
+  /* ---------- floating popovers (view settings, ico
