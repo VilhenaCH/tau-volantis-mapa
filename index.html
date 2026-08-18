@@ -39,6 +39,8 @@
     --trap:#a05a3a;
     --vehicle:#5a7a94;
     --neutral:#c7d2d8;
+    --pv-red:#c9433f;
+    --pd-blue:#3f8fd1;
 
     /* -------- design tokens (forma / profundidade / movimento) -------- */
     --r-xs:6px;
@@ -478,6 +480,109 @@
     border-radius:var(--r-lg);
     box-shadow:0 20px 50px rgba(0,0,0,0.6);
   }
+  /* ---------- ficha de personagem (token vinculado a uma ficha salva por conta) ---------- */
+  .ficha-locked-note{
+    font-size:0.6rem; color:var(--ink-dim); line-height:1.4; margin-top:0.4rem;
+  }
+  #sheet-backdrop, #sheets-list-backdrop{
+    position:fixed; inset:0; background:rgba(6,10,13,0.6);
+    z-index:2150; display:none;
+  }
+  #sheet-backdrop.open, #sheets-list-backdrop.open{ display:block; }
+  #sheet-modal{
+    position:fixed; top:4vh; left:50%; transform:translateX(-50%);
+    z-index:2200; width:min(440px, 92vw); max-height:92vh; overflow-y:auto;
+    background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-lg);
+    box-shadow:0 20px 50px rgba(0,0,0,0.6); padding:0.9rem 1rem 1.2rem; display:none;
+  }
+  #sheet-modal.open{ display:block; }
+  #sheets-list-modal{
+    position:fixed; top:8vh; left:50%; transform:translateX(-50%);
+    z-index:2200; width:min(340px, 90vw); max-height:82vh; overflow-y:auto;
+    background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-lg);
+    box-shadow:0 20px 50px rgba(0,0,0,0.6); padding:0.9rem 1rem 1.2rem; display:none;
+  }
+  #sheets-list-modal.open{ display:block; }
+  .sheet-close{
+    position:absolute; top:0.6rem; right:0.7rem; background:none; border:none; color:var(--ink-dim);
+    font-size:1.3rem; line-height:1; cursor:pointer; padding:0.2rem;
+  }
+  .sheet-close:hover{ color:var(--ink); }
+  .sheet-header{ display:flex; gap:0.7rem; align-items:center; margin-bottom:0.7rem; padding-right:1.6rem; }
+  .sheet-avatar{
+    width:52px; height:52px; border-radius:50%; flex-shrink:0; overflow:hidden;
+    border:2px solid var(--frost); background:var(--bg-1); display:flex; align-items:center; justify-content:center;
+    font-family:'Oswald',sans-serif; color:var(--ink-dim);
+  }
+  .sheet-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .sheet-header-fields{ flex:1; min-width:0; }
+  .sheet-name-input{ font-family:'Oswald',sans-serif; font-size:1rem; width:100%; margin-bottom:0.3rem; }
+  .sheet-owner-line{ font-size:0.6rem; color:var(--ink-dim); text-transform:uppercase; letter-spacing:0.06em; }
+  .sheet-section-label{
+    font-size:0.62rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-dim);
+    margin:0.9rem 0 0.4rem; padding-top:0.6rem; border-top:1px solid var(--hud-line);
+  }
+  .sheet-section-label:first-of-type{ border-top:none; padding-top:0; margin-top:0.2rem; }
+  .stat-bar-row{ margin:0.4rem 0; }
+  .stat-bar-label{ display:flex; justify-content:space-between; font-size:0.64rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-dim); margin-bottom:0.25rem; }
+  .stat-bar-track{ position:relative; height:14px; border-radius:var(--r-pill); background:var(--bg-1); border:1px solid var(--line); overflow:hidden; }
+  .stat-bar-fill{ height:100%; transition:width 0.25s var(--ease-soft); }
+  .stat-bar-fill.pv{ background:var(--pv-red); }
+  .stat-bar-fill.pd{ background:var(--pd-blue); }
+  .stat-bar-inputs{ display:flex; align-items:center; gap:0.3rem; margin-top:0.3rem; }
+  .stat-bar-inputs input{ width:56px; text-align:center; }
+  .stat-bar-inputs span{ color:var(--ink-dim); font-size:0.7rem; }
+  .attrs-grid{ display:grid; grid-template-columns:repeat(5, 1fr); gap:0.4rem; }
+  .attr-cell{ display:flex; flex-direction:column; align-items:center; gap:0.2rem; }
+  .attr-cell label{ font-size:0.6rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-dim); }
+  .attr-cell input{ width:100%; text-align:center; }
+  .pericia-row, .inv-row{
+    display:flex; align-items:center; gap:0.4rem; padding:0.4rem 0; border-bottom:1px solid var(--hud-line);
+    flex-wrap:wrap;
+  }
+  .pericia-row:last-child, .inv-row:last-child{ border-bottom:none; }
+  .pericia-name{ flex:1; min-width:80px; font-size:0.75rem; }
+  .pericia-meta{ font-size:0.6rem; color:var(--ink-dim); width:100%; }
+  .pericia-roll-btn, .inv-del-btn, .pericia-del-btn{
+    font-size:0.62rem; padding:0.3rem 0.55rem; border-radius:var(--r-sm);
+    border:1px solid var(--line); background:var(--bg-1); color:var(--ink); cursor:pointer;
+  }
+  .pericia-roll-btn{ border-color:var(--frost); color:var(--frost); }
+  .pericia-del-btn, .inv-del-btn{ color:var(--hazard); border-color:var(--hazard); }
+  .pericia-result{ width:100%; font-size:0.68rem; color:var(--ink-dim); }
+  .pericia-result .total{ color:var(--frost); font-weight:bold; }
+  .add-row{ display:flex; gap:0.35rem; flex-wrap:wrap; margin-top:0.5rem; align-items:center; }
+  .add-row input[type=text]{ flex:1; min-width:90px; }
+  .add-row input[type=number]{ width:56px; }
+  .add-row select{ min-width:70px; }
+  .add-row button{
+    padding:0.35rem 0.6rem; border-radius:var(--r-sm); border:1px solid var(--frost);
+    background:var(--bg-1); color:var(--frost); cursor:pointer; font-size:0.68rem;
+  }
+  .inv-name{ flex:1; min-width:80px; font-size:0.75rem; }
+  .inv-qty{ font-size:0.68rem; color:var(--ink-dim); }
+  .sheet-empty-hint{ font-size:0.68rem; color:var(--ink-dim); }
+  .sheet-footer-actions{ display:flex; flex-direction:column; gap:0.4rem; margin-top:1rem; padding-top:0.7rem; border-top:1px solid var(--hud-line); }
+  .sheet-place-btn{
+    padding:0.5rem; border-radius:var(--r-sm); border:1px solid var(--frost); background:var(--bg-1);
+    color:var(--frost); cursor:pointer; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em;
+  }
+  .sheet-delete-btn{
+    padding:0.5rem; border-radius:var(--r-sm); border:1px solid var(--hazard); background:var(--bg-1);
+    color:var(--hazard); cursor:pointer; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em;
+  }
+  .sheets-list-row{
+    display:flex; align-items:center; gap:0.55rem; padding:0.5rem 0; border-bottom:1px solid var(--hud-line); cursor:pointer;
+  }
+  .sheets-list-row:last-child{ border-bottom:none; }
+  .sheets-list-row:hover .pericia-name{ color:var(--frost); }
+  .sheets-list-avatar{
+    width:32px; height:32px; border-radius:50%; overflow:hidden; flex-shrink:0; background:var(--bg-1);
+    display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:var(--ink-dim);
+    border:1px solid var(--line);
+  }
+  .sheets-list-avatar img{ width:100%; height:100%; object-fit:cover; }
+
   .icon-picker{
     display:grid; grid-template-columns:repeat(auto-fill, minmax(30px, 1fr)); gap:0.35rem;
   }
@@ -937,6 +1042,19 @@
       </div>
     </div>
 
+    <div id="sheet-backdrop"></div>
+    <div id="sheet-modal">
+      <button type="button" class="sheet-close" id="sheet-close-btn" title="Fechar">&times;</button>
+      <div id="sheet-modal-body"><!-- preenchido via JS --></div>
+    </div>
+
+    <div id="sheets-list-backdrop"></div>
+    <div id="sheets-list-modal">
+      <button type="button" class="sheet-close" id="sheets-list-close-btn" title="Fechar">&times;</button>
+      <div class="vs-group-label">Minhas Fichas</div>
+      <div id="sheets-list-body"><!-- preenchido via JS --></div>
+    </div>
+
     <div class="hud-panel hud-toolbar" id="hud-toolbar">
       <div class="toolbar-group" id="pin-buttons">
         <span class="toolbar-label">Marcar</span>
@@ -972,6 +1090,7 @@
         <button class="tool-btn" id="drawer-toggle-btn"><span class="dot" style="background:var(--hazard)"></span>Saque</button>
         <button class="tool-btn" id="nav-drawer-toggle-btn"><span class="dot" style="background:var(--ice-300)"></span>Lista</button>
         <button class="tool-btn" id="token-select-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Selecionar Tokens</button>
+        <button class="tool-btn" id="sheets-list-toggle-btn"><span class="dot" style="background:var(--pv-red)"></span>Minhas Fichas</button>
       </div>
     </div>
 
@@ -1122,6 +1241,9 @@
   const KEY_TOKENS = 'tv-map:tokens';
   const KEY_SHAPES = 'tv-map:shapes';
   const KEY_ROUTES = 'tv-map:routes';
+  const KEY_SHEETS = 'tv-map:sheets';
+
+  const ATTR_KEYS = ['FOR', 'AGI', 'INT', 'PRE', 'VIG'];
 
   const SP_CENTER = [-23.5505, -46.6333];
   const SHAPE_STYLE = { color: 'var(--hazard)', weight: 2, fillColor: 'var(--hazard)', fillOpacity: 0.1, dashArray: '6 4' };
@@ -1130,10 +1252,12 @@
   let tokens = [];
   let shapes = [];
   let routes = [];
+  let sheets = [];
   let selectedPinType = null;
   let tokenModeOn = false;
   let circleModeOn = false;
   let routeModeOn = false;
+  let placingSheetId = null; // ficha aguardando clique no mapa pra (re)posicionar seu token
   let idCounter = 1;
 
   function newId(){ return 'id' + (Date.now()) + '-' + (idCounter++); }
@@ -1402,6 +1526,41 @@
   const shapesLayer = L.layerGroup().addTo(map);
   const routesLayer = L.layerGroup().addTo(map);
 
+  // ---------- sincronização "ao vivo" tipo mesa física ----------
+  // Os pins agora são sincronizados por diff: cada atualização remota só
+  // toca os marcadores que realmente mudaram (posição/ícone), sem nunca
+  // destruir e reconstruir a camada inteira. Isso significa que enquanto
+  // um jogador está com o popup de um pin aberto digitando uma nota, os
+  // OUTROS pins continuam se movendo/atualizando normalmente na tela dela
+  // — só aquele pin específico fica "protegido" até ela fechar o popup.
+  let pinMarkers = {};      // id do pin -> marker
+  let pinDraggingId = null; // id do pin sendo arrastado localmente agora
+  let editingPinId = null;  // id do pin com popup de edição aberto localmente
+
+  // Tokens/áreas/rotas ainda usam a trava por camada inteira (mais simples,
+  // e edições nesses são bem mais raras que mover peças no tabuleiro).
+  let tokenPopupActive = false;
+  let shapePopupActive = false;
+  let routePopupActive = false;
+  map.on('popupopen', (e) => {
+    const src = e.popup && e.popup._source;
+    if(!src) return;
+    if(src._pinId !== undefined) editingPinId = src._pinId;
+    if(tokensLayer.hasLayer(src)) tokenPopupActive = true;
+    if(shapesLayer.hasLayer(src)) shapePopupActive = true;
+    if(routesLayer.hasLayer(src)) routePopupActive = true;
+  });
+  map.on('popupclose', (e) => {
+    const src = e.popup && e.popup._source;
+    if(!src) return;
+    // ao fechar, libera a trava e recupera qualquer atualização remota que
+    // tenha chegado enquanto o popup estava aberto
+    if(src._pinId !== undefined && src._pinId === editingPinId){ editingPinId = null; renderPins(); }
+    if(tokensLayer.hasLayer(src)){ tokenPopupActive = false; renderTokens(); }
+    if(shapesLayer.hasLayer(src)){ shapePopupActive = false; renderShapes(); }
+    if(routesLayer.hasLayer(src)){ routePopupActive = false; renderRoutes(); }
+  });
+
   document.getElementById('layer-streets').addEventListener('click', () => setLayer('streets'));
   document.getElementById('layer-topo').addEventListener('click', () => setLayer('topo'));
 
@@ -1464,6 +1623,7 @@
   function clearModes(){
     selectedPinType = null;
     tokenModeOn = false;
+    placingSheetId = null;
     stopCircleMode();
     stopRouteMode();
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
@@ -1743,6 +1903,13 @@
     container.querySelector('.lock').addEventListener('click', async () => {
       pin.locked = !pin.locked;
       await saveKey(KEY_PINS, pins);
+      // atualiza o marcador direto: renderPins() por diff não mexe no pin
+      // com popup aberto localmente (é o próprio, por isso fazemos aqui)
+      const marker = pinMarkers[pin.id];
+      if(marker){
+        marker.setIcon(pinIcon(pin));
+        if(marker.dragging){ if(pin.locked) marker.dragging.disable(); else marker.dragging.enable(); }
+      }
       renderPins();
       openPinPopupById(pin.id);
     });
@@ -1757,6 +1924,8 @@
         pin.note = noteVal;
         pin.type = newType;
         await saveKey(KEY_PINS, pins);
+        const marker = pinMarkers[pin.id];
+        if(marker) marker.setIcon(pinIcon(pin));
         renderPins();
         openPinPopupById(pin.id);
       });
@@ -1837,6 +2006,49 @@
     const container = document.createElement('div');
     const currentColor = token.color || '#8fd7e8';
     const initials = escapeHtml((token.label || 'TK').slice(0,2).toUpperCase());
+    const hasSheet = !!token.sheetId;
+
+    if(hasSheet){
+      // Token vinculado a uma ficha: nome e imagem passam a ser editados só
+      // pela ficha (evita os dois lugares divergirem), e o token só pode
+      // ser removido através dela — não tem botão "Remover" aqui.
+      container.innerHTML = `
+        <div class="popup-kicker">Token</div>
+        ${token.ownerName ? `<div class="popup-owner">Criado por: ${escapeHtml(token.ownerName)}</div>` : ''}
+        <div class="token-popup-row">
+          <div class="token-preview-wrap">
+            <div class="token-preview" style="border-color:${escapeHtml(currentColor)}">
+              ${token.image ? `<img src="${token.image}" alt="">` : `<span>${initials}</span>`}
+            </div>
+          </div>
+          <div class="token-popup-fields">
+            <label class="token-field-label">Cor da borda</label>
+            <input type="color" class="token-color-input" value="${currentColor}">
+            <div class="ficha-locked-note">Nome e imagem agora são editados pela ficha deste token.</div>
+          </div>
+        </div>
+        <div class="popup-actions">
+          <button class="save">Salvar cor</button>
+          <button type="button" class="ficha-open">📋 Abrir Ficha</button>
+        </div>
+        <div class="ficha-locked-note">Este token só pode ser removido pela ficha.</div>
+      `;
+      const colorInput = container.querySelector('.token-color-input');
+      const preview = container.querySelector('.token-preview');
+      colorInput.addEventListener('input', () => { preview.style.borderColor = colorInput.value; });
+      container.querySelector('.save').addEventListener('click', async () => {
+        token.color = colorInput.value;
+        await saveKey(KEY_TOKENS, tokens);
+        renderTokens();
+        map.closePopup();
+      });
+      container.querySelector('.ficha-open').addEventListener('click', () => {
+        map.closePopup();
+        openSheetModal(token.sheetId);
+      });
+      return container;
+    }
+
     container.innerHTML = `
       <div class="popup-kicker">Token</div>
       ${token.ownerName ? `<div class="popup-owner">Criado por: ${escapeHtml(token.ownerName)}</div>` : ''}
@@ -1857,6 +2069,7 @@
       </div>
       <div class="popup-actions">
         <button class="save">Salvar</button>
+        <button type="button" class="ficha-create">Criar Ficha</button>
         <button class="del">Remover</button>
       </div>
     `;
@@ -1894,6 +2107,24 @@
       await saveKey(KEY_TOKENS, tokens);
       renderTokens();
       map.closePopup();
+    });
+    container.querySelector('.ficha-create').addEventListener('click', async () => {
+      if(!currentPlayer){
+        if(window.confirm('Fichas de personagem ficam salvas na sua conta Google. Entrar com Google agora?')){
+          const loginBtn = document.getElementById('google-login-btn');
+          if(loginBtn) loginBtn.click();
+        }
+        return;
+      }
+      if(!window.confirm('Criar uma ficha de personagem para este token?')) return;
+      // usa o rótulo/imagem já digitados no popup, mesmo que ainda não salvos
+      token.label = container.querySelector('.token-label').value.trim() || 'Token';
+      token.image = pendingImage;
+      const sheet = createSheetForToken(token);
+      await Promise.all([saveKey(KEY_SHEETS, sheets), saveKey(KEY_TOKENS, tokens)]);
+      renderTokens();
+      map.closePopup();
+      openSheetModal(sheet.id);
     });
     container.querySelector('.del').addEventListener('click', async () => {
       tokens = tokens.filter(t => t.id !== token.id);
@@ -1966,9 +2197,415 @@
     return container;
   }
 
+  // ================= FICHAS DE PERSONAGEM (vinculadas a um token) =================
+  // Uma ficha é criada a partir de um token (no popup dele, ou logo após
+  // criá-lo) e passa a ser dona da identidade visual/nome do token. Fica
+  // salva junto com os outros dados do mapa (Firebase/local), marcada com o
+  // uid do jogador (via login Google) — por isso "Minhas Fichas" só lista
+  // as que pertencem a quem está logado. O token correspondente só pode ser
+  // apagado a partir da ficha.
+  let activeSheetId = null;
+
+  function findSheetById(id){ return sheets.find(s => s.id === id) || null; }
+
+  function createSheetForToken(token){
+    const sheet = {
+      id: newId(),
+      tokenId: token.id,
+      ownerId: currentPlayer ? currentPlayer.uid : null,
+      ownerName: currentPlayer ? currentPlayer.playerName : null,
+      ownerPhotoURL: (currentPlayer && currentPlayer.photoURL) ? currentPlayer.photoURL : '',
+      name: token.label || 'Personagem',
+      image: token.image || null,
+      pv: { cur: 10, max: 10 },
+      pd: { cur: 10, max: 10 },
+      attrs: { FOR: 0, AGI: 0, INT: 0, PRE: 0, VIG: 0 },
+      pericias: [],
+      inventory: []
+    };
+    sheets.push(sheet);
+    token.sheetId = sheet.id;
+    return sheet;
+  }
+
+  async function offerCreateSheetForToken(token){
+    if(!currentPlayer){
+      if(window.confirm('Fichas de personagem ficam salvas na sua conta Google. Entrar com Google agora?')){
+        const loginBtn = document.getElementById('google-login-btn');
+        if(loginBtn) loginBtn.click();
+      }
+      return;
+    }
+    if(!window.confirm('Criar uma ficha de personagem para este token?')) return;
+    const sheet = createSheetForToken(token);
+    await Promise.all([saveKey(KEY_SHEETS, sheets), saveKey(KEY_TOKENS, tokens)]);
+    renderTokens();
+    openSheetModal(sheet.id);
+  }
+
+  async function saveSheets(){ await saveKey(KEY_SHEETS, sheets); }
+
+  function statBarBlock(kind, label, stat){
+    stat = stat || { cur: 0, max: 0 };
+    const max = Math.max(0, stat.max || 0);
+    const cur = Math.max(0, Math.min(stat.cur || 0, max || (stat.cur || 0)));
+    const pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
+    return `
+      <div class="stat-bar-row" data-stat="${kind}">
+        <div class="stat-bar-label"><span>${escapeHtml(label)}</span><span class="stat-bar-value">${cur}/${max}</span></div>
+        <div class="stat-bar-track"><div class="stat-bar-fill ${kind}" style="width:${pct}%"></div></div>
+        <div class="stat-bar-inputs">
+          <input type="number" class="sheet-stat-cur" data-stat="${kind}" value="${cur}"><span>/</span>
+          <input type="number" class="sheet-stat-max" data-stat="${kind}" value="${max}">
+        </div>
+      </div>
+    `;
+  }
+
+  function periciaRowHtml(p){
+    const bonusTxt = (p.bonus >= 0 ? '+' : '') + (p.bonus || 0);
+    return `
+      <div class="pericia-row" data-id="${p.id}">
+        <span class="pericia-name">${escapeHtml(p.nome)}</span>
+        <button type="button" class="pericia-roll-btn" data-action="roll">🎲 Rolar</button>
+        <button type="button" class="pericia-del-btn" data-action="del">×</button>
+        <div class="pericia-meta">${escapeHtml(p.atributo)} · ${p.dados}d20 ${bonusTxt}</div>
+        <div class="pericia-result" data-role="result"></div>
+      </div>
+    `;
+  }
+
+  function invRowHtml(it){
+    return `
+      <div class="inv-row" data-id="${it.id}">
+        <span class="inv-name">${escapeHtml(it.nome)}</span>
+        <span class="inv-qty">x${it.qtd || 1}</span>
+        <button type="button" class="inv-del-btn" data-action="del">×</button>
+      </div>
+    `;
+  }
+
+  function renderSheetModalBody(sheet){
+    const initials = escapeHtml((sheet.name || 'FC').slice(0,2).toUpperCase());
+    return `
+      <div class="sheet-header">
+        <div class="sheet-avatar" id="sheet-avatar-preview">
+          ${sheet.image ? `<img src="${sheet.image}" alt="">` : `<span>${initials}</span>`}
+        </div>
+        <div class="sheet-header-fields">
+          <input type="text" class="sheet-name-input" id="sheet-name-input" value="${escapeHtml(sheet.name || '')}" placeholder="Nome do personagem">
+          <div class="sheet-owner-line">Ficha de ${escapeHtml(sheet.ownerName || 'jogador')}</div>
+          <label class="token-field-label" style="margin-top:0.35rem;">Imagem</label>
+          <input type="file" accept="image/*" id="sheet-image-input">
+        </div>
+      </div>
+
+      <p class="sheet-section-label">Pontos de Vida (PV)</p>
+      ${statBarBlock('pv', 'PV', sheet.pv)}
+
+      <p class="sheet-section-label">Pontos de Determinação (PD)</p>
+      ${statBarBlock('pd', 'PD', sheet.pd)}
+
+      <p class="sheet-section-label">Atributos</p>
+      <div class="attrs-grid">
+        ${ATTR_KEYS.map(k => `
+          <div class="attr-cell">
+            <label>${k}</label>
+            <input type="number" class="sheet-attr-input" data-attr="${k}" value="${sheet.attrs && sheet.attrs[k] != null ? sheet.attrs[k] : 0}">
+          </div>
+        `).join('')}
+      </div>
+
+      <p class="sheet-section-label">Perícias (atalhos de rolagem)</p>
+      <div id="sheet-pericias-list">
+        ${(sheet.pericias || []).map(p => periciaRowHtml(p)).join('') || '<div class="sheet-empty-hint">Nenhuma perícia adicionada ainda.</div>'}
+      </div>
+      <div class="add-row">
+        <input type="text" id="new-pericia-nome" placeholder="Nome da perícia">
+        <select id="new-pericia-attr">${ATTR_KEYS.map(k => `<option value="${k}">${k}</option>`).join('')}</select>
+        <input type="number" id="new-pericia-dados" value="1" min="1" max="10" title="Qtd. de d20">
+        <input type="number" id="new-pericia-bonus" value="0" title="Bônus">
+        <button type="button" id="add-pericia-btn">+ Perícia</button>
+      </div>
+
+      <p class="sheet-section-label">Inventário</p>
+      <div id="sheet-inventory-list">
+        ${(sheet.inventory || []).map(it => invRowHtml(it)).join('') || '<div class="sheet-empty-hint">Nenhum item guardado ainda.</div>'}
+      </div>
+      <div class="add-row">
+        <input type="text" id="new-item-nome" placeholder="Nome do item">
+        <input type="number" id="new-item-qtd" value="1" min="1">
+        <button type="button" id="add-item-btn">+ Item</button>
+      </div>
+
+      <div class="sheet-footer-actions">
+        <button type="button" class="sheet-place-btn" id="sheet-place-token-btn">📍 ${sheet.tokenId ? 'Mover token no mapa' : 'Colocar token no mapa'}</button>
+        <button type="button" class="sheet-delete-btn" id="sheet-delete-btn">Excluir ficha e token</button>
+      </div>
+    `;
+  }
+
+  function refreshPericiasList(sheet){
+    const wrap = document.getElementById('sheet-pericias-list');
+    if(!wrap) return;
+    wrap.innerHTML = (sheet.pericias || []).map(p => periciaRowHtml(p)).join('') || '<div class="sheet-empty-hint">Nenhuma perícia adicionada ainda.</div>';
+  }
+  function refreshInventoryList(sheet){
+    const wrap = document.getElementById('sheet-inventory-list');
+    if(!wrap) return;
+    wrap.innerHTML = (sheet.inventory || []).map(it => invRowHtml(it)).join('') || '<div class="sheet-empty-hint">Nenhum item guardado ainda.</div>';
+  }
+
+  function rollPericiaDice(pericia){
+    const n = Math.max(1, Math.min(10, parseInt(pericia.dados, 10) || 1));
+    const dice = [];
+    for(let i = 0; i < n; i++) dice.push(1 + Math.floor(Math.random() * 20));
+    const best = Math.max(...dice);
+    const total = best + (parseInt(pericia.bonus, 10) || 0);
+    return { dice, best, total };
+  }
+
+  async function sendPericiaRollToDiscord(sheet, pericia, result){
+    const url = (typeof webhookInput !== 'undefined' && webhookInput) ? webhookInput.value.trim() : '';
+    if(!url) return false;
+    const payload = {
+      username: "Tau Volantis — Registro de Saque",
+      embeds: [{
+        title: `🎲 Teste de ${pericia.nome}`,
+        description: `${sheet.name || 'Personagem'} testou ${pericia.nome} (${pericia.atributo})`,
+        color: 0x3d6c8a,
+        fields: [
+          { name: "Dados rolados", value: result.dice.join(', '), inline: true },
+          { name: "Maior resultado", value: String(result.best), inline: true },
+          { name: "Bônus", value: String(pericia.bonus || 0), inline: true },
+          { name: "Total", value: String(result.total), inline: true }
+        ],
+        footer: { text: "Tau Volantis: Ano 0" },
+        timestamp: new Date().toISOString()
+      }]
+    };
+    try{
+      const res = await fetch(url, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) });
+      return res.ok || res.status === 204;
+    }catch(e){ return false; }
+  }
+
+  function wireSheetModalEvents(sheet){
+    const nameInput = document.getElementById('sheet-name-input');
+    nameInput.addEventListener('change', async () => {
+      sheet.name = nameInput.value.trim() || 'Personagem';
+      const tok = sheet.tokenId ? tokens.find(t => t.id === sheet.tokenId) : null;
+      if(tok) tok.label = sheet.name;
+      await Promise.all([saveSheets(), tok ? saveKey(KEY_TOKENS, tokens) : Promise.resolve()]);
+      if(tok) renderTokens();
+    });
+
+    const imageInput = document.getElementById('sheet-image-input');
+    imageInput.addEventListener('change', async () => {
+      const file = imageInput.files && imageInput.files[0];
+      if(!file) return;
+      try{
+        const dataUrl = await resizeImageDataUrl(file, 200);
+        sheet.image = dataUrl;
+        document.getElementById('sheet-avatar-preview').innerHTML = `<img src="${dataUrl}" alt="">`;
+        const tok = sheet.tokenId ? tokens.find(t => t.id === sheet.tokenId) : null;
+        if(tok) tok.image = dataUrl;
+        await Promise.all([saveSheets(), tok ? saveKey(KEY_TOKENS, tokens) : Promise.resolve()]);
+        if(tok) renderTokens();
+      }catch(e){
+        console.error('Falha ao processar imagem da ficha', e);
+        alert(e && e.message ? e.message : 'Não foi possível usar essa imagem.');
+        imageInput.value = '';
+      }
+    });
+
+    document.getElementById('sheet-modal-body').querySelectorAll('.sheet-stat-cur, .sheet-stat-max').forEach(inp => {
+      inp.addEventListener('change', async () => {
+        const kind = inp.dataset.stat;
+        const row = inp.closest('.stat-bar-row');
+        const curInput = row.querySelector('.sheet-stat-cur');
+        const maxInput = row.querySelector('.sheet-stat-max');
+        let max = Math.max(0, parseInt(maxInput.value, 10) || 0);
+        let cur = Math.max(0, parseInt(curInput.value, 10) || 0);
+        if(cur > max) cur = max;
+        curInput.value = cur; maxInput.value = max;
+        sheet[kind] = { cur, max };
+        const pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
+        row.querySelector('.stat-bar-fill').style.width = pct + '%';
+        row.querySelector('.stat-bar-value').textContent = `${cur}/${max}`;
+        await saveSheets();
+      });
+    });
+
+    document.getElementById('sheet-modal-body').querySelectorAll('.sheet-attr-input').forEach(inp => {
+      inp.addEventListener('change', async () => {
+        sheet.attrs = sheet.attrs || {};
+        sheet.attrs[inp.dataset.attr] = parseInt(inp.value, 10) || 0;
+        await saveSheets();
+      });
+    });
+
+    document.getElementById('add-pericia-btn').addEventListener('click', async () => {
+      const nomeEl = document.getElementById('new-pericia-nome');
+      const nome = nomeEl.value.trim();
+      if(!nome) { nomeEl.focus(); return; }
+      const atributo = document.getElementById('new-pericia-attr').value;
+      const dados = Math.max(1, Math.min(10, parseInt(document.getElementById('new-pericia-dados').value, 10) || 1));
+      const bonus = parseInt(document.getElementById('new-pericia-bonus').value, 10) || 0;
+      sheet.pericias = sheet.pericias || [];
+      sheet.pericias.push({ id: newId(), nome, atributo, dados, bonus });
+      refreshPericiasList(sheet);
+      wirePericiaRows(sheet);
+      nomeEl.value = '';
+      document.getElementById('new-pericia-dados').value = 1;
+      document.getElementById('new-pericia-bonus').value = 0;
+      await saveSheets();
+    });
+
+    document.getElementById('add-item-btn').addEventListener('click', async () => {
+      const nomeEl = document.getElementById('new-item-nome');
+      const nome = nomeEl.value.trim();
+      if(!nome){ nomeEl.focus(); return; }
+      const qtd = Math.max(1, parseInt(document.getElementById('new-item-qtd').value, 10) || 1);
+      sheet.inventory = sheet.inventory || [];
+      const existing = sheet.inventory.find(it => it.nome.toLowerCase() === nome.toLowerCase());
+      if(existing) existing.qtd = (existing.qtd || 1) + qtd;
+      else sheet.inventory.push({ id: newId(), nome, qtd });
+      refreshInventoryList(sheet);
+      wireInventoryRows(sheet);
+      nomeEl.value = '';
+      document.getElementById('new-item-qtd').value = 1;
+      await saveSheets();
+    });
+
+    document.getElementById('sheet-place-token-btn').addEventListener('click', () => {
+      closeSheetModal();
+      clearModes();
+      placingSheetId = sheet.id;
+      showDrawHint(`Clique no mapa pra posicionar o token de ${sheet.name || 'personagem'}. ESC cancela.`);
+    });
+
+    document.getElementById('sheet-delete-btn').addEventListener('click', async () => {
+      if(!window.confirm('Excluir esta ficha e o token vinculado a ela? Essa ação não pode ser desfeita.')) return;
+      const tokenId = sheet.tokenId;
+      sheets = sheets.filter(s => s.id !== sheet.id);
+      if(tokenId) tokens = tokens.filter(t => t.id !== tokenId);
+      await Promise.all([saveSheets(), tokenId ? saveKey(KEY_TOKENS, tokens) : Promise.resolve()]);
+      if(tokenId) renderTokens();
+      closeSheetModal();
+    });
+
+    wirePericiaRows(sheet);
+    wireInventoryRows(sheet);
+  }
+
+  function wirePericiaRows(sheet){
+    const wrap = document.getElementById('sheet-pericias-list');
+    if(!wrap) return;
+    wrap.querySelectorAll('.pericia-row').forEach(row => {
+      const id = row.dataset.id;
+      const rollBtn = row.querySelector('[data-action="roll"]');
+      const delBtn = row.querySelector('[data-action="del"]');
+      if(rollBtn && !rollBtn.dataset.wired){
+        rollBtn.dataset.wired = '1';
+        rollBtn.addEventListener('click', async () => {
+          const pericia = (sheet.pericias || []).find(p => p.id === id);
+          if(!pericia) return;
+          const result = rollPericiaDice(pericia);
+          const resultEl = row.querySelector('[data-role="result"]');
+          resultEl.innerHTML = `🎲 ${result.dice.join(', ')} — maior <span class="total">${result.best}</span> ${pericia.bonus >= 0 ? '+' : ''}${pericia.bonus} = <span class="total">${result.total}</span> · enviando ao Discord...`;
+          const ok = await sendPericiaRollToDiscord(sheet, pericia, result);
+          resultEl.innerHTML = `🎲 ${result.dice.join(', ')} — maior <span class="total">${result.best}</span> ${pericia.bonus >= 0 ? '+' : ''}${pericia.bonus} = <span class="total">${result.total}</span> · ${ok ? 'Enviado ✓' : 'Não enviado (confira o webhook no painel de Saque)'}`;
+        });
+      }
+      if(delBtn && !delBtn.dataset.wired){
+        delBtn.dataset.wired = '1';
+        delBtn.addEventListener('click', async () => {
+          sheet.pericias = (sheet.pericias || []).filter(p => p.id !== id);
+          refreshPericiasList(sheet);
+          wirePericiaRows(sheet);
+          await saveSheets();
+        });
+      }
+    });
+  }
+
+  function wireInventoryRows(sheet){
+    const wrap = document.getElementById('sheet-inventory-list');
+    if(!wrap) return;
+    wrap.querySelectorAll('.inv-row').forEach(row => {
+      const id = row.dataset.id;
+      const delBtn = row.querySelector('[data-action="del"]');
+      if(delBtn && !delBtn.dataset.wired){
+        delBtn.dataset.wired = '1';
+        delBtn.addEventListener('click', async () => {
+          sheet.inventory = (sheet.inventory || []).filter(it => it.id !== id);
+          refreshInventoryList(sheet);
+          wireInventoryRows(sheet);
+          await saveSheets();
+        });
+      }
+    });
+  }
+
+  function openSheetModal(id){
+    const sheet = findSheetById(id);
+    if(!sheet){ alert('Ficha não encontrada.'); return; }
+    activeSheetId = id;
+    document.getElementById('sheet-modal-body').innerHTML = renderSheetModalBody(sheet);
+    wireSheetModalEvents(sheet);
+    document.getElementById('sheet-backdrop').classList.add('open');
+    document.getElementById('sheet-modal').classList.add('open');
+  }
+  function closeSheetModal(){
+    activeSheetId = null;
+    document.getElementById('sheet-backdrop').classList.remove('open');
+    document.getElementById('sheet-modal').classList.remove('open');
+  }
+  document.getElementById('sheet-close-btn').addEventListener('click', closeSheetModal);
+  document.getElementById('sheet-backdrop').addEventListener('click', closeSheetModal);
+
+  function openSheetsListModal(){
+    const body = document.getElementById('sheets-list-body');
+    if(!currentPlayer){
+      body.innerHTML = '<div class="sheet-empty-hint">Entre com Google pra ver suas fichas salvas.</div>';
+    } else {
+      const mine = sheets.filter(s => s.ownerId === currentPlayer.uid);
+      if(!mine.length){
+        body.innerHTML = '<div class="sheet-empty-hint">Você ainda não criou nenhuma ficha. Crie um token no mapa e escolha "Criar Ficha".</div>';
+      } else {
+        body.innerHTML = mine.map(s => `
+          <div class="sheets-list-row" data-id="${s.id}">
+            <div class="sheets-list-avatar">${s.image ? `<img src="${s.image}" alt="">` : escapeHtml((s.name || 'FC').slice(0,2).toUpperCase())}</div>
+            <span class="pericia-name">${escapeHtml(s.name || 'Personagem')}</span>
+          </div>
+        `).join('');
+        body.querySelectorAll('.sheets-list-row').forEach(row => {
+          row.addEventListener('click', () => {
+            closeSheetsListModal();
+            openSheetModal(row.dataset.id);
+          });
+        });
+      }
+    }
+    document.getElementById('sheets-list-backdrop').classList.add('open');
+    document.getElementById('sheets-list-modal').classList.add('open');
+  }
+  function closeSheetsListModal(){
+    document.getElementById('sheets-list-backdrop').classList.remove('open');
+    document.getElementById('sheets-list-modal').classList.remove('open');
+  }
+  document.getElementById('sheets-list-toggle-btn').addEventListener('click', openSheetsListModal);
+  document.getElementById('sheets-list-close-btn').addEventListener('click', closeSheetsListModal);
+  document.getElementById('sheets-list-backdrop').addEventListener('click', closeSheetsListModal);
+
   // ---------- render ----------
+  // Renderiza por DIFF em vez de destruir e recriar tudo: cada pin já
+  // visível ganha um marcador persistente (guardado em pinMarkers), que só
+  // é atualizado (posição/ícone) quando o próprio dado daquele pin muda —
+  // nunca quando outro pin qualquer muda. Isso é o que permite que o mapa
+  // continue "vivo" pra todo mundo mesmo com alguém editando uma nota.
   function renderPins(){
-    pinsLayer.clearLayers();
     // NPCs (pins) que estão "dentro" de um veículo/abrigo, ou empilhados junto
     // com um token/outro NPC no mesmo ponto, não aparecem soltos no mapa —
     // eles já são representados pelo marcador do container ou da pilha.
@@ -1983,31 +2620,54 @@
       if(!tokenSelectMode && p.groupId && npcGroupCounts[p.groupId] >= 2) return false;
       return true;
     });
+    const seen = new Set();
     visiblePins.forEach(pin => {
-      const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin), draggable: !pin.locked });
-      marker._pinId = pin.id;
-      marker.on('click', (e) => { L.DomEvent.stopPropagation(e); });
-      marker.on('dragstart', () => { pinDragActive = true; });
-      marker.on('dragend', async (e) => {
-        pinDragActive = false;
-        const pos = e.target.getLatLng();
-        pin.lat = pos.lat; pin.lng = pos.lng;
-        if(pin.type === 'npc') tryDockPinNpc(pin, pos);
-        await saveKey(KEY_PINS, pins);
-        renderPins();
-        renderTokens();
-        if(typeof renderNavList === 'function') renderNavList();
-      });
-      marker.bindPopup(() => buildPinPopupContent(pin));
-      marker.addTo(pinsLayer);
+      seen.add(pin.id);
+      let marker = pinMarkers[pin.id];
+      if(!marker){
+        marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin), draggable: !pin.locked });
+        marker._pinId = pin.id;
+        marker.on('click', (e) => { L.DomEvent.stopPropagation(e); });
+        marker.on('dragstart', () => { pinDraggingId = pin.id; });
+        marker.on('dragend', async (e) => {
+          pinDraggingId = null;
+          const p = pins.find(pp => pp.id === pin.id);
+          if(!p) return;
+          const pos = e.target.getLatLng();
+          p.lat = pos.lat; p.lng = pos.lng;
+          if(p.type === 'npc') tryDockPinNpc(p, pos);
+          await saveKey(KEY_PINS, pins);
+          renderPins();
+          renderTokens();
+          if(typeof renderNavList === 'function') renderNavList();
+        });
+        // busca o pin atual na hora de abrir o popup (nunca o objeto "congelado"
+        // no momento da criação do marker), pra sempre mostrar dado fresco
+        marker.bindPopup(() => buildPinPopupContent(pins.find(pp => pp.id === pin.id) || pin));
+        marker.addTo(pinsLayer);
+        pinMarkers[pin.id] = marker;
+      } else if(pin.id !== pinDraggingId && pin.id !== editingPinId){
+        // protegido: enquanto está sendo arrastado ou com o popup de edição
+        // aberto localmente, este marcador específico não é tocado
+        const ll = marker.getLatLng();
+        if(ll.lat !== pin.lat || ll.lng !== pin.lng) marker.setLatLng([pin.lat, pin.lng]);
+        marker.setIcon(pinIcon(pin));
+        if(marker.dragging){ if(pin.locked) marker.dragging.disable(); else marker.dragging.enable(); }
+      }
+    });
+    // remove marcadores de pins que não existem mais / saíram de vista
+    Object.keys(pinMarkers).forEach(id => {
+      if(!seen.has(id)){
+        pinsLayer.removeLayer(pinMarkers[id]);
+        delete pinMarkers[id];
+      }
     });
     document.getElementById('stat-pins').textContent = pins.length;
     if(typeof renderNavList === 'function') renderNavList();
   }
   function openPinPopupById(id){
-    pinsLayer.eachLayer(l => {
-      if(l._pinId === id && l.openPopup) l.openPopup();
-    });
+    const marker = pinMarkers[id];
+    if(marker && marker.openPopup) marker.openPopup();
   }
 
   // ---------- seleção múltipla de tokens (mover vários em grupo) ----------
@@ -2556,6 +3216,25 @@
 
   // ---------- map click: circle/route steps, or place pin/token ----------
   map.on('click', async (e) => {
+    if(placingSheetId){
+      const sheet = findSheetById(placingSheetId);
+      placingSheetId = null;
+      hideDrawHint();
+      if(!sheet) return;
+      let token = sheet.tokenId ? tokens.find(t => t.id === sheet.tokenId) : null;
+      if(token){
+        token.lat = e.latlng.lat;
+        token.lng = e.latlng.lng;
+      } else {
+        token = { id:newId(), lat:e.latlng.lat, lng:e.latlng.lng, label: sheet.name || 'Token', image: sheet.image || null, sheetId: sheet.id, ...ownerFields() };
+        tokens.push(token);
+        sheet.tokenId = token.id;
+      }
+      await Promise.all([saveKey(KEY_TOKENS, tokens), saveKey(KEY_SHEETS, sheets)]);
+      renderTokens();
+      return;
+    }
+
     if(circleModeOn){
       if(!circleCenter){
         circleCenter = e.latlng;
@@ -2611,6 +3290,7 @@
       tokens.push(token);
       await saveKey(KEY_TOKENS, tokens);
       renderTokens();
+      offerCreateSheetForToken(token);
     }
   });
 
@@ -2669,7 +3349,7 @@
 
   // ESC cancels any active drawing/measuring mode
   document.addEventListener('keydown', (e) => {
-    if(e.key === 'Escape' && (circleModeOn || routeModeOn)) clearModes();
+    if(e.key === 'Escape' && (circleModeOn || routeModeOn || placingSheetId)) clearModes();
   });
 
   // ---------- search: local pins/áreas/rotas + place search via Nominatim (OSM) ----------
@@ -2782,18 +3462,17 @@
 
   // ---------- reset ----------
   document.getElementById('reset-btn').addEventListener('click', async () => {
-    if(!window.confirm('Isso remove todos os pins, tokens, áreas e rotas do mapa para todos. Confirmar?')) return;
-    pins = []; tokens = []; shapes = []; routes = [];
-    await Promise.all([saveKey(KEY_PINS, pins), saveKey(KEY_TOKENS, tokens), saveKey(KEY_SHAPES, shapes), saveKey(KEY_ROUTES, routes)]);
+    if(!window.confirm('Isso remove todos os pins, tokens, áreas, rotas e fichas do mapa para todos. Confirmar?')) return;
+    pins = []; tokens = []; shapes = []; routes = []; sheets = [];
+    await Promise.all([saveKey(KEY_PINS, pins), saveKey(KEY_TOKENS, tokens), saveKey(KEY_SHAPES, shapes), saveKey(KEY_ROUTES, routes), saveKey(KEY_SHEETS, sheets)]);
     renderPins(); renderTokens(); renderShapes(); renderRoutes();
   });
 
   // ---------- carregamento inicial + sincronização em tempo real ----------
-  // Quando o pin/token que está sendo arrastado localmente receberia uma
-  // atualização remota no meio do gesto, isso resetaria a posição visual —
-  // então seguramos o re-render daquela camada específica até o arrasto acabar,
-  // e o próprio saveKey do arrasto local já vai reconciliar o estado depois.
-  let pinDragActive = false;
+  // Pins usam renderPins() por diff (ver pinMarkers/pinDraggingId/editingPinId
+  // acima) — por isso já pode chamar renderPins() sempre, sem trava de camada.
+  // Tokens ainda usam a trava de camada inteira (mais simples de manter dado
+  // o grafo de agrupamento/seleção múltipla).
   let tokenDragActive = false;
 
   function initRealtimeSync(){
@@ -2801,8 +3480,8 @@
       setSyncStatus('offline');
       (async function initFallback(){
         try{
-          const [p, t, s, r] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES)]);
-          pins = p; tokens = t; shapes = s; routes = r;
+          const [p, t, s, r, sh] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES), loadKey(KEY_SHEETS)]);
+          pins = p; tokens = t; shapes = s; routes = r; sheets = sh;
           renderPins(); renderTokens(); renderShapes(); renderRoutes();
         }catch(e){
           console.error('Falha ao carregar dados do mapa', e);
@@ -2817,7 +3496,7 @@
     let loadedMask = 0;
     function markLoaded(bit){
       loadedMask |= bit;
-      if(loadedMask === 0b1111) document.getElementById('map-loading').style.display = 'none';
+      if(loadedMask === 0b11111) document.getElementById('map-loading').style.display = 'none';
     }
     // segurança: nunca deixa a tela de carregamento travada pra sempre. Se em
     // 8s os 4 dados não chegaram (erro de permissão nas regras do Firebase,
@@ -2828,14 +3507,14 @@
       const loadingEl = document.getElementById('map-loading');
       if(loadingEl.style.display !== 'none'){
         loadingEl.style.display = 'none';
-        if(loadedMask !== 0b1111) setSyncStatus('offline');
+        if(loadedMask !== 0b11111) setSyncStatus('offline');
       }
     }, 8000);
 
     firebaseDb.ref('tau-volantis/' + KEY_PINS).on('value', snap => {
       pins = snap.val() || [];
       saveLocal(KEY_PINS, pins);
-      if(!pinDragActive) renderPins();
+      renderPins(); // por diff: nunca derruba o pin que outra pessoa está editando
       markLoaded(1);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (pins)', err); setSyncStatus('offline'); markLoaded(1); });
@@ -2843,7 +3522,7 @@
     firebaseDb.ref('tau-volantis/' + KEY_TOKENS).on('value', snap => {
       tokens = snap.val() || [];
       saveLocal(KEY_TOKENS, tokens);
-      if(!tokenDragActive) renderTokens();
+      if(!tokenDragActive && !tokenPopupActive) renderTokens();
       markLoaded(2);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (tokens)', err); setSyncStatus('offline'); markLoaded(2); });
@@ -2851,7 +3530,7 @@
     firebaseDb.ref('tau-volantis/' + KEY_SHAPES).on('value', snap => {
       shapes = snap.val() || [];
       saveLocal(KEY_SHAPES, shapes);
-      renderShapes();
+      if(!shapePopupActive) renderShapes();
       markLoaded(4);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (áreas)', err); setSyncStatus('offline'); markLoaded(4); });
@@ -2859,10 +3538,17 @@
     firebaseDb.ref('tau-volantis/' + KEY_ROUTES).on('value', snap => {
       routes = snap.val() || [];
       saveLocal(KEY_ROUTES, routes);
-      renderRoutes();
+      if(!routePopupActive) renderRoutes();
       markLoaded(8);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (rotas)', err); setSyncStatus('offline'); markLoaded(8); });
+
+    firebaseDb.ref('tau-volantis/' + KEY_SHEETS).on('value', snap => {
+      sheets = snap.val() || [];
+      saveLocal(KEY_SHEETS, sheets);
+      markLoaded(16);
+      setSyncStatus('live');
+    }, err => { console.error('Erro de sincronização (fichas)', err); setSyncStatus('offline'); markLoaded(16); });
   }
   initRealtimeSync();
 
@@ -2954,6 +3640,30 @@
     return "Sobrevivente desconhecido";
   }
 
+  // ---------- guardar item encontrado no saque direto no inventário da ficha ----------
+  function sheetForTokenId(tokenId){
+    return sheets.find(s => s.tokenId === tokenId) || null;
+  }
+  async function addLootItemToInventory(itemName){
+    const tok = selectedToken();
+    if(!tok){
+      alert('Selecione um personagem no topo do painel de Saque antes de guardar o item.');
+      return false;
+    }
+    const sheet = sheetForTokenId(tok.id);
+    if(!sheet){
+      alert(`"${tok.label || 'Este token'}" ainda não tem ficha. Abra o token no mapa e crie uma ficha pra poder guardar itens no inventário.`);
+      return false;
+    }
+    sheet.inventory = sheet.inventory || [];
+    const existing = sheet.inventory.find(it => it.nome.toLowerCase() === itemName.toLowerCase());
+    if(existing) existing.qtd = (existing.qtd || 1) + 1;
+    else sheet.inventory.push({ id: newId(), nome: itemName, qtd: 1 });
+    await saveKey(KEY_SHEETS, sheets);
+    if(activeSheetId === sheet.id){ refreshInventoryList(sheet); wireInventoryRows(sheet); }
+    return true;
+  }
+
   // ---------- coordenada aproximada de onde o saque/pesca foi realizado ----------
   // Converte lat/lng num "setor" tipo grade tática (ex: "Setor N7"), em vez de
   // expor coordenadas GPS reais — mais no clima do mapa de sobrevivência.
@@ -3039,10 +3749,16 @@
         ${coord ? `<div class="result-coord">📍 ${coord}</div>` : ''}
         <div class="send-row">
           <button class="send-btn" data-action="send">Enviar ao Discord</button>
+          <button class="send-btn" data-action="inventory">Guardar no Inventário</button>
           <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
         </div>
       `;
       card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
+      card.querySelector('[data-action="inventory"]').addEventListener('click', async (ev) => {
+        const btn = ev.currentTarget;
+        const ok = await addLootItemToInventory(item.name);
+        if(ok){ btn.textContent = 'Guardado ✓'; btn.disabled = true; }
+      });
       resultZone.appendChild(card);
     });
     resultZone.appendChild(clearBtn);
@@ -3188,10 +3904,19 @@
         ${entry.coord ? `<div class="result-coord">📍 ${entry.coord}</div>` : ''}
         <div class="send-row">
           <button class="send-btn" data-action="send">Enviar ao Discord</button>
+          ${isNothing ? '' : '<button class="send-btn" data-action="inventory">Guardar no Inventário</button>'}
           <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
         </div>
       `;
       card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
+      const invBtn = card.querySelector('[data-action="inventory"]');
+      if(invBtn){
+        invBtn.addEventListener('click', async (ev) => {
+          const btn = ev.currentTarget;
+          const ok = await addLootItemToInventory(entry.item.name);
+          if(ok){ btn.textContent = 'Guardado ✓'; btn.disabled = true; }
+        });
+      }
       fishResultEl.appendChild(card);
     });
     fishResultEl.appendChild(clearFishBtn);
