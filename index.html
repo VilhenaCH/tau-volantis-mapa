@@ -221,6 +221,11 @@
   .search-result-label{ font-size:0.68rem; color:var(--ink); line-height:1.3; }
   .search-empty{ font-size:0.65rem; color:var(--ink-dim); padding:0.4rem 0.15rem; }
 
+  .hud-weather{
+    top:4.6rem; left:50%; transform:translateX(-50%);
+    padding:0; z-index:900;
+  }
+
   .hud-toolbar{
     left:50%; bottom:1rem; transform:translateX(-50%);
     padding:0.7rem 0.9rem;
@@ -480,6 +485,71 @@
     border-radius:var(--r-lg);
     box-shadow:0 20px 50px rgba(0,0,0,0.6);
   }
+  /* ---------- clima global (Timefall-like: estado compartilhado + overlay) ---------- */
+  .hud-weather{ padding:0.4rem 0.5rem; }
+  .weather-badge{
+    display:flex; align-items:center; gap:0.4rem; padding:0.4rem 0.7rem;
+    border-radius:var(--r-pill); border:1px solid var(--line); background:var(--bg-1);
+    color:var(--ink); font-size:0.75rem; cursor:pointer; white-space:nowrap;
+  }
+  .weather-badge:hover{ border-color:var(--frost); }
+  .weather-badge.state-nevasca{ border-color:var(--frost); color:var(--frost); }
+  .weather-badge.state-espectral{ border-color:var(--pv-red); color:var(--pv-red); animation:weather-badge-pulse 1.6s ease-in-out infinite; }
+  @keyframes weather-badge-pulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.55; } }
+
+  #weather-overlay{
+    position:fixed; inset:0; z-index:850; pointer-events:none; overflow:hidden;
+    opacity:0; transition:opacity 1.2s var(--ease-soft);
+  }
+  #weather-overlay.state-nevasca, #weather-overlay.state-espectral{ opacity:1; }
+  #weather-overlay::before, #weather-overlay::after{
+    content:""; position:absolute; inset:-20% -10%;
+    background-image:
+      radial-gradient(2px 2px at 10% 20%, rgba(255,255,255,0.75), transparent),
+      radial-gradient(2px 2px at 35% 65%, rgba(255,255,255,0.6), transparent),
+      radial-gradient(1.5px 1.5px at 60% 15%, rgba(255,255,255,0.7), transparent),
+      radial-gradient(2px 2px at 80% 50%, rgba(255,255,255,0.55), transparent),
+      radial-gradient(1.5px 1.5px at 25% 85%, rgba(255,255,255,0.65), transparent),
+      radial-gradient(2px 2px at 90% 80%, rgba(255,255,255,0.6), transparent),
+      radial-gradient(1.5px 1.5px at 50% 40%, rgba(255,255,255,0.5), transparent);
+    background-repeat:repeat; background-size:340px 340px;
+    animation:weather-snow-fall 9s linear infinite;
+  }
+  #weather-overlay::after{ background-size:220px 220px; animation-duration:6s; opacity:0.6; }
+  @keyframes weather-snow-fall{
+    from{ transform:translate(0,-15%); }
+    to{ transform:translate(-6%,15%); }
+  }
+  #weather-overlay.state-espectral{ background:radial-gradient(ellipse at 50% 50%, transparent 45%, rgba(201,67,63,0.16) 100%); }
+  #weather-overlay.state-espectral::before, #weather-overlay.state-espectral::after{ filter:hue-rotate(320deg) saturate(1.4); }
+  #weather-overlay.state-espectral{ animation:weather-vignette-pulse 3.4s ease-in-out infinite; }
+  @keyframes weather-vignette-pulse{ 0%,100%{ background-color:rgba(201,67,63,0); } 50%{ background-color:rgba(201,67,63,0.06); } }
+
+  #weather-backdrop{
+    position:fixed; inset:0; background:rgba(6,10,13,0.6); z-index:2150; display:none;
+  }
+  #weather-backdrop.open{ display:block; }
+  #weather-popover{
+    position:fixed; top:8vh; left:50%; transform:translateX(-50%);
+    z-index:2200; width:min(320px, 90vw);
+    background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-lg);
+    box-shadow:0 20px 50px rgba(0,0,0,0.6); padding:0.9rem 1rem 1.1rem; display:none;
+  }
+  #weather-popover.open{ display:block; }
+  .weather-option-btn{
+    display:flex; align-items:center; gap:0.6rem; width:100%; text-align:left;
+    padding:0.55rem 0.6rem; margin-bottom:0.4rem; border-radius:var(--r-sm);
+    border:1px solid var(--line); background:var(--bg-1); color:var(--ink); cursor:pointer;
+  }
+  .weather-option-btn:last-child{ margin-bottom:0; }
+  .weather-option-btn:hover{ border-color:var(--frost); }
+  .weather-option-btn.current{ border-color:var(--frost); color:var(--frost); }
+  .weather-option-emoji{ font-size:1.1rem; }
+  .weather-option-text{ display:flex; flex-direction:column; gap:0.1rem; }
+  .weather-option-title{ font-family:'Oswald',sans-serif; font-size:0.8rem; }
+  .weather-option-desc{ font-size:0.6rem; color:var(--ink-dim); line-height:1.3; }
+  .weather-meta-line{ font-size:0.6rem; color:var(--ink-dim); margin-top:0.6rem; padding-top:0.5rem; border-top:1px solid var(--hud-line); }
+
   /* ---------- ficha de personagem (token vinculado a uma ficha salva por conta) ---------- */
   .ficha-locked-note{
     font-size:0.6rem; color:var(--ink-dim); line-height:1.4; margin-top:0.4rem;
@@ -1017,6 +1087,13 @@
         <div class="toolbar-divider" style="width:auto;height:1px;margin:0.1rem 0;"></div>
         <button class="tool-btn" id="view-settings-toggle" type="button">Visual</button>
       </div>
+
+      <div class="hud-panel hud-weather">
+        <button class="weather-badge" id="weather-badge" type="button">
+          <span id="weather-badge-emoji">🌤️</span>
+          <span id="weather-badge-label">Calmo</span>
+        </button>
+      </div>
     </div>
     <div class="vs-backdrop" id="view-settings-backdrop"></div>
     <div class="icon-popover" id="view-settings-popover">
@@ -1040,6 +1117,15 @@
       <div class="popup-actions" style="margin-top:0.6rem;">
         <button class="save" id="player-name-save-btn" type="button">Salvar</button>
       </div>
+    </div>
+
+    <div id="weather-overlay" class="state-calmo"></div>
+    <div id="weather-backdrop"></div>
+    <div id="weather-popover">
+      <div class="vs-group-label">Clima em Tau Volantis</div>
+      <p class="hint" style="font-size:0.65rem; color:var(--ink-dim); margin:0 0 0.6rem;">Afeta a visão de todo mundo conectado no mapa. Escolha o estado atual.</p>
+      <div id="weather-options"><!-- preenchido via JS --></div>
+      <div class="weather-meta-line" id="weather-meta-line"></div>
     </div>
 
     <div id="sheet-backdrop"></div>
@@ -1242,6 +1328,13 @@
   const KEY_SHAPES = 'tv-map:shapes';
   const KEY_ROUTES = 'tv-map:routes';
   const KEY_SHEETS = 'tv-map:sheets';
+  const KEY_WEATHER = 'tv-map:weather';
+
+  const WEATHER_STATES = {
+    calmo: { label: 'Calmo', desc: 'Céu claro, visibilidade normal.', emoji: '🌤️' },
+    nevasca: { label: 'Nevasca', desc: 'Neve pesada reduz visibilidade e castiga quem está exposto.', emoji: '🌨️' },
+    espectral: { label: 'Nevasca Espectral', desc: 'Algo se move dentro da nevasca. Perigo ativo — considere convocar um evento.', emoji: '👁️' }
+  };
 
   const ATTR_KEYS = ['FOR', 'AGI', 'INT', 'PRE', 'VIG'];
 
@@ -1253,6 +1346,7 @@
   let shapes = [];
   let routes = [];
   let sheets = [];
+  let weather = { state: 'calmo', updatedAt: null, updatedBy: null };
   let selectedPinType = null;
   let tokenModeOn = false;
   let circleModeOn = false;
@@ -2599,6 +2693,87 @@
   document.getElementById('sheets-list-close-btn').addEventListener('click', closeSheetsListModal);
   document.getElementById('sheets-list-backdrop').addEventListener('click', closeSheetsListModal);
 
+  // ================= CLIMA GLOBAL (Timefall-like: estado compartilhado + overlay) =================
+  // Estado único, visível pra todo mundo conectado (sincroniza como pins/tokens/etc).
+  // Troca o overlay visual da tela inteira e narra a mudança no webhook do Discord,
+  // igual já fazemos com os resultados de saque.
+  function applyWeatherVisual(){
+    const overlay = document.getElementById('weather-overlay');
+    const badge = document.getElementById('weather-badge');
+    const emojiEl = document.getElementById('weather-badge-emoji');
+    const labelEl = document.getElementById('weather-badge-label');
+    const cfg = WEATHER_STATES[weather.state] || WEATHER_STATES.calmo;
+    overlay.className = 'state-' + weather.state;
+    badge.className = 'weather-badge state-' + weather.state;
+    emojiEl.textContent = cfg.emoji;
+    labelEl.textContent = cfg.label;
+    if(document.getElementById('weather-popover').classList.contains('open')) renderWeatherOptions();
+  }
+
+  function renderWeatherOptions(){
+    const wrap = document.getElementById('weather-options');
+    if(!wrap) return;
+    wrap.innerHTML = Object.keys(WEATHER_STATES).map(key => {
+      const cfg = WEATHER_STATES[key];
+      const isCurrent = key === weather.state;
+      return `
+        <button type="button" class="weather-option-btn${isCurrent ? ' current' : ''}" data-state="${key}">
+          <span class="weather-option-emoji">${cfg.emoji}</span>
+          <span class="weather-option-text">
+            <span class="weather-option-title">${escapeHtml(cfg.label)}${isCurrent ? ' (atual)' : ''}</span>
+            <span class="weather-option-desc">${escapeHtml(cfg.desc)}</span>
+          </span>
+        </button>
+      `;
+    }).join('');
+    wrap.querySelectorAll('.weather-option-btn').forEach(btn => {
+      btn.addEventListener('click', () => setWeatherState(btn.dataset.state));
+    });
+    const metaEl = document.getElementById('weather-meta-line');
+    if(metaEl) metaEl.textContent = weather.updatedBy ? `Definido por ${weather.updatedBy}` : '';
+  }
+
+  async function setWeatherState(newState){
+    if(!WEATHER_STATES[newState] || newState === weather.state){ closeWeatherPopover(); return; }
+    const prevState = weather.state;
+    weather = { state: newState, updatedAt: Date.now(), updatedBy: currentPlayer ? currentPlayer.playerName : null };
+    applyWeatherVisual();
+    closeWeatherPopover();
+    await saveKey(KEY_WEATHER, weather);
+    sendWeatherNarrationToDiscord(prevState, newState);
+  }
+
+  async function sendWeatherNarrationToDiscord(prevState, newState){
+    const url = (typeof webhookInput !== 'undefined' && webhookInput) ? webhookInput.value.trim() : '';
+    if(!url) return;
+    const cfg = WEATHER_STATES[newState];
+    const payload = {
+      username: "Tau Volantis — Registro de Saque",
+      embeds: [{
+        title: `${cfg.emoji} Clima: ${cfg.label}`,
+        description: cfg.desc,
+        color: newState === 'espectral' ? 0xc9433f : (newState === 'nevasca' ? 0x3f8fd1 : 0x7d909b),
+        footer: { text: "Tau Volantis: Ano 0" },
+        timestamp: new Date().toISOString()
+      }]
+    };
+    try{ await fetch(url, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) }); }
+    catch(e){ /* narração é só um extra — falha aqui não deve travar nada */ }
+  }
+
+  function openWeatherPopover(){
+    renderWeatherOptions();
+    document.getElementById('weather-backdrop').classList.add('open');
+    document.getElementById('weather-popover').classList.add('open');
+  }
+  function closeWeatherPopover(){
+    document.getElementById('weather-backdrop').classList.remove('open');
+    document.getElementById('weather-popover').classList.remove('open');
+  }
+  document.getElementById('weather-badge').addEventListener('click', openWeatherPopover);
+  document.getElementById('weather-backdrop').addEventListener('click', closeWeatherPopover);
+  applyWeatherVisual();
+
   // ---------- render ----------
   // Renderiza por DIFF em vez de destruir e recriar tudo: cada pin já
   // visível ganha um marcador persistente (guardado em pinMarkers), que só
@@ -3480,9 +3655,11 @@
       setSyncStatus('offline');
       (async function initFallback(){
         try{
-          const [p, t, s, r, sh] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES), loadKey(KEY_SHEETS)]);
+          const [p, t, s, r, sh, w] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES), loadKey(KEY_SHEETS), loadKey(KEY_WEATHER)]);
           pins = p; tokens = t; shapes = s; routes = r; sheets = sh;
+          weather = (w && w.state) ? w : weather;
           renderPins(); renderTokens(); renderShapes(); renderRoutes();
+          applyWeatherVisual();
         }catch(e){
           console.error('Falha ao carregar dados do mapa', e);
         }finally{
@@ -3496,7 +3673,7 @@
     let loadedMask = 0;
     function markLoaded(bit){
       loadedMask |= bit;
-      if(loadedMask === 0b11111) document.getElementById('map-loading').style.display = 'none';
+      if(loadedMask === 0b111111) document.getElementById('map-loading').style.display = 'none';
     }
     // segurança: nunca deixa a tela de carregamento travada pra sempre. Se em
     // 8s os 4 dados não chegaram (erro de permissão nas regras do Firebase,
@@ -3507,7 +3684,7 @@
       const loadingEl = document.getElementById('map-loading');
       if(loadingEl.style.display !== 'none'){
         loadingEl.style.display = 'none';
-        if(loadedMask !== 0b11111) setSyncStatus('offline');
+        if(loadedMask !== 0b111111) setSyncStatus('offline');
       }
     }, 8000);
 
@@ -3549,6 +3726,15 @@
       markLoaded(16);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (fichas)', err); setSyncStatus('offline'); markLoaded(16); });
+
+    firebaseDb.ref('tau-volantis/' + KEY_WEATHER).on('value', snap => {
+      const w = snap.val();
+      weather = (w && w.state) ? w : { state: 'calmo', updatedAt: null, updatedBy: null };
+      saveLocal(KEY_WEATHER, weather);
+      applyWeatherVisual();
+      markLoaded(32);
+      setSyncStatus('live');
+    }, err => { console.error('Erro de sincronização (clima)', err); setSyncStatus('offline'); markLoaded(32); });
   }
   initRealtimeSync();
 
