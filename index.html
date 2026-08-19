@@ -313,6 +313,7 @@
     .hud-identity h1{ font-size:0.92rem; }
     .hud-stats{ gap:0.6rem; }
     .hud-search{ transform:none; }
+    .hud-weather{ transform:none; }
     .hud-search input{ font-size:0.78rem; }
     .hud-layer{
       flex-direction:row; flex-wrap:wrap; align-items:center;
@@ -486,7 +487,8 @@
     box-shadow:0 20px 50px rgba(0,0,0,0.6);
   }
   /* ---------- clima global (Timefall-like: estado compartilhado + overlay) ---------- */
-  .hud-weather{ padding:0.4rem 0.5rem; }
+  .hud-weather{ padding:0.4rem 0.5rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
+  .director-badge.active{ border-color:var(--frost); color:var(--frost); }
   .weather-badge{
     display:flex; align-items:center; gap:0.4rem; padding:0.4rem 0.7rem;
     border-radius:var(--r-pill); border:1px solid var(--line); background:var(--bg-1);
@@ -549,6 +551,57 @@
   .weather-option-title{ font-family:'Oswald',sans-serif; font-size:0.8rem; }
   .weather-option-desc{ font-size:0.6rem; color:var(--ink-dim); line-height:1.3; }
   .weather-meta-line{ font-size:0.6rem; color:var(--ink-dim); margin-top:0.6rem; padding-top:0.5rem; border-top:1px solid var(--hud-line); }
+
+  /* ---------- diretor de eventos (spawn autônomo) ---------- */
+  #director-backdrop{ position:fixed; inset:0; background:rgba(6,10,13,0.6); z-index:2150; display:none; }
+  #director-backdrop.open{ display:block; }
+  #director-popover{
+    position:fixed; top:8vh; left:50%; transform:translateX(-50%);
+    z-index:2200; width:min(340px, 92vw); max-height:80vh; overflow-y:auto;
+    background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-lg);
+    box-shadow:0 20px 50px rgba(0,0,0,0.6); padding:0.9rem 1rem 1.1rem; display:none;
+  }
+  #director-popover.open{ display:block; }
+  .director-active-row{
+    display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid var(--hud-line);
+    font-size:0.68rem; cursor:pointer;
+  }
+  .director-active-row:last-child{ border-bottom:none; }
+  .director-active-row:hover .director-active-name{ color:var(--frost); }
+  .director-active-name{ flex:1; }
+  .director-active-timer{ color:var(--ink-dim); font-size:0.6rem; white-space:nowrap; }
+
+  /* ---------- zonas de evento (áreas marcadas + banner de alerta) ---------- */
+  .event-zone-toggle{
+    display:flex; align-items:center; gap:0.4rem; font-size:0.68rem; color:var(--ink);
+    margin:0.5rem 0 0.3rem; cursor:pointer;
+  }
+  .event-zone-toggle input{ width:auto; }
+  .event-zone-fields{
+    border-left:2px solid var(--pv-red); padding-left:0.6rem; margin-bottom:0.5rem;
+    display:flex; flex-direction:column; gap:0.4rem;
+  }
+  .event-zone-fields input[type=text], .event-zone-fields textarea{ width:100%; }
+  .event-zone-rearm-toggle{
+    display:flex; align-items:center; gap:0.4rem; font-size:0.62rem; color:var(--ink-dim); cursor:pointer;
+  }
+  .event-zone-rearm-toggle input{ width:auto; }
+  .event-zone-rearm-now{
+    margin-top:0.35rem; font-size:0.62rem; padding:0.3rem 0.55rem; border-radius:var(--r-sm);
+    border:1px solid var(--frost); background:var(--bg-1); color:var(--frost); cursor:pointer;
+  }
+
+  #zone-alert-banner{
+    position:fixed; top:1rem; left:50%; transform:translateX(-50%) translateY(-140%);
+    z-index:2400; width:min(360px, 92vw);
+    background:var(--bg-2); border:1px solid var(--pv-red); border-left:4px solid var(--pv-red);
+    border-radius:var(--r-md); padding:0.7rem 0.9rem; box-shadow:0 20px 50px rgba(0,0,0,0.6);
+    opacity:0; transition:transform 0.35s var(--ease-soft), opacity 0.35s var(--ease-soft);
+    pointer-events:none;
+  }
+  #zone-alert-banner.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+  .zone-alert-title{ font-family:'Oswald',sans-serif; font-size:0.85rem; color:var(--pv-red); margin-bottom:0.25rem; }
+  .zone-alert-body{ font-size:0.7rem; color:var(--ink); line-height:1.4; }
 
   /* ---------- ficha de personagem (token vinculado a uma ficha salva por conta) ---------- */
   .ficha-locked-note{
@@ -1052,6 +1105,11 @@
     <div class="hud-top-cluster">
       <div class="draw-hint" id="draw-hint" style="display:none;"></div>
 
+      <div id="zone-alert-banner">
+        <div class="zone-alert-title"></div>
+        <div class="zone-alert-body"></div>
+      </div>
+
       <div class="hud-panel hud-identity">
         <div class="eyebrow">Tau Volantis // Campo</div>
         <h1>Mapa de <span>Sobrevivência</span></h1>
@@ -1093,6 +1151,10 @@
           <span id="weather-badge-emoji">🌤️</span>
           <span id="weather-badge-label">Calmo</span>
         </button>
+        <button class="weather-badge director-badge" id="director-badge" type="button">
+          <span>🎬</span>
+          <span id="director-badge-label">Diretor: Desligado</span>
+        </button>
       </div>
     </div>
     <div class="vs-backdrop" id="view-settings-backdrop"></div>
@@ -1126,6 +1188,19 @@
       <p class="hint" style="font-size:0.65rem; color:var(--ink-dim); margin:0 0 0.6rem;">Afeta a visão de todo mundo conectado no mapa. Escolha o estado atual.</p>
       <div id="weather-options"><!-- preenchido via JS --></div>
       <div class="weather-meta-line" id="weather-meta-line"></div>
+    </div>
+
+    <div id="director-backdrop"></div>
+    <div id="director-popover">
+      <div class="vs-group-label">Diretor de Eventos</div>
+      <p class="hint" style="font-size:0.65rem; color:var(--ink-dim); margin:0 0 0.6rem;">
+        Enquanto ligado, o mapa cria sozinho zonas de evento + pins perto dos sobreviventes,
+        de tempos em tempos. A chance sobe com o clima (calmo → nevasca → nevasca espectral).
+      </p>
+      <button type="button" class="weather-option-btn" id="director-toggle-btn"></button>
+      <button type="button" class="event-zone-rearm-now" id="director-force-btn" style="width:100%; margin-top:0.5rem;">🎲 Forçar evento agora (teste)</button>
+      <div class="vs-group-label" style="margin-top:0.8rem;">Eventos ativos no mapa</div>
+      <div id="director-active-list"><!-- preenchido via JS --></div>
     </div>
 
     <div id="sheet-backdrop"></div>
@@ -1329,12 +1404,37 @@
   const KEY_ROUTES = 'tv-map:routes';
   const KEY_SHEETS = 'tv-map:sheets';
   const KEY_WEATHER = 'tv-map:weather';
+  const KEY_DIRECTOR = 'tv-map:director';
 
   const WEATHER_STATES = {
     calmo: { label: 'Calmo', desc: 'Céu claro, visibilidade normal.', emoji: '🌤️' },
     nevasca: { label: 'Nevasca', desc: 'Neve pesada reduz visibilidade e castiga quem está exposto.', emoji: '🌨️' },
     espectral: { label: 'Nevasca Espectral', desc: 'Algo se move dentro da nevasca. Perigo ativo — considere convocar um evento.', emoji: '👁️' }
   };
+
+  // Tabela de spawn do Diretor de Eventos: cada arquétipo tem um peso (chance
+  // relativa), o tipo de pin que melhor representa ele, o raio da zona
+  // criada, quanto tempo (minutos reais) ele fica vivo no mapa sem ser
+  // resolvido, e se ela reativa sozinha depois de disparar.
+  const EVENT_ARCHETYPES = [
+    { id: 'ninho', weight: 3, pinType: 'perigo', radius: 250, ttlMin: 40, autoRearm: false,
+      name: 'Ninho de Presença', message: 'Algo se move logo abaixo da neve. Evite fazer barulho perto daqui.' },
+    { id: 'anomalia', weight: 2, pinType: 'radiacao', radius: 180, ttlMin: 35, autoRearm: false,
+      name: 'Anomalia Quiral', message: 'O ar racha a poucos metros do chão. Instrumentos falham por perto.' },
+    { id: 'emboscada', weight: 2, pinType: 'ameaca', radius: 300, ttlMin: 30, autoRearm: false,
+      name: 'Patrulha Hostil', message: 'Movimento de grupo armado foi detectado na área.' },
+    { id: 'armadilha', weight: 2, pinType: 'armadilha', radius: 120, ttlMin: 50, autoRearm: false,
+      name: 'Terreno Instável', message: 'O chão aqui não parece seguro — risco de armadilha natural ou deslizamento.' },
+    { id: 'recurso', weight: 3, pinType: 'saque', radius: 150, ttlMin: 45, autoRearm: true,
+      name: 'Sinal de Suprimentos', message: 'Equipamento intacto foi avistado por perto. Pode valer a pena checar.' }
+  ];
+  // Chance de rolar um spawn a cada "tick" do Diretor, por estado de clima —
+  // é aqui que o clima (item 1) e as zonas de evento (item 2) se conectam:
+  // quanto pior o tempo, maior a chance de algo nascer perto dos jogadores.
+  const DIRECTOR_CHANCE = { calmo: 0.05, nevasca: 0.18, espectral: 0.38 };
+  const DIRECTOR_TICK_MS = 90 * 1000;
+
+  let director = { enabled: false, lastRollAt: null };
 
   const ATTR_KEYS = ['FOR', 'AGI', 'INT', 'PRE', 'VIG'];
 
@@ -2231,24 +2331,67 @@
 
   function buildShapePopupContent(shape){
     const container = document.createElement('div');
+    const ez = shape.eventZone || null;
     container.innerHTML = `
       <div class="popup-kicker">Área</div>
       ${shape.ownerName ? `<div class="popup-owner">Criado por: ${escapeHtml(shape.ownerName)}</div>` : ''}
       <input type="text" class="shape-title" placeholder="Nome da área" value="${escapeHtml(shape.label || '')}">
       <textarea class="shape-note" rows="3" placeholder="Anotação...">${escapeHtml(shape.note || '')}</textarea>
+      <label class="event-zone-toggle">
+        <input type="checkbox" class="event-zone-check" ${ez ? 'checked' : ''}>
+        Marcar como zona de evento
+      </label>
+      <div class="event-zone-fields" style="display:${ez ? 'block' : 'none'}">
+        <input type="text" class="event-zone-name" placeholder="Nome do evento (ex: Ninho de Presença)" value="${escapeHtml(ez ? ez.name || '' : '')}">
+        <textarea class="event-zone-message" rows="2" placeholder="Mensagem de alerta ao entrar...">${escapeHtml(ez ? ez.message || '' : '')}</textarea>
+        <label class="event-zone-rearm-toggle">
+          <input type="checkbox" class="event-zone-rearm" ${(!ez || ez.autoRearm !== false) ? 'checked' : ''}>
+          Reativa sozinha depois de disparar
+        </label>
+        ${ez && shape.armed === false ? '<div class="ficha-locked-note">Zona desarmada — já disparou e não reativa sozinha. <button type="button" class="event-zone-rearm-now">Rearmar agora</button></div>' : ''}
+      </div>
       <div class="popup-actions">
         <button class="save">Salvar</button>
         <button class="del">Excluir</button>
       </div>
     `;
+    const checkbox = container.querySelector('.event-zone-check');
+    const fieldsWrap = container.querySelector('.event-zone-fields');
+    checkbox.addEventListener('change', () => {
+      fieldsWrap.style.display = checkbox.checked ? 'block' : 'none';
+    });
+    const rearmNowBtn = container.querySelector('.event-zone-rearm-now');
+    if(rearmNowBtn){
+      rearmNowBtn.addEventListener('click', async () => {
+        shape.armed = true;
+        await saveKey(KEY_SHAPES, shapes);
+        renderShapes();
+        map.closePopup();
+      });
+    }
     container.querySelector('.save').addEventListener('click', async () => {
       shape.label = container.querySelector('.shape-title').value.trim() || 'Área sem nome';
       shape.note = container.querySelector('.shape-note').value.trim();
+      if(checkbox.checked){
+        const wasZone = !!shape.eventZone;
+        shape.eventZone = {
+          name: container.querySelector('.event-zone-name').value.trim() || 'Zona de Evento',
+          message: container.querySelector('.event-zone-message').value.trim(),
+          autoRearm: container.querySelector('.event-zone-rearm').checked
+        };
+        if(!wasZone) shape.armed = true; // recém-marcada como zona: começa vigiando
+        if(shape.armed == null) shape.armed = true;
+      } else {
+        delete shape.eventZone;
+        delete shape.armed;
+        delete zoneOccupancy[shape.id];
+      }
       await saveKey(KEY_SHAPES, shapes);
       renderShapes();
     });
     container.querySelector('.del').addEventListener('click', async () => {
       shapes = shapes.filter(s => s.id !== shape.id);
+      delete zoneOccupancy[shape.id];
       await saveKey(KEY_SHAPES, shapes);
       renderShapes();
       map.closePopup();
@@ -2774,6 +2917,286 @@
   document.getElementById('weather-backdrop').addEventListener('click', closeWeatherPopover);
   applyWeatherVisual();
 
+  // ================= ZONAS DE EVENTO (BT-zone / avalanche-zone do relatório) =================
+  // Qualquer área desenhada pode virar uma "zona de evento": quando um token
+  // entra nela (checado sempre que os tokens são re-renderizados), dispara um
+  // alerta na tela + narração no webhook do Discord. "autoRearm:false" trava
+  // a zona depois do primeiro disparo (aí só rearma manualmente no popup da
+  // área) — é o embrião da "cicatriz permanente" tipo Voidout do próximo passo.
+  let zoneOccupancy = {}; // shapeId -> Set(tokenId) de quem está dentro agora
+
+  function ringContainsPoint(ring, point){
+    let inside = false;
+    const [x, y] = point;
+    for(let i = 0, j = ring.length - 1; i < ring.length; j = i++){
+      const xi = ring[i][0], yi = ring[i][1];
+      const xj = ring[j][0], yj = ring[j][1];
+      const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if(intersect) inside = !inside;
+    }
+    return inside;
+  }
+  function pointInGeoJsonPolygon(point, geojson){
+    const geom = geojson && geojson.type === 'Feature' ? geojson.geometry : geojson;
+    if(!geom) return false;
+    if(geom.type === 'Polygon') return ringContainsPoint(geom.coordinates[0], point);
+    if(geom.type === 'MultiPolygon') return geom.coordinates.some(poly => ringContainsPoint(poly[0], point));
+    return false;
+  }
+  function isTokenInsideShape(token, shape){
+    if(token.lat == null || token.lng == null) return false;
+    if(shape.type === 'circle' && shape.center){
+      return L.latLng(token.lat, token.lng).distanceTo(L.latLng(shape.center)) <= shape.radius;
+    }
+    if(shape.geojson){
+      return pointInGeoJsonPolygon([token.lng, token.lat], shape.geojson);
+    }
+    return false;
+  }
+
+  function shapeStyleFor(shape){
+    if(shape.eventZone){
+      if(shape.armed === false){
+        return { color: '#5a6a72', weight: 2, fillColor: '#5a6a72', fillOpacity: 0.06, dashArray: '2 6' };
+      }
+      return { color: 'var(--pv-red)', weight: 2, fillColor: 'var(--pv-red)', fillOpacity: 0.12, dashArray: '4 4' };
+    }
+    return SHAPE_STYLE;
+  }
+
+  function checkEventZones(){
+    if(typeof L === 'undefined' || !tokens.length) return;
+    shapes.forEach(shape => {
+      if(!shape.eventZone) return;
+      const occ = zoneOccupancy[shape.id] || new Set();
+      const stillInside = new Set();
+      if(shape.armed !== false){
+        tokens.forEach(token => {
+          if(isTokenInsideShape(token, shape)){
+            stillInside.add(token.id);
+            if(!occ.has(token.id)) triggerEventZone(shape, token);
+          }
+        });
+      }
+      zoneOccupancy[shape.id] = stillInside;
+    });
+  }
+
+  async function triggerEventZone(shape, token){
+    const ez = shape.eventZone;
+    if(!ez) return;
+    showZoneAlertBanner(ez, token);
+    sendZoneAlertToDiscord(ez, token, shape);
+    if(ez.autoRearm === false){
+      shape.armed = false;
+      // eventos que o Diretor criou sozinho não ficam pra sempre no mapa
+      // depois de resolvidos — some em pouco tempo, como uma cicatriz que
+      // cicatriza rápido, em vez de virar lixo visual permanente.
+      if(shape.autoSpawned) shape.expiresAt = Date.now() + 2 * 60 * 1000;
+      await saveKey(KEY_SHAPES, shapes);
+      renderShapes();
+    }
+  }
+
+  function showZoneAlertBanner(ez, token){
+    const banner = document.getElementById('zone-alert-banner');
+    if(!banner) return;
+    banner.querySelector('.zone-alert-title').textContent = `⚠️ ${ez.name || 'Zona de Evento'}`;
+    banner.querySelector('.zone-alert-body').textContent = ez.message || `${token.label || 'Um sobrevivente'} entrou na área.`;
+    banner.classList.add('show');
+    clearTimeout(banner._hideTimer);
+    banner._hideTimer = setTimeout(() => banner.classList.remove('show'), 7000);
+  }
+
+  async function sendZoneAlertToDiscord(ez, token, shape){
+    const url = (typeof webhookInput !== 'undefined' && webhookInput) ? webhookInput.value.trim() : '';
+    if(!url) return;
+    const payload = {
+      username: "Tau Volantis — Registro de Saque",
+      embeds: [{
+        title: `⚠️ ${ez.name || 'Zona de Evento'}`,
+        description: ez.message || `${token.label || 'Um sobrevivente'} entrou em ${shape.label || 'uma área marcada'}.`,
+        color: 0xc9433f,
+        fields: [{ name: "Token", value: token.label || 'Sobrevivente desconhecido', inline: true }],
+        footer: { text: "Tau Volantis: Ano 0" },
+        timestamp: new Date().toISOString()
+      }]
+    };
+    try{ await fetch(url, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) }); }
+    catch(e){ /* alerta na tela já cumpriu o principal; narração é um extra */ }
+  }
+  setInterval(checkEventZones, 5000);
+
+  // ================= DIRETOR DE EVENTOS (spawn autônomo de área + pin) =================
+  // Enquanto ligado, a cada DIRECTOR_TICK_MS rola uma chance (por clima) de
+  // nascer um evento sozinho: escolhe um arquétipo por peso, um ponto perto
+  // de um token existente (não em cima dele), cria a zona (reaproveitando
+  // o sistema de zonas de evento do item 2, já armada) + um pin no centro
+  // pra ficar visível de longe, e agenda a expiração automática — resolvido
+  // ou não, some do mapa sozinho depois de um tempo.
+  function pickWeightedArchetype(){
+    const total = EVENT_ARCHETYPES.reduce((sum, a) => sum + a.weight, 0);
+    let r = Math.random() * total;
+    for(const arch of EVENT_ARCHETYPES){
+      if(r < arch.weight) return arch;
+      r -= arch.weight;
+    }
+    return EVENT_ARCHETYPES[0];
+  }
+
+  // Ponto de destino a partir de um token-âncora, numa distância/direção
+  // aleatórias (fórmula padrão de destino geodésico) — assim o evento nasce
+  // perto de quem está no mapa, nunca em cima.
+  function pickSpawnPoint(){
+    const liveTokens = tokens.filter(t => typeof t.lat === 'number' && typeof t.lng === 'number');
+    if(!liveTokens.length) return null;
+    const anchor = liveTokens[Math.floor(Math.random() * liveTokens.length)];
+    const distance = 350 + Math.random() * 900; // 350m–1250m do token
+    const bearing = Math.random() * Math.PI * 2;
+    const R = 6371000;
+    const lat1 = anchor.lat * Math.PI / 180, lng1 = anchor.lng * Math.PI / 180;
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(distance / R) + Math.cos(lat1) * Math.sin(distance / R) * Math.cos(bearing));
+    const lng2 = lng1 + Math.atan2(
+      Math.sin(bearing) * Math.sin(distance / R) * Math.cos(lat1),
+      Math.cos(distance / R) - Math.sin(lat1) * Math.sin(lat2)
+    );
+    return { lat: lat2 * 180 / Math.PI, lng: lng2 * 180 / Math.PI };
+  }
+
+  async function spawnAutonomousEvent(){
+    const point = pickSpawnPoint();
+    if(!point) return false; // ninguém no mapa ainda — o Diretor espera
+    const arch = pickWeightedArchetype();
+    const shapeId = newId();
+    const pinId = newId();
+    const expiresAt = Date.now() + arch.ttlMin * 60000;
+    const shape = {
+      id: shapeId, type: 'circle', center: [point.lat, point.lng], radius: arch.radius,
+      label: arch.name, note: '',
+      eventZone: { name: arch.name, message: arch.message, autoRearm: arch.autoRearm },
+      armed: true, autoSpawned: true, expiresAt, linkedPinId: pinId
+    };
+    const pin = {
+      id: pinId, lat: point.lat, lng: point.lng, type: arch.pinType, title: arch.name, note: arch.message,
+      autoSpawned: true, expiresAt, linkedShapeId: shapeId
+    };
+    shapes.push(shape);
+    pins.push(pin);
+    await Promise.all([saveKey(KEY_SHAPES, shapes), saveKey(KEY_PINS, pins)]);
+    renderShapes(); renderPins();
+    return true;
+  }
+
+  // Some sozinho: remove zonas autônomas (e o pin ligado a elas) que já
+  // passaram do prazo, tenham disparado ou não — mantém o mapa "vivo" em
+  // vez de acumular cicatrizes velhas pra sempre.
+  function cleanupExpiredEvents(){
+    const now = Date.now();
+    const expiredIds = shapes.filter(s => s.autoSpawned && s.expiresAt && s.expiresAt <= now).map(s => s.id);
+    if(!expiredIds.length) return false;
+    shapes = shapes.filter(s => !expiredIds.includes(s.id));
+    pins = pins.filter(p => !(p.autoSpawned && expiredIds.includes(p.linkedShapeId)));
+    expiredIds.forEach(id => { delete zoneOccupancy[id]; });
+    return true;
+  }
+
+  async function directorTick(){
+    if(typeof L === 'undefined') return;
+    const cleaned = cleanupExpiredEvents();
+    if(cleaned){
+      await Promise.all([saveKey(KEY_SHAPES, shapes), saveKey(KEY_PINS, pins)]);
+      renderShapes(); renderPins();
+    }
+    renderDirectorActiveList();
+    if(!director.enabled) return;
+    // trava simples pra reduzir spawn duplicado se mais de uma aba estiver
+    // aberta ao mesmo tempo — não é atômico, mas é suficiente pra uma mesa
+    if(director.lastRollAt && (Date.now() - director.lastRollAt) < DIRECTOR_TICK_MS * 0.8) return;
+    const chance = DIRECTOR_CHANCE[weather.state] != null ? DIRECTOR_CHANCE[weather.state] : DIRECTOR_CHANCE.calmo;
+    director.lastRollAt = Date.now();
+    await saveKey(KEY_DIRECTOR, director);
+    if(Math.random() < chance){
+      const spawned = await spawnAutonomousEvent();
+      if(spawned) renderDirectorActiveList();
+    }
+  }
+  setInterval(directorTick, DIRECTOR_TICK_MS);
+
+  function applyDirectorVisual(){
+    const badge = document.getElementById('director-badge');
+    const label = document.getElementById('director-badge-label');
+    if(!badge || !label) return;
+    badge.classList.toggle('active', !!director.enabled);
+    label.textContent = 'Diretor: ' + (director.enabled ? 'Ligado' : 'Desligado');
+    const toggleBtn = document.getElementById('director-toggle-btn');
+    if(toggleBtn){
+      toggleBtn.innerHTML = `
+        <span class="weather-option-emoji">${director.enabled ? '⏸️' : '▶️'}</span>
+        <span class="weather-option-text">
+          <span class="weather-option-title">${director.enabled ? 'Desligar o Diretor' : 'Ligar o Diretor'}</span>
+          <span class="weather-option-desc">${director.enabled ? 'Ele para de criar eventos novos (os já ativos continuam até expirar).' : 'Ele passa a criar zonas de evento sozinho, de tempos em tempos.'}</span>
+        </span>
+      `;
+    }
+  }
+
+  function renderDirectorActiveList(){
+    const wrap = document.getElementById('director-active-list');
+    if(!wrap) return;
+    const active = shapes.filter(s => s.autoSpawned && s.expiresAt);
+    if(!active.length){
+      wrap.innerHTML = '<div class="sheet-empty-hint">Nenhum evento autônomo ativo agora.</div>';
+      return;
+    }
+    wrap.innerHTML = active.map(s => {
+      const minsLeft = Math.max(0, Math.round((s.expiresAt - Date.now()) / 60000));
+      const statusTxt = s.armed === false ? 'resolvido — some em breve' : `expira em ~${minsLeft} min`;
+      return `
+        <div class="director-active-row" data-id="${s.id}">
+          <span class="director-active-name">${escapeHtml(s.label || 'Evento')}</span>
+          <span class="director-active-timer">${statusTxt}</span>
+        </div>
+      `;
+    }).join('');
+    wrap.querySelectorAll('.director-active-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const shape = shapes.find(s => s.id === row.dataset.id);
+        if(!shape || typeof L === 'undefined') return;
+        const center = shape.type === 'circle' ? shape.center : (shape.geojson ? L.geoJSON(shape.geojson).getBounds().getCenter() : null);
+        if(center){ map.flyTo(center, Math.max(map.getZoom(), 15)); }
+        closeDirectorPopover();
+      });
+    });
+  }
+
+  function openDirectorPopover(){
+    applyDirectorVisual();
+    renderDirectorActiveList();
+    document.getElementById('director-backdrop').classList.add('open');
+    document.getElementById('director-popover').classList.add('open');
+  }
+  function closeDirectorPopover(){
+    document.getElementById('director-backdrop').classList.remove('open');
+    document.getElementById('director-popover').classList.remove('open');
+  }
+  document.getElementById('director-badge').addEventListener('click', openDirectorPopover);
+  document.getElementById('director-backdrop').addEventListener('click', closeDirectorPopover);
+  document.getElementById('director-toggle-btn').addEventListener('click', async () => {
+    director = { enabled: !director.enabled, lastRollAt: director.lastRollAt || null };
+    applyDirectorVisual();
+    await saveKey(KEY_DIRECTOR, director);
+  });
+  document.getElementById('director-force-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('director-force-btn');
+    btn.disabled = true;
+    const original = btn.textContent;
+    const spawned = await spawnAutonomousEvent();
+    btn.textContent = spawned ? 'Evento criado ✓' : 'Sem tokens no mapa ainda';
+    renderDirectorActiveList();
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1800);
+  });
+  applyDirectorVisual();
+
   // ---------- render ----------
   // Renderiza por DIFF em vez de destruir e recriar tudo: cada pin já
   // visível ganha um marcador persistente (guardado em pinMarkers), que só
@@ -3141,6 +3564,7 @@
     document.getElementById('stat-tokens').textContent = tokens.length;
     if(typeof refreshCharacterOptions === 'function') refreshCharacterOptions();
     if(typeof renderNavList === 'function') renderNavList();
+    if(typeof checkEventZones === 'function') checkEventZones();
   }
   function openTokenPopupById(id){
     tokensLayer.eachLayer(l => {
@@ -3152,10 +3576,11 @@
     shapesLayer.clearLayers();
     shapes.forEach(shape => {
       let layer;
+      const style = shapeStyleFor(shape);
       if(shape.type === 'circle' && shape.center && typeof shape.radius === 'number'){
-        layer = L.circle(shape.center, Object.assign({ radius: shape.radius }, SHAPE_STYLE));
+        layer = L.circle(shape.center, Object.assign({ radius: shape.radius }, style));
       } else {
-        layer = L.geoJSON(shape.geojson, { style: SHAPE_STYLE });
+        layer = L.geoJSON(shape.geojson, { style: style });
       }
       layer._shapeId = shape.id;
       if(shape.label){
@@ -3655,11 +4080,13 @@
       setSyncStatus('offline');
       (async function initFallback(){
         try{
-          const [p, t, s, r, sh, w] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES), loadKey(KEY_SHEETS), loadKey(KEY_WEATHER)]);
+          const [p, t, s, r, sh, w, d] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES), loadKey(KEY_SHEETS), loadKey(KEY_WEATHER), loadKey(KEY_DIRECTOR)]);
           pins = p; tokens = t; shapes = s; routes = r; sheets = sh;
           weather = (w && w.state) ? w : weather;
+          director = (d && typeof d.enabled === 'boolean') ? d : director;
           renderPins(); renderTokens(); renderShapes(); renderRoutes();
           applyWeatherVisual();
+          applyDirectorVisual();
         }catch(e){
           console.error('Falha ao carregar dados do mapa', e);
         }finally{
@@ -3673,7 +4100,7 @@
     let loadedMask = 0;
     function markLoaded(bit){
       loadedMask |= bit;
-      if(loadedMask === 0b111111) document.getElementById('map-loading').style.display = 'none';
+      if(loadedMask === 0b1111111) document.getElementById('map-loading').style.display = 'none';
     }
     // segurança: nunca deixa a tela de carregamento travada pra sempre. Se em
     // 8s os 4 dados não chegaram (erro de permissão nas regras do Firebase,
@@ -3684,7 +4111,7 @@
       const loadingEl = document.getElementById('map-loading');
       if(loadingEl.style.display !== 'none'){
         loadingEl.style.display = 'none';
-        if(loadedMask !== 0b111111) setSyncStatus('offline');
+        if(loadedMask !== 0b1111111) setSyncStatus('offline');
       }
     }, 8000);
 
@@ -3735,6 +4162,15 @@
       markLoaded(32);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (clima)', err); setSyncStatus('offline'); markLoaded(32); });
+
+    firebaseDb.ref('tau-volantis/' + KEY_DIRECTOR).on('value', snap => {
+      const d = snap.val();
+      director = (d && typeof d.enabled === 'boolean') ? d : { enabled: false, lastRollAt: null };
+      saveLocal(KEY_DIRECTOR, director);
+      applyDirectorVisual();
+      markLoaded(64);
+      setSyncStatus('live');
+    }, err => { console.error('Erro de sincronização (diretor)', err); setSyncStatus('offline'); markLoaded(64); });
   }
   initRealtimeSync();
 
