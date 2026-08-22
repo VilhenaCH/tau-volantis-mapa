@@ -192,6 +192,28 @@
     display:flex; flex-direction:column; gap:0.4rem;
     position:absolute;
   }
+  .hud-layer-toggle{
+    background:none; border:none; padding:0.1rem 0.15rem;
+    display:flex; align-items:center; justify-content:space-between; gap:0.6rem;
+    color:var(--ink-dim);
+    font-family:'Space Mono',monospace; font-size:0.62rem; text-transform:uppercase; letter-spacing:0.12em;
+    cursor:pointer;
+  }
+  .hud-layer-toggle:hover{ color:var(--frost); }
+  .hud-layer-toggle .chevron{ width:14px; height:14px; flex-shrink:0; transition:transform 0.2s var(--ease-soft); }
+  .hud-layer.collapsed .hud-layer-toggle .chevron{ transform:rotate(-90deg); }
+  .hud-layer-body{
+    display:flex; flex-direction:column; gap:0.4rem;
+    overflow:hidden;
+    max-height:400px;
+    opacity:1;
+    transition:max-height 0.25s var(--ease-soft), opacity 0.2s var(--ease-soft), margin-top 0.25s var(--ease-soft);
+  }
+  .hud-layer.collapsed .hud-layer-body{
+    max-height:0;
+    opacity:0;
+    pointer-events:none;
+  }
 
   .hud-search{
     top:1rem; left:50%; transform:translateX(-50%);
@@ -316,8 +338,10 @@
     .hud-weather{ transform:none; }
     .hud-search input{ font-size:0.78rem; }
     .hud-layer{
-      flex-direction:row; flex-wrap:wrap; align-items:center;
       padding:0.5rem;
+    }
+    .hud-layer-body{
+      flex-direction:row; flex-wrap:wrap; align-items:center;
     }
     .draw-hint{
       position:static; top:auto; left:auto; transform:none;
@@ -1139,11 +1163,18 @@
       </div>
 
       <div class="hud-panel hud-layer" id="hud-layer">
-        <button class="tool-btn active" id="layer-streets" data-layer="streets">Ruas</button>
-        <button class="tool-btn" id="layer-topo" data-layer="topo">Relevo</button>
-        <button class="reset-link" id="reset-btn">Reiniciar</button>
-        <div class="toolbar-divider" style="width:auto;height:1px;margin:0.1rem 0;"></div>
-        <button class="tool-btn" id="view-settings-toggle" type="button">Visual</button>
+        <button class="hud-layer-toggle" id="hud-layer-toggle" type="button" aria-expanded="true">
+          <span>Camadas</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="hud-layer-body" id="hud-layer-body">
+          <button class="tool-btn active" id="layer-streets" data-layer="streets">Ruas</button>
+          <button class="tool-btn" id="layer-topo" data-layer="topo">Relevo</button>
+          <button class="tool-btn" id="layer-sat" data-layer="sat">Satélite</button>
+          <button class="reset-link" id="reset-btn">Reiniciar</button>
+          <div class="toolbar-divider" style="width:auto;height:1px;margin:0.1rem 0;"></div>
+          <button class="tool-btn" id="view-settings-toggle" type="button">Visual</button>
+        </div>
       </div>
 
       <div class="hud-panel hud-weather">
@@ -1256,7 +1287,7 @@
     </div>
 
     <div class="hud-credits">
-      Dados: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors · relevo: <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (CC-BY-SA) · busca de lugares via Nominatim/OSM
+      Dados: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors · relevo: <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (CC-BY-SA) · satélite: &copy; Esri, Maxar, Earthstar Geographics · busca de lugares via Nominatim/OSM
     </div>
   </div>
 </main>
@@ -1715,6 +1746,18 @@
     maxZoom: 17
   });
 
+  // Satélite: imagens aéreas/satélite da Esri (gratuito, sem chave de API),
+  // com uma camada extra só de rótulos (nomes de ruas/cidades) por cima,
+  // já que a imagem de satélite sozinha não tem nenhum texto.
+  const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics',
+    maxZoom: 19
+  });
+  const satLabelsLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri',
+    maxZoom: 19
+  });
+
   const pinsLayer = L.layerGroup().addTo(map);
   const tokensLayer = L.layerGroup().addTo(map);
   const shapesLayer = L.layerGroup().addTo(map);
@@ -1757,19 +1800,45 @@
 
   document.getElementById('layer-streets').addEventListener('click', () => setLayer('streets'));
   document.getElementById('layer-topo').addEventListener('click', () => setLayer('topo'));
+  document.getElementById('layer-sat').addEventListener('click', () => setLayer('sat'));
+
+  // ---------- painel de camadas: colapsar/expandir, com estado lembrado ----------
+  const HUD_LAYER_COLLAPSED_KEY = 'tv-map:hud-layer-collapsed';
+  const hudLayerPanel = document.getElementById('hud-layer');
+  const hudLayerToggleBtn = document.getElementById('hud-layer-toggle');
+  function setHudLayerCollapsed(collapsed){
+    hudLayerPanel.classList.toggle('collapsed', collapsed);
+    hudLayerToggleBtn.setAttribute('aria-expanded', String(!collapsed));
+    try{ localStorage.setItem(HUD_LAYER_COLLAPSED_KEY, collapsed ? '1' : '0'); }catch(e){}
+  }
+  hudLayerToggleBtn.addEventListener('click', () => {
+    setHudLayerCollapsed(!hudLayerPanel.classList.contains('collapsed'));
+  });
+  try{ setHudLayerCollapsed(localStorage.getItem(HUD_LAYER_COLLAPSED_KEY) === '1'); }catch(e){}
+
+  const ALL_BASE_LAYERS = [streetsLayer, topoLayer, satLayer, satLabelsLayer];
+  function activeLayerBtnId(){
+    if(map.hasLayer(topoLayer)) return 'layer-topo';
+    if(map.hasLayer(satLayer)) return 'layer-sat';
+    return 'layer-streets';
+  }
 
   function setLayer(which){
-    document.querySelectorAll('#layer-streets, #layer-topo').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#layer-streets, #layer-topo, #layer-sat').forEach(b => b.classList.remove('active'));
+    ALL_BASE_LAYERS.forEach(l => { if(map.hasLayer(l)) map.removeLayer(l); });
+    mapEl.classList.remove('dark-streets');
     if(which === 'streets'){
-      if(map.hasLayer(topoLayer)) map.removeLayer(topoLayer);
-      if(!map.hasLayer(streetsLayer)) streetsLayer.addTo(map);
+      streetsLayer.addTo(map);
       mapEl.classList.add('dark-streets');
       document.getElementById('layer-streets').classList.add('active');
       document.getElementById('stat-layer').textContent = 'Ruas';
+    } else if(which === 'sat'){
+      satLayer.addTo(map);
+      satLabelsLayer.addTo(map);
+      document.getElementById('layer-sat').classList.add('active');
+      document.getElementById('stat-layer').textContent = 'Satélite';
     } else {
-      if(map.hasLayer(streetsLayer)) map.removeLayer(streetsLayer);
-      if(!map.hasLayer(topoLayer)) topoLayer.addTo(map);
-      mapEl.classList.remove('dark-streets');
+      topoLayer.addTo(map);
       document.getElementById('layer-topo').classList.add('active');
       document.getElementById('stat-layer').textContent = 'Relevo';
     }
@@ -1821,7 +1890,7 @@
     stopCircleMode();
     stopRouteMode();
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(map.hasLayer(topoLayer) ? 'layer-topo' : 'layer-streets').classList.add('active');
+    document.getElementById(activeLayerBtnId()).classList.add('active');
     hideDrawHint();
   }
 
@@ -2263,7 +2332,6 @@
       </div>
       <div class="popup-actions">
         <button class="save">Salvar</button>
-        <button type="button" class="ficha-create">Criar Ficha</button>
         <button class="del">Remover</button>
       </div>
     `;
@@ -2301,24 +2369,6 @@
       await saveKey(KEY_TOKENS, tokens);
       renderTokens();
       map.closePopup();
-    });
-    container.querySelector('.ficha-create').addEventListener('click', async () => {
-      if(!currentPlayer){
-        if(window.confirm('Fichas de personagem ficam salvas na sua conta Google. Entrar com Google agora?')){
-          const loginBtn = document.getElementById('google-login-btn');
-          if(loginBtn) loginBtn.click();
-        }
-        return;
-      }
-      if(!window.confirm('Criar uma ficha de personagem para este token?')) return;
-      // usa o rótulo/imagem já digitados no popup, mesmo que ainda não salvos
-      token.label = container.querySelector('.token-label').value.trim() || 'Token';
-      token.image = pendingImage;
-      const sheet = createSheetForToken(token);
-      await Promise.all([saveKey(KEY_SHEETS, sheets), saveKey(KEY_TOKENS, tokens)]);
-      renderTokens();
-      map.closePopup();
-      openSheetModal(sheet.id);
     });
     container.querySelector('.del').addEventListener('click', async () => {
       tokens = tokens.filter(t => t.id !== token.id);
@@ -2435,50 +2485,13 @@
   }
 
   // ================= FICHAS DE PERSONAGEM (vinculadas a um token) =================
-  // Uma ficha é criada a partir de um token (no popup dele, ou logo após
-  // criá-lo) e passa a ser dona da identidade visual/nome do token. Fica
-  // salva junto com os outros dados do mapa (Firebase/local), marcada com o
+  // Fica salva junto com os outros dados do mapa (Firebase/local), marcada com o
   // uid do jogador (via login Google) — por isso "Minhas Fichas" só lista
   // as que pertencem a quem está logado. O token correspondente só pode ser
   // apagado a partir da ficha.
   let activeSheetId = null;
 
   function findSheetById(id){ return sheets.find(s => s.id === id) || null; }
-
-  function createSheetForToken(token){
-    const sheet = {
-      id: newId(),
-      tokenId: token.id,
-      ownerId: currentPlayer ? currentPlayer.uid : null,
-      ownerName: currentPlayer ? currentPlayer.playerName : null,
-      ownerPhotoURL: (currentPlayer && currentPlayer.photoURL) ? currentPlayer.photoURL : '',
-      name: token.label || 'Personagem',
-      image: token.image || null,
-      pv: { cur: 10, max: 10 },
-      pd: { cur: 10, max: 10 },
-      attrs: { FOR: 0, AGI: 0, INT: 0, PRE: 0, VIG: 0 },
-      pericias: [],
-      inventory: []
-    };
-    sheets.push(sheet);
-    token.sheetId = sheet.id;
-    return sheet;
-  }
-
-  async function offerCreateSheetForToken(token){
-    if(!currentPlayer){
-      if(window.confirm('Fichas de personagem ficam salvas na sua conta Google. Entrar com Google agora?')){
-        const loginBtn = document.getElementById('google-login-btn');
-        if(loginBtn) loginBtn.click();
-      }
-      return;
-    }
-    if(!window.confirm('Criar uma ficha de personagem para este token?')) return;
-    const sheet = createSheetForToken(token);
-    await Promise.all([saveKey(KEY_SHEETS, sheets), saveKey(KEY_TOKENS, tokens)]);
-    renderTokens();
-    openSheetModal(sheet.id);
-  }
 
   async function saveSheets(){ await saveKey(KEY_SHEETS, sheets); }
 
@@ -3890,7 +3903,6 @@
       tokens.push(token);
       await saveKey(KEY_TOKENS, tokens);
       renderTokens();
-      offerCreateSheetForToken(token);
     }
   });
 
@@ -3936,7 +3948,7 @@
   map.on(L.Draw.Event.CREATED, async (e) => {
     hideDrawHint();
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(map.hasLayer(topoLayer) ? 'layer-topo' : 'layer-streets').classList.add('active');
+    document.getElementById(activeLayerBtnId()).classList.add('active');
     const layer = e.layer;
     const geojson = layer.toGeoJSON();
     const shape = { id:newId(), geojson, label:'Nova área', note:'', ...ownerFields() };
