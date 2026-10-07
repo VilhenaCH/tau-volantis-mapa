@@ -145,9 +145,20 @@
     const el = document.getElementById('sync-status');
     if(!el) return;
     el.classList.remove('live','offline');
-    if(state === 'live'){ el.textContent = 'Tempo real — conectado'; el.classList.add('live'); }
-    else if(state === 'offline'){ el.textContent = 'Sem Firebase — salvando só neste navegador'; el.classList.add('offline'); }
-    else { el.textContent = 'Conectando...'; }
+    if(state === 'live'){
+      el.textContent = 'Online';
+      el.title = 'Sessão sincronizada em tempo real';
+      el.classList.add('live');
+    }
+    else if(state === 'offline'){
+      el.textContent = 'Offline · local';
+      el.title = 'Sem conexão com a sessão online; os dados ficam neste navegador';
+      el.classList.add('offline');
+    }
+    else{
+      el.textContent = 'Conectando';
+      el.title = 'Conectando à sessão online';
+    }
   }
 
   // ---------- login com Google + camada de "jogador" ----------
@@ -602,7 +613,6 @@
     registerAppPopover('account-toggle-btn', 'account-popover', 'account-backdrop'),
     registerAppPopover('fab-add', 'add-popover', 'add-backdrop'),
     registerAppPopover('fab-tools', 'tools-popover', 'tools-backdrop'),
-    registerAppPopover('fab-system', 'system-popover', 'system-backdrop'),
   ].filter(Boolean);
 
   // abrir um fecha os outros, pra nunca empilhar dois de uma vez na tela
@@ -1643,9 +1653,14 @@
   function closeDrawerIfOpen(){
     const sd = document.getElementById('saque-drawer');
     const sb = document.getElementById('drawer-backdrop');
-    if(sd && sd.classList.contains('open')){ sd.classList.remove('open'); sb.classList.remove('open'); }
+    if(sd && sd.classList.contains('open')){
+      sd.classList.remove('open');
+      if(sb) sb.classList.remove('open');
+      syncDrawerActionButtons();
+    }
   }
   document.getElementById('nav-drawer-toggle-btn').addEventListener('click', () => {
+    appPopovers.forEach(popover => popover.close());
     navDrawer.classList.contains('open') ? closeNavDrawer() : openNavDrawer();
   });
   document.getElementById('nav-drawer-close-btn').addEventListener('click', closeNavDrawer);
@@ -1654,6 +1669,7 @@
 
   document.getElementById('token-select-toggle-btn').addEventListener('click', () => {
     setTokenSelectMode(!tokenSelectMode);
+    appPopovers.forEach(popover => popover.close());
   });
 
   function renderNavList(){
@@ -2152,6 +2168,7 @@
   const LOOT_DATA = window.TAU_VOLANTIS_LOOT_DATA;
   const LOC_NAMES = LOOT_DATA.locNames;
   const ITEMS = LOOT_DATA.items;
+  const CRAFTING_RECIPES = window.TAU_VOLANTIS_CRAFTING_RECIPES || [];
   const LOC_ORDER = ["casas","farmacias","bases","veiculos","oficinas","mercados","acampamentos","fazendas","florestas","rios","convergencia"];
   const RURAL_LOCS = ["fazendas","florestas","rios"];
   const URBAN_LOCS = LOC_ORDER.filter(k => !RURAL_LOCS.includes(k) && k !== "convergencia");
@@ -2651,11 +2668,11 @@
       const rarity = rarityInfo(item, worstLoc);
       return `
       <tr>
-        <td>${escapeHtml(item.name)}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
-        <td>${escapeHtml(item.category)}</td>
-        <td>${item.locations.map(l => `<span class="mini-tag">${LOC_NAMES[l].split(' ')[0]}</span>`).join('')}</td>
-        <td>${escapeHtml(item.utility)}</td>
-        <td><button type="button" class="inventory-action-btn keep catalog-add-btn" data-add-item="${item.id}">Adicionar</button></td>
+        <td data-label="Item">${escapeHtml(item.name)}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
+        <td data-label="Categoria">${escapeHtml(item.category)}</td>
+        <td data-label="Locais">${item.locations.map(l => `<span class="mini-tag">${LOC_NAMES[l].split(' ')[0]}</span>`).join('')}</td>
+        <td data-label="Utilidade">${escapeHtml(item.utility)}</td>
+        <td data-label="Inventário"><button type="button" class="inventory-action-btn keep catalog-add-btn" data-add-item="${item.id}">Adicionar</button></td>
       </tr>
     `;
     }).join('');
@@ -2685,6 +2702,101 @@
     else alert(`${item.name} adicionado ao inventário de ${character.name}.`);
   }
 
+  function catalogItemById(itemId){
+    return ITEMS.find(item => String(item.id) === String(itemId)) || null;
+  }
+  function inventoryHasCatalogItem(storedItem, catalogItem){
+    return !!catalogItem && (
+      String(storedItem.catalogId || '') === String(catalogItem.id) ||
+      storedItem.name === catalogItem.name
+    );
+  }
+  function findCraftingIngredientIndexes(inventory, recipe){
+    const selectedIndexes = new Set();
+    for(const ingredient of recipe.ingredients){
+      const catalogItem = catalogItemById(ingredient.itemId);
+      if(!catalogItem) return null;
+      const needed = Math.max(1, Number(ingredient.quantity) || 1);
+      const availableIndexes = [];
+      inventory.forEach((storedItem, index) => {
+        if(!selectedIndexes.has(index) && inventoryHasCatalogItem(storedItem, catalogItem)) availableIndexes.push(index);
+      });
+      if(availableIndexes.length < needed) return null;
+      availableIndexes.slice(0, needed).forEach(index => selectedIndexes.add(index));
+    }
+    return Array.from(selectedIndexes);
+  }
+  function renderCraftingPanel(containerId, character){
+    const panel = document.getElementById(containerId);
+    if(!panel) return;
+    const inventory = character ? characterInventory(character) : [];
+    if(!CRAFTING_RECIPES.length){
+      panel.innerHTML = '<div class="empty-hint">Nenhuma receita cadastrada.</div>';
+      return;
+    }
+    panel.innerHTML = CRAFTING_RECIPES.map(recipe => {
+      const output = catalogItemById(recipe.outputItemId);
+      const ingredientLines = recipe.ingredients.map(ingredient => {
+        const catalogItem = catalogItemById(ingredient.itemId);
+        const needed = Math.max(1, Number(ingredient.quantity) || 1);
+        const available = catalogItem ? inventory.filter(item => inventoryHasCatalogItem(item, catalogItem)).length : 0;
+        const ready = !!character && available >= needed;
+        return `<li class="${ready ? 'ready' : ''}">${escapeHtml(catalogItem ? catalogItem.name : 'Item fora do catálogo')} <span>${available}/${needed}</span></li>`;
+      }).join('');
+      const canCraft = !!character && !!output && !!findCraftingIngredientIndexes(inventory, recipe);
+      return `
+        <article class="crafting-card">
+          <div class="crafting-output"><span>Resultado</span><strong>${escapeHtml(output ? output.name : 'Receita inválida')}</strong></div>
+          <p class="crafting-description">${escapeHtml(recipe.description || (output && output.utility) || '')}</p>
+          <div class="crafting-ingredients-label">Componentes necessários</div>
+          <ul class="crafting-ingredients">${ingredientLines}</ul>
+          <button type="button" class="inventory-action-btn keep" data-craft-recipe="${escapeHtml(recipe.id)}" ${canCraft ? '' : 'disabled'}>Combinar e fabricar</button>
+        </article>
+      `;
+    }).join('');
+    panel.querySelectorAll('[data-craft-recipe]').forEach(button => {
+      button.addEventListener('click', () => craftInventoryRecipe(button.dataset.craftRecipe));
+    });
+  }
+  function renderCraftingPanels(character){
+    renderCraftingPanel('loot-crafting-recipes', character);
+    renderCraftingPanel('inventory-crafting-recipes', character);
+  }
+  async function craftInventoryRecipe(recipeId){
+    const recipe = CRAFTING_RECIPES.find(entry => entry.id === recipeId);
+    const character = selectedCharacter();
+    const output = recipe && catalogItemById(recipe.outputItemId);
+    if(!recipe || !output || !character) return;
+    const inventory = characterInventory(character);
+    const ingredientIndexes = findCraftingIngredientIndexes(inventory, recipe);
+    if(!ingredientIndexes){
+      alert('Os componentes necessários não estão mais disponíveis neste inventário.');
+      renderInventoryPanel();
+      return;
+    }
+    const finalSize = inventory.length - ingredientIndexes.length + 1;
+    if(finalSize > INVENTORY_LIMIT){
+      alert(`Não há espaço para o resultado do crafting (${inventory.length}/${INVENTORY_LIMIT}).`);
+      return;
+    }
+    const consumedItems = ingredientIndexes.map(index => inventory[index]);
+    ingredientIndexes.sort((a,b) => b - a).forEach(index => inventory.splice(index, 1));
+    const craftedItem = inventoryItemFrom(output, 'crafting', null);
+    craftedItem.recipeId = recipe.id;
+    craftedItem.craftedAt = Date.now();
+    inventory.push(craftedItem);
+    await saveCharacterInventory(character);
+    await Promise.all(consumedItems.map(item => recordInventoryAction('craft_consumed', item, character, {
+      recipeId:recipe.id, recipeName:output.name, craftedItem:output.name,
+      result:`Componente consumido para fabricar ${output.name}`
+    })));
+    await recordInventoryAction('crafted', craftedItem, character, {
+      recipeId:recipe.id, recipeName:output.name, consumedItems:consumedItems.map(item => item.name),
+      result:`Fabricado com: ${consumedItems.map(item => item.name).join(', ')}`
+    });
+    renderInventoryPanel();
+  }
+
   function renderInventoryPanel(){
     const summary = document.getElementById('inventory-summary');
     const itemsEl = document.getElementById('inventory-items');
@@ -2692,6 +2804,7 @@
     const inventoryCharacterSelect = document.getElementById('inventory-character-select');
     if(!summary || !itemsEl || !targetSelect || !inventoryCharacterSelect || !charSelect) return;
     const selected = selectedCharacter();
+    renderCraftingPanels(selected);
     const records = characterRecords();
     inventoryCharacterSelect.innerHTML = '<option value="">Selecione um token ou NPC</option>' + records.map(character =>
       `<option value="${escapeHtml(characterKey(character))}">${character.type === 'npc' ? 'NPC' : 'Jogador'} · ${escapeHtml(character.name)}</option>`
@@ -2774,6 +2887,7 @@
     item_found:'Item encontrado', loot_kept:'Item mantido', catch_kept:'Captura mantida',
     left_at_location:'Deixado no local', added_from_catalog:'Adicionado pelo catálogo',
     used:'Usado', discarded:'Descartado', traded:'Trocado', deleted_with_entity:'Perdido com exclusão',
+    craft_consumed:'Ingrediente consumido no crafting', crafted:'Item fabricado',
     add_failed_no_character:'Adição recusada: personagem não selecionado',
     add_failed_full:'Adição recusada: inventário cheio',
     trade_failed_no_target:'Troca recusada: destino não selecionado',
@@ -2806,6 +2920,7 @@
     document.querySelectorAll('.drawer-panel').forEach(panel => panel.classList.toggle('active', panel.id === `${tab}-panel`));
     if(tab === 'inventory') renderInventoryPanel();
     if(tab === 'audit') renderInventoryAudit();
+    syncDrawerActionButtons();
   }
   document.querySelectorAll('.drawer-tab').forEach(button => button.addEventListener('click', () => setDrawerTab(button.dataset.panel)));
   function openDrawer(tab){
@@ -2814,17 +2929,33 @@
     setDrawerTab(tab || 'loot');
     saqueDrawer.classList.add('open');
     drawerBackdrop.classList.add('open');
+    syncDrawerActionButtons();
   }
   function closeDrawer(){
     saqueDrawer.classList.remove('open');
     drawerBackdrop.classList.remove('open');
+    syncDrawerActionButtons();
   }
-  document.getElementById('drawer-toggle-btn').addEventListener('click', () => {
-    saqueDrawer.classList.contains('open') ? closeDrawer() : openDrawer('loot');
-  });
-  document.getElementById('inventory-toggle-btn').addEventListener('click', () => {
-    saqueDrawer.classList.contains('open') ? setDrawerTab('inventory') : openDrawer('inventory');
-  });
+  function syncDrawerActionButtons(){
+    const isOpen = Boolean(saqueDrawer && saqueDrawer.classList.contains('open'));
+    const activeTab = document.querySelector('.drawer-tab.active')?.dataset.panel;
+    const lootButton = document.getElementById('fab-loot');
+    const inventoryButton = document.getElementById('fab-inventory');
+    if(lootButton){ lootButton.classList.toggle('active', isOpen && activeTab === 'loot'); lootButton.setAttribute('aria-expanded', String(isOpen && activeTab === 'loot')); }
+    if(inventoryButton){ inventoryButton.classList.toggle('active', isOpen && activeTab === 'inventory'); inventoryButton.setAttribute('aria-expanded', String(isOpen && activeTab === 'inventory')); }
+  }
+  function openDrawerFromShortcut(tab){
+    appPopovers.forEach(popover => popover.close());
+    if(saqueDrawer.classList.contains('open')){
+      const activeTab = document.querySelector('.drawer-tab.active')?.dataset.panel;
+      if(activeTab === tab) closeDrawer();
+      else setDrawerTab(tab);
+      return;
+    }
+    openDrawer(tab);
+  }
+  document.getElementById('fab-loot').addEventListener('click', () => openDrawerFromShortcut('loot'));
+  document.getElementById('fab-inventory').addEventListener('click', () => openDrawerFromShortcut('inventory'));
   document.getElementById('drawer-close-btn').addEventListener('click', closeDrawer);
   drawerBackdrop.addEventListener('click', closeDrawer);
 

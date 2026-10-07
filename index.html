@@ -17,23 +17,21 @@
     <div class="hud-top-cluster">
       <div class="draw-hint" id="draw-hint" style="display:none;"></div>
 
-      <!-- Header compacto: substitui os HUDs sempre-visíveis por 3 botões.
-           ☰ abre o menu (identidade + stats + camadas + clima/diretor),
-           🔍 abre a busca, 👤 abre a conta. Nada de painel permanente. -->
+      <!-- Barra de sessão: identidade e conexão sempre visíveis; menu e busca seguem acessíveis. -->
       <div class="app-header" id="app-header">
-        <button class="header-btn tabbar-item" id="menu-toggle-btn" type="button" aria-label="Menu" aria-expanded="false">
+        <button class="header-btn" id="menu-toggle-btn" type="button" title="Menu da sessão" aria-label="Menu da sessão" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line></svg>
-          <span class="tab-label">Menu</span>
         </button>
         <div class="app-header-title">
-          <span class="app-header-eyebrow">Tau Volantis // Campo</span>
-          <span class="app-header-name">Mapa de <span>Sobrevivência</span></span>
+          <span class="app-header-eyebrow">Jogo cooperativo · Campo</span>
+          <span class="app-header-name">Tau <span>Volantis</span></span>
         </div>
-        <button class="header-btn tabbar-item" id="search-toggle-btn" type="button" aria-label="Buscar" aria-expanded="false">
+        <div class="sync-status" id="sync-status" role="status" aria-live="polite">Conectando...</div>
+        <button class="header-btn tabbar-item" id="search-toggle-btn" type="button" title="Buscar no mapa" aria-label="Buscar no mapa" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           <span class="tab-label">Buscar</span>
         </button>
-        <button class="header-btn" id="account-toggle-btn" type="button" aria-label="Conta" aria-expanded="false">
+        <button class="header-btn" id="account-toggle-btn" type="button" title="Conta do jogador" aria-label="Conta do jogador" aria-expanded="false">
           <span class="header-avatar-badge" id="header-avatar-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
           </span>
@@ -48,18 +46,25 @@
         <div class="search-results" id="search-results"></div>
       </div>
 
-      <!-- Menu: identidade, stats, camadas, clima e diretor — tudo sob demanda -->
+      <!-- Menu da sessão: equipe, navegação, camadas e clima. -->
       <div class="app-popover-backdrop" id="menu-backdrop"></div>
       <div class="app-popover" id="menu-popover">
         <div class="popover-section">
-          <div class="vs-group-label">Estado do mundo</div>
+          <div class="vs-group-label">Painel da sessão</div>
           <div class="hud-stats">
             <div>Pins<b id="stat-pins">0</b></div>
             <div>Tokens<b id="stat-tokens">0</b></div>
             <div>Rotas<b id="stat-routes">0</b></div>
             <div>Camada<b id="stat-layer">Ruas</b></div>
           </div>
-          <div class="sync-status" id="sync-status">Conectando...</div>
+        </div>
+
+        <div class="popover-section">
+          <div class="vs-group-label">Equipe e navegação</div>
+          <div class="toolbar-group">
+            <button class="tool-btn" id="nav-drawer-toggle-btn"><span class="dot" style="background:var(--ice-300)"></span>Lista do mapa</button>
+            <button class="tool-btn" id="token-select-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Selecionar tokens</button>
+          </div>
         </div>
 
         <div class="popover-section">
@@ -140,20 +145,23 @@
       <div class="weather-meta-line" id="weather-meta-line"></div>
     </div>
 
-    <!-- Ações: 3 botões flutuantes substituem a toolbar antiga. Cada um abre
-         um painel contextual só com o que pertence àquela categoria. -->
+    <!-- Ações principais da partida: adicionar, ferramentas, saque e mochila. -->
     <div class="action-cluster" id="action-cluster">
       <button class="action-fab tabbar-item" id="fab-add" type="button" title="Adicionar" aria-label="Adicionar ao mapa" aria-expanded="false">
         <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-7.6-7-12.4A7 7 0 0 1 12 1a7 7 0 0 1 7 7.6C19 13.4 12 21 12 21z"></path><circle cx="12" cy="8.5" r="2.4"></circle></svg></span>
-        <span class="tab-label">Add</span>
+        <span class="tab-label">Adicionar</span>
       </button>
       <button class="action-fab tabbar-item" id="fab-tools" type="button" title="Ferramentas" aria-label="Ferramentas" aria-expanded="false">
         <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"></path></svg></span>
         <span class="tab-label">Ferram.</span>
       </button>
-      <button class="action-fab tabbar-item" id="fab-system" type="button" title="Sistema" aria-label="Sistema" aria-expanded="false">
-        <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><line x1="8" y1="12" x2="16" y2="12"></line><line x1="8" y1="16" x2="16" y2="16"></line></svg></span>
-        <span class="tab-label">Sistema</span>
+      <button class="action-fab tabbar-item" id="fab-loot" type="button" title="Abrir saque" aria-label="Abrir saque" aria-expanded="false">
+        <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l1 13H4L5 8Z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M9 13h6"></path></svg></span>
+        <span class="tab-label">Saque</span>
+      </button>
+      <button class="action-fab tabbar-item" id="fab-inventory" type="button" title="Abrir mochila" aria-label="Abrir mochila" aria-expanded="false">
+        <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v10H5V10Z"></path><path d="M9 7V5a3 3 0 0 1 6 0v2"></path><path d="M5 13h14"></path><path d="M9 13v2h6v-2"></path></svg></span>
+        <span class="tab-label">Mochila</span>
       </button>
     </div>
     <!-- fundo da barra de navegação inferior no celular (decorativo,
@@ -186,17 +194,6 @@
       </div>
     </div>
 
-    <div class="app-popover-backdrop" id="system-backdrop"></div>
-    <div class="app-popover" id="system-popover">
-      <div class="vs-group-label">Sistema</div>
-      <div class="toolbar-group">
-        <button class="tool-btn" id="drawer-toggle-btn"><span class="dot" style="background:var(--hazard)"></span>Saque</button>
-        <button class="tool-btn" id="inventory-toggle-btn"><span class="dot" style="background:var(--safe)"></span>Inventário</button>
-        <button class="tool-btn" id="nav-drawer-toggle-btn"><span class="dot" style="background:var(--ice-300)"></span>Lista</button>
-        <button class="tool-btn" id="token-select-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Selecionar Tokens</button>
-      </div>
-    </div>
-
     <div class="hud-credits">
       Dados: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors · relevo: <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (CC-BY-SA) · satélite: &copy; Esri, Maxar, Earthstar Geographics · busca de lugares via Nominatim/OSM
     </div>
@@ -215,8 +212,8 @@
   <div class="drawer-backdrop" id="drawer-backdrop"></div>
   <div id="saque-drawer">
     <div class="drawer-header">
-      <div class="eyebrow">Tau Volantis · Protocolo de Saque</div>
-      <h2>Registro de Saque
+      <div class="eyebrow">Sessão cooperativa · Recursos</div>
+      <h2>Suprimentos
         <button type="button" class="drawer-close" id="drawer-close-btn" title="Fechar">&times;</button>
       </h2>
     </div>
@@ -260,6 +257,10 @@
         <div class="empty-hint">Nenhuma busca realizada ainda. Clique em um local acima para vasculhar.</div>
       </div>
 
+      <p class="section-label">Bancada de campo</p>
+      <p class="char-hint">Combine itens do inventário do personagem selecionado. As receitas usam somente itens já existentes no catálogo.</p>
+      <div id="loot-crafting-recipes" class="crafting-recipes"></div>
+
       <div style="margin-top:1.6rem;">
         <button class="browse-toggle" id="saque-browse-toggle">▸ Ver tabela completa de itens</button>
         <div id="saque-browse-panel">
@@ -269,7 +270,7 @@
               <option value="">Todos os locais</option>
             </select>
           </div>
-          <div style="max-height:420px; overflow:auto; border:1px solid var(--line);">
+          <div class="loot-table-scroll" style="max-height:420px; overflow:auto; border:1px solid var(--line);">
             <table>
               <thead>
                 <tr><th style="width:23%">Item</th><th style="width:14%">Categoria</th><th style="width:17%">Locais</th><th>Utilidade</th><th>Inventário</th></tr>
@@ -287,6 +288,9 @@
         <div class="inventory-summary" id="inventory-summary"></div>
         <p class="section-label">Itens carregados</p>
         <div id="inventory-items"></div>
+        <p class="section-label">Bancada de campo</p>
+        <p class="char-hint">Combine componentes guardados neste inventário para fabricar equipamentos de sobrevivência.</p>
+        <div id="inventory-crafting-recipes" class="crafting-recipes"></div>
         <div class="inventory-trade-bar">
           <label for="inventory-trade-target">Transferir item para</label>
           <select id="inventory-trade-target"><option value="">Selecione outro personagem</option></select>
@@ -295,7 +299,7 @@
       </section>
       <section class="drawer-panel" id="audit-panel">
         <p class="section-label">Registro interno de ações</p>
-        <p class="char-hint">Histórico compartilhado de itens encontrados, mantidos, deixados, usados, descartados e transferidos.</p>
+        <p class="char-hint">Histórico compartilhado de itens encontrados, mantidos, deixados, usados, descartados, transferidos e fabricados.</p>
         <div id="inventory-audit-list"></div>
       </section>
 
@@ -324,6 +328,7 @@
   </div>
 
 <script src="assets/items/loot-data.js"></script>
+<script src="assets/items/crafting-recipes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
