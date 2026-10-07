@@ -43,6 +43,8 @@
   const KEY_SHAPES = 'tv-map:shapes';
   const KEY_ROUTES = 'tv-map:routes';
   const KEY_WEATHER = 'tv-map:weather';
+  const KEY_INVENTORY_LOG = 'tv-map:inventory-log';
+  const INVENTORY_LIMIT = 20;
 
   const WEATHER_STATES = {
     calmo: { label: 'Calmo', desc: 'Céu claro, visibilidade normal.', emoji: '🌤️' },
@@ -57,6 +59,7 @@
   let tokens = [];
   let shapes = [];
   let routes = [];
+  let inventoryLog = [];
   let weather = { state: 'calmo', updatedAt: null, updatedBy: null };
   let selectedPinType = null;
   let tokenModeOn = false;
@@ -64,11 +67,23 @@
   let routeModeOn = false;
   let idCounter = 1;
 
-  function newId(){ return 'id' + (Date.now()) + '-' + (idCounter++); }
+  function newId(){ return 'id' + Date.now() + '-' + (idCounter++) + '-' + Math.random().toString(36).slice(2,8); }
   function escapeHtml(str){
     const d = document.createElement('div');
     d.textContent = str || '';
     return d.innerHTML;
+  }
+  function characterDisplayName(entity){
+    const isNpc = !!entity && entity.type === 'npc';
+    const name = entity && (isNpc ? (entity.title || entity.label) : (entity.label || entity.title));
+    return String(name || (isNpc ? 'NPC' : 'Token')).trim() || (isNpc ? 'NPC' : 'Token');
+  }
+  function containerOccupants(pin){
+    if(pin.type !== 'veiculo' && pin.type !== 'abrigo') return [];
+    return [
+      ...tokens.filter(token => token.containerId === pin.id),
+      ...pins.filter(occupant => occupant.type === 'npc' && occupant.containerId === pin.id)
+    ];
   }
   function formatDistance(meters){
     if(meters < 1000) return Math.round(meters) + ' m';
@@ -661,17 +676,19 @@
     const isBig = isNpc || isContainer;
     const sizeCls = isNpc ? ' pin-wrap-npc' : (isContainer ? ` pin-wrap-${typeId}` : '');
     // veículo/abrigo mostram quantos tokens e NPCs estão "dentro" deles
-    const occupantCount = isContainer
-      ? (typeof tokens !== 'undefined' ? tokens.filter(t => t.containerId === pin.id).length : 0)
-        + (typeof pins !== 'undefined' ? pins.filter(p => p.type === 'npc' && p.containerId === pin.id).length : 0)
-      : 0;
+    const occupants = isContainer ? containerOccupants(pin) : [];
+    const occupantCount = occupants.length;
     const occupancyBadge = occupantCount > 0 ? `<div class="pin-occupancy">${occupantCount}</div>` : '';
+    const occupantNames = occupants.map(characterDisplayName).join(' · ');
+    const occupantNamesTag = occupantNames
+      ? `<span class="pin-occupants-tag">${escapeHtml(occupantNames)}</span>`
+      : '';
     // NPC ganha etiqueta de nome abaixo do badge, seguindo a mesma regra dos
     // tokens: só a primeira palavra do nome, pra não tampar o mapa
     const npcNameTag = isNpc ? `<span class="pin-name-tag">${escapeHtml((pin.title || 'NPC').trim().split(/\s+/)[0])}</span>` : '';
     return L.divIcon({
       className: '',
-      html: `<div class="pin-wrap${lockCls}${sizeCls}">${ping}${occupancyBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
+      html: `<div class="pin-wrap${lockCls}${sizeCls}">${ping}${occupancyBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}${occupantNamesTag}</div>`,
       iconSize: isBig ? [44,44] : [30,30],
       iconAnchor: isBig ? [22,38] : [15,26],
       popupAnchor: isBig ? [0,-35] : [0,-24]
@@ -680,7 +697,7 @@
   // ícone de um "empilhamento" liderado por um NPC (sem jogador na pilha) —
   // reaproveita o badge redondo do NPC, só troca o ícone padrão pelo emblema
   // de contagem quando há mais de um integrante no mesmo ponto
-  function npcGroupIcon(pin, stackCount){
+  function npcGroupIcon(pin, stackCount, groupMembers){
     const defaultColor = (PIN_TYPES.find(t => t.id === 'npc') || {}).color || 'var(--ice-300)';
     const color = pin.color || defaultColor;
     const hasPhoto = !!pin.image;
@@ -691,10 +708,8 @@
       ? `background:var(--bg-2); border-color:${escapeHtml(color)}`
       : `background:${color}; border-color:var(--bg-0)`;
     const stackBadge = stackCount && stackCount > 1 ? `<div class="pin-occupancy" style="background:var(--hazard)">${stackCount}</div>` : '';
-    // mesma regra de nome dos tokens: primeira palavra do nome, com "+N" quando
-    // o NPC lidera um empilhamento
-    const npcShortName = escapeHtml((pin.title || 'NPC').trim().split(/\s+/)[0]);
-    const npcNameTag = `<span class="pin-name-tag">${stackCount && stackCount > 1 ? `${npcShortName} +${stackCount - 1}` : npcShortName}</span>`;
+    const groupNames = (groupMembers || [pin]).map(characterDisplayName).join(' · ');
+    const npcNameTag = `<span class="group-members-tag">${escapeHtml(groupNames)}</span>`;
     return L.divIcon({
       className: '',
       html: `<div class="pin-wrap pin-wrap-npc">${stackBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
@@ -703,7 +718,7 @@
       popupAnchor: [0,-35]
     });
   }
-  function tokenIcon(token, stackCount){
+  function tokenIcon(token, stackCount, groupMembers){
     const borderColor = token.color || '#8fd7e8';
     const isSelected = (typeof selectedTokenIds !== 'undefined') && selectedTokenIds.has(token.id);
     let inner;
@@ -712,17 +727,20 @@
     } else {
       inner = `<span>${escapeHtml((token.label || 'TK').slice(0,2).toUpperCase())}</span>`;
     }
-    const name = (token.label || 'Token').trim();
-    // mostra só a primeira palavra do nome (evita etiqueta gigante tampando o mapa)
+    const name = characterDisplayName(token);
+    // tokens individuais mantêm a etiqueta compacta; grupos mostram todos os nomes.
     const shortName = escapeHtml(name.split(/\s+/)[0]);
     const isStack = stackCount && stackCount > 1;
     const stackAttrs = isStack ? ` data-count="${stackCount}"` : '';
-    const nameLabel = isStack ? `${shortName} +${stackCount - 1}` : shortName;
+    const groupNames = (groupMembers || []).map(characterDisplayName).join(' · ');
+    const nameLabel = isStack && groupNames
+      ? `<span class="group-members-tag">${escapeHtml(groupNames)}</span>`
+      : `<span class="token-name-tag">${shortName}</span>`;
     return L.divIcon({
       className: '',
       html: `<div class="token-wrap">
                <div class="token-icon${isSelected ? ' selected' : ''}${isStack ? ' is-stack' : ''}"${stackAttrs} style="border-color:${escapeHtml(borderColor)}; color:${escapeHtml(borderColor)}">${inner}</div>
-               <span class="token-name-tag">${nameLabel}</span>
+               ${nameLabel}
              </div>`,
       iconSize: [44,64],
       iconAnchor: [22,22]
@@ -730,6 +748,37 @@
   }
 
   // ---------- pin popup (create/edit) ----------
+  function confirmInventoryLossBeforeDeletion(entity, entityType){
+    const inventory = Array.isArray(entity.inventory) ? entity.inventory : [];
+    const entityName = entityType === 'token'
+      ? (entity.label || 'Token')
+      : (entity.title || (entityType === 'npc' ? 'NPC' : 'Casa/abrigo'));
+    const entityDescription = entityType === 'house' ? 'esta casa/abrigo' : entityType === 'npc' ? 'este NPC' : 'este token';
+    const inventoryWarning = inventory.length
+      ? `O inventário contém ${inventory.length} item(ns), e todos serão perdidos permanentemente.`
+      : `Todo o inventário que ${entityDescription} possuir será perdido permanentemente.`;
+    if(!window.confirm(`Excluir "${entityName}"?\n\n${inventoryWarning}`)) return false;
+    const confirmation = window.prompt(`Para concluir a exclusão de "${entityName}" e perder o inventário, digite exatamente EXCLUIR:`);
+    if(confirmation !== 'EXCLUIR'){
+      if(confirmation !== null) window.alert('Exclusão cancelada. A palavra digitada não corresponde a EXCLUIR.');
+      return false;
+    }
+    return true;
+  }
+  async function auditInventoryLossOnDeletion(entity, entityType){
+    const inventory = Array.isArray(entity.inventory) ? entity.inventory.slice() : [];
+    if(!inventory.length) return;
+    const character = {
+      id:String(entity.id),
+      type:entityType,
+      entity,
+      name:entityType === 'token' ? (entity.label || 'Token') : (entity.title || entity.label || 'Personagem')
+    };
+    await Promise.all(inventory.map(item => recordInventoryAction('deleted_with_entity', item, character, {
+      deletedEntityType:entityType,
+      result:'inventário perdido com a exclusão da entidade'
+    })));
+  }
   function buildPinPopupContent(pin){
     const container = document.createElement('div');
     const typeLabel = (PIN_TYPES.find(t => t.id === pin.type) || {label:pin.type}).label;
@@ -738,9 +787,7 @@
     // veículos e abrigos podem "conter" tokens dentro deles (jogadores e/ou NPCs),
     // como forma de agrupar quem está ali sem lotar o mapa de tokens soltos
     const isContainer = pin.type === 'veiculo' || pin.type === 'abrigo';
-    const occupants = isContainer
-      ? [...tokens.filter(t => t.containerId === pin.id), ...pins.filter(p => p.type === 'npc' && p.containerId === pin.id)]
-      : [];
+    const occupants = isContainer ? containerOccupants(pin) : [];
     container.innerHTML = `
       <div class="popup-kicker">${typeLabel}</div>
       ${pin.ownerName ? `<div class="popup-owner">Criado por: ${escapeHtml(pin.ownerName)}</div>` : ''}
@@ -775,12 +822,12 @@
     if(isContainer){
       const list = container.querySelector('.occupant-list-pin');
       if(occupants.length === 0){
-        list.innerHTML = '<div class="occupant-empty">Vazio — arraste um token pra cima deste pin no mapa pra colocar alguém aqui.</div>';
+        list.innerHTML = '<div class="occupant-empty">Vazio — arraste um token ou NPC para este pin para colocar alguém aqui.</div>';
       } else {
         occupants.forEach(t => {
           const row = document.createElement('div');
           row.className = 'occupant-row';
-          row.innerHTML = `<span class="occupant-name">${escapeHtml(t.label || 'Token')}</span>
+          row.innerHTML = `<span class="occupant-name">${escapeHtml(characterDisplayName(t))}</span>
             <button type="button" class="release">Retirar</button>`;
           row.querySelector('.release').addEventListener('click', async () => {
             const isPinOccupant = t.type === 'npc';
@@ -869,7 +916,10 @@
       map.closePopup();
       saveKey(KEY_PINS, pins); // salva em segundo plano — a UI já reagiu na hora
     });
-    container.querySelector('.del').addEventListener('click', () => {
+    container.querySelector('.del').addEventListener('click', async () => {
+      const needsInventoryConfirmation = pin.type === 'npc' || pin.type === 'abrigo' || pin.type === 'casa';
+      if(needsInventoryConfirmation && !confirmInventoryLossBeforeDeletion(pin, pin.type === 'npc' ? 'npc' : 'house')) return;
+      if(needsInventoryConfirmation) await auditInventoryLossOnDeletion(pin, pin.type === 'npc' ? 'npc' : 'house');
       // libera quem estava "dentro" desse veículo/abrigo antes de excluir o pin
       let releasedTokens = false;
       tokens.forEach(t => {
@@ -995,7 +1045,9 @@
       map.closePopup();
       saveKey(KEY_TOKENS, tokens);
     });
-    container.querySelector('.del').addEventListener('click', () => {
+    container.querySelector('.del').addEventListener('click', async () => {
+      if(!confirmInventoryLossBeforeDeletion(token, 'token')) return;
+      await auditInventoryLossOnDeletion(token, 'token');
       tokens = tokens.filter(t => t.id !== token.id);
       renderTokens();
       map.closePopup();
@@ -1211,6 +1263,7 @@
       }
     });
     document.getElementById('stat-pins').textContent = pins.length;
+    if(typeof refreshCharacterOptions === 'function') refreshCharacterOptions();
     if(typeof renderNavList === 'function') renderNavList();
   }
   function openPinPopupById(id){
@@ -1336,7 +1389,7 @@
       const isPinMember = m.type === 'npc';
       const row = document.createElement('div');
       row.className = 'occupant-row';
-      row.innerHTML = `<span class="occupant-name">${escapeHtml(m.label || m.title || 'Token')}</span>
+      row.innerHTML = `<span class="occupant-name">${escapeHtml(characterDisplayName(m))}</span>
         <button type="button" class="edit">Editar</button>
         <button type="button" class="leave">Tirar</button>`;
       row.querySelector('.edit').addEventListener('click', () => {
@@ -1416,7 +1469,7 @@
       // for só de NPCs, usa o badge redondo de NPC no lugar do quadrado de token
       const lead = members.find(m => m.type !== 'npc') || members[0];
       const isLeadNpc = lead.type === 'npc';
-      const icon = isLeadNpc ? npcGroupIcon(lead, members.length) : tokenIcon(lead, members.length);
+      const icon = isLeadNpc ? npcGroupIcon(lead, members.length, members) : tokenIcon(lead, members.length, members);
       const marker = L.marker([lead.lat, lead.lng], { icon, draggable:true });
       marker._groupId = gid;
       members.forEach(m => { tokenMarkers[m.id] = marker; });
@@ -1808,6 +1861,7 @@
         type: selectedPinType,
         title: typeLabel,
         note: '',
+        ...(selectedPinType === 'npc' ? { inventory: [] } : {}),
         ...ownerFields()
       };
       pins.push(pin);
@@ -1817,7 +1871,7 @@
       // open the new pin's popup for immediate editing
       openPinPopupById(pin.id);
     } else if(tokenModeOn){
-      const token = { id:newId(), lat:e.latlng.lat, lng:e.latlng.lng, label:'Token', ...ownerFields() };
+      const token = { id:newId(), lat:e.latlng.lat, lng:e.latlng.lng, label:'Token', inventory:[], ...ownerFields() };
       tokens.push(token);
       await saveKey(KEY_TOKENS, tokens);
       renderTokens();
@@ -2011,11 +2065,13 @@
       setSyncStatus('offline');
       (async function initFallback(){
         try{
-          const [p, t, s, r, w] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES), loadKey(KEY_WEATHER)]);
+          const [p, t, s, r, w, audit] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES), loadKey(KEY_WEATHER), loadKey(KEY_INVENTORY_LOG)]);
           pins = p; tokens = t; shapes = s; routes = r;
           weather = (w && w.state) ? w : weather;
+          inventoryLog = Array.isArray(audit) ? audit : [];
           renderPins(); renderTokens(); renderShapes(); renderRoutes();
           applyWeatherVisual();
+          refreshCharacterOptions(); renderInventoryPanel();
         }catch(e){
           console.error('Falha ao carregar dados do mapa', e);
         }finally{
@@ -2048,6 +2104,8 @@
       pins = snap.val() || [];
       saveLocal(KEY_PINS, pins);
       renderPins(); // por diff: nunca derruba o pin que outra pessoa está editando
+      if(typeof refreshCharacterOptions === 'function') refreshCharacterOptions();
+      if(typeof renderInventoryPanel === 'function') renderInventoryPanel();
       markLoaded(1);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (pins)', err); setSyncStatus('offline'); markLoaded(1); });
@@ -2056,6 +2114,8 @@
       tokens = snap.val() || [];
       saveLocal(KEY_TOKENS, tokens);
       if(!tokenDragActive && !tokenPopupActive) renderTokens();
+      if(typeof refreshCharacterOptions === 'function') refreshCharacterOptions();
+      if(typeof renderInventoryPanel === 'function') renderInventoryPanel();
       markLoaded(2);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (tokens)', err); setSyncStatus('offline'); markLoaded(2); });
@@ -2089,7 +2149,7 @@
 
 
   // ================= SAQUE DRAWER (integração do sistema de saque) =================
-  const LOOT_DATA = JSON.parse(document.getElementById('loot-data').textContent);
+  const LOOT_DATA = window.TAU_VOLANTIS_LOOT_DATA;
   const LOC_NAMES = LOOT_DATA.locNames;
   const ITEMS = LOOT_DATA.items;
   const LOC_ORDER = ["casas","farmacias","bases","veiculos","oficinas","mercados","acampamentos","fazendas","florestas","rios","convergencia"];
@@ -2152,28 +2212,106 @@
   const autoSendBox = document.getElementById('auto-send');
   const charSelect = document.getElementById('char-select');
   let lootHistory = [];
-  let lootUid = 0;
 
-  // ---------- personagem: espelha os tokens marcados no mapa ----------
+  // ---------- personagens, inventários e trilha de auditoria ----------
+  function characterName(entity, type){
+    if(type === 'npc') return (entity.title || entity.label || 'NPC').trim() || 'NPC';
+    return (entity.label || 'Token').trim() || 'Token';
+  }
+  function characterRecords(){
+    return [
+      ...tokens.map(entity => { if(!Array.isArray(entity.inventory)) entity.inventory = []; return {type:'token', id:String(entity.id), entity, name:characterName(entity, 'token')}; }),
+      ...pins.filter(entity => entity.type === 'npc').map(entity => { if(!Array.isArray(entity.inventory)) entity.inventory = []; return {type:'npc', id:String(entity.id), entity, name:characterName(entity, 'npc')}; })
+    ];
+  }
+  function characterKey(character){ return character ? `${character.type}:${character.id}` : ''; }
+  function findCharacter(type, id){
+    const entity = type === 'npc'
+      ? pins.find(p => String(p.id) === String(id) && p.type === 'npc')
+      : tokens.find(t => String(t.id) === String(id));
+    return entity ? {type, id:String(entity.id), entity, name:characterName(entity, type)} : null;
+  }
+  function selectedCharacter(){
+    if(!charSelect || !charSelect.value) return null;
+    const separator = charSelect.value.indexOf(':');
+    if(separator < 0) return null;
+    return findCharacter(charSelect.value.slice(0, separator), charSelect.value.slice(separator + 1));
+  }
   function refreshCharacterOptions(){
     if(!charSelect) return;
     const prev = charSelect.value;
-    charSelect.innerHTML = '<option value="">Sobrevivente desconhecido</option>' +
-      tokens.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label || 'Token')}</option>`).join('');
-    if(prev && tokens.some(t => t.id === prev)) charSelect.value = prev;
+    const records = characterRecords();
+    charSelect.innerHTML = '<option value="">Sobrevivente desconhecido</option>' + records.map(character =>
+      `<option value="${escapeHtml(characterKey(character))}">${character.type === 'npc' ? 'NPC' : 'Jogador'} · ${escapeHtml(character.name)}</option>`
+    ).join('');
+    if(records.some(character => characterKey(character) === prev)) charSelect.value = prev;
+    renderInventoryPanel();
   }
-
   function selectedToken(){
-    const id = charSelect.value;
-    if(!id) return null;
-    return tokens.find(t => t.id === id) || null;
+    const character = selectedCharacter();
+    return character && character.type === 'token' ? character.entity : null;
   }
-
   function playerName(){
-    const tok = selectedToken();
-    if(tok) return (tok.label || 'Token').trim() || 'Sobrevivente desconhecido';
-    return "Sobrevivente desconhecido";
+    const character = selectedCharacter();
+    return character ? character.name : 'Sobrevivente desconhecido';
   }
+  function characterInventory(character){
+    if(!character) return [];
+    if(!Array.isArray(character.entity.inventory)) character.entity.inventory = [];
+    return character.entity.inventory;
+  }
+  async function saveCharacterInventory(character){
+    if(!character) return;
+    if(character.type === 'npc') await saveKey(KEY_PINS, pins);
+    else await saveKey(KEY_TOKENS, tokens);
+  }
+  function auditActor(character){ return currentPlayer ? currentPlayer.playerName : (character && character.entity.ownerName) || 'Jogador não identificado'; }
+  async function recordInventoryAction(action, item, character, metadata){
+    const event = {
+      id:newId(), at:Date.now(), action,
+      item:item ? {instanceId:item.instanceId || null, catalogId:item.catalogId || item.id || null, name:item.name, category:item.category || ''} : null,
+      character:character ? {id:character.id, type:character.type, name:character.name} : null,
+      performedBy:auditActor(character),
+      ...(metadata || {})
+    };
+    inventoryLog.unshift(event);
+    saveLocal(KEY_INVENTORY_LOG, inventoryLog);
+    renderInventoryAudit();
+    if(firebaseReady){
+      try{ await firebaseDb.ref('tau-volantis/' + KEY_INVENTORY_LOG).push().set(event); }
+      catch(e){ console.error('Falha ao registrar ação do inventário', e); }
+    }else{
+      await saveKey(KEY_INVENTORY_LOG, inventoryLog);
+    }
+    return event;
+  }
+  function inventoryItemFrom(item, source, entry){
+    return {
+      instanceId:newId(), catalogId:item.id, name:item.name, category:item.category,
+      utility:item.utility || '', calibre:item.calibre || null, addedAt:Date.now(), source,
+      lootId:entry ? entry.uid : null
+    };
+  }
+  async function addItemToInventory(item, character, source, entry){
+    if(!character){
+      await recordInventoryAction('add_failed_no_character', item, null, {source, lootId:entry ? entry.uid : null});
+      return {ok:false, reason:'Selecione um token de jogador ou NPC primeiro.'};
+    }
+    const inventory = characterInventory(character);
+    if(inventory.length >= INVENTORY_LIMIT){
+      await recordInventoryAction('add_failed_full', item, character, {source, lootId:entry ? entry.uid : null, capacity:INVENTORY_LIMIT});
+      return {ok:false, reason:`Inventário cheio (${INVENTORY_LIMIT}/${INVENTORY_LIMIT}).`};
+    }
+    const storedItem = inventoryItemFrom(item, source, entry);
+    inventory.push(storedItem);
+    await saveCharacterInventory(character);
+    await recordInventoryAction(source === 'loot' ? 'loot_kept' : source === 'fish' ? 'catch_kept' : 'added_from_catalog', storedItem, character, {
+      source, lootId:entry ? entry.uid : null, location:entry && entry.locKey ? LOC_NAMES[entry.locKey] : null
+    });
+    renderInventoryPanel();
+    return {ok:true, item:storedItem};
+  }
+  function openInventoryTab(){ openDrawer('inventory'); }
 
   // ---------- coordenada aproximada de onde o saque/pesca foi realizado ----------
   // Converte lat/lng num "setor" tipo grade tática (ex: "Setor N7"), em vez de
@@ -2191,6 +2329,35 @@
       n = Math.floor(n / 26) - 1;
     }while(n >= 0);
     return `Setor ${letters}${Math.max(0, row)}`;
+  }
+
+  function characterForLootEntry(entry){
+    return entry.characterType ? findCharacter(entry.characterType, entry.characterId) : selectedCharacter();
+  }
+  async function recordFoundItem(entry){
+    if(!entry.item) return;
+    await recordInventoryAction('item_found', entry.item, characterForLootEntry(entry), {
+      source:entry.kind, lootId:entry.uid,
+      location:entry.locKey ? LOC_NAMES[entry.locKey] : 'Pescaria',
+      foundBy:entry.foundBy, coord:entry.coord || null
+    });
+  }
+  async function decideLootItem(entry, keep){
+    if(!entry.item || entry.inventoryDecision) return;
+    const character = characterForLootEntry(entry);
+    if(!keep){
+      entry.inventoryDecision = 'left';
+      entry.inventoryMessage = 'Deixado no local';
+      await recordInventoryAction('left_at_location', entry.item, character, {
+        source:entry.kind, lootId:entry.uid,
+        location:entry.locKey ? LOC_NAMES[entry.locKey] : 'Pescaria', foundBy:entry.foundBy
+      });
+    }else{
+      const result = await addItemToInventory(entry.item, character, entry.kind === 'fish' ? 'fish' : 'loot', entry);
+      entry.inventoryMessage = result.ok ? `Mantido por ${character.name}` : result.reason;
+      if(result.ok) entry.inventoryDecision = 'kept';
+    }
+    if(entry.kind === 'fish') renderFishResults(); else renderLootResults();
   }
 
   // Armas de fogo e munição são de posse civil muito restrita no Brasil, então
@@ -2224,9 +2391,14 @@
   function rollLoot(locKey){
     const pool = byLoc[locKey];
     const item = weightedPick(pool, locKey);
-    const tok = selectedToken();
-    const entry = {kind:'loot', item, locKey, uid: ++lootUid, sendState: 'idle', foundBy: playerName(), coord: tok ? gridRef(tok.lat, tok.lng) : null};
+    const character = selectedCharacter();
+    const entry = {
+      kind:'loot', item, locKey, uid:newId(), sendState:'idle', foundBy:playerName(),
+      coord:character ? gridRef(character.entity.lat, character.entity.lng) : null,
+      characterType:character ? character.type : null, characterId:character ? character.id : null
+    };
     lootHistory.unshift(entry);
+    recordFoundItem(entry);
     renderLootResults();
     if (autoSendBox.checked) sendLootToDiscord(entry);
   }
@@ -2253,17 +2425,28 @@
           <div class="result-loc">Buscado em: ${LOC_NAMES[locKey]}</div>
           <div class="found-by">Encontrado por: ${escapeHtml(foundBy)}</div>
         </div>
-        <div class="result-name">${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span></div>
-        <span class="result-cat">${item.category}</span>
-        <div class="result-utility"><b>Utilidade:</b> ${item.utility}</div>
+        <div class="result-name">${escapeHtml(item.name)}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span></div>
+        <span class="result-cat">${escapeHtml(item.category)}</span>
+        <div class="result-utility"><b>Utilidade:</b> ${escapeHtml(item.utility)}</div>
         ${compatLine(item)}
         ${coord ? `<div class="result-coord">📍 ${coord}</div>` : ''}
         <div class="send-row">
           <button class="send-btn" data-action="send">Enviar ao Discord</button>
           <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
         </div>
+        <div class="inventory-choice-row">
+          ${entry.inventoryDecision ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage || '')}</span>` : `
+            ${entry.inventoryMessage ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage)}</span>` : ''}
+            <button type="button" class="inventory-action-btn keep" data-action="keep">Adicionar ao inventário</button>
+            <button type="button" class="inventory-action-btn leave" data-action="leave">Deixar no local</button>
+          `}
+        </div>
       `;
       card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
+      const keepBtn = card.querySelector('[data-action="keep"]');
+      const leaveBtn = card.querySelector('[data-action="leave"]');
+      if(keepBtn) keepBtn.addEventListener('click', () => decideLootItem(entry, true));
+      if(leaveBtn) leaveBtn.addEventListener('click', () => decideLootItem(entry, false));
       resultZone.appendChild(card);
     });
     resultZone.appendChild(clearBtn);
@@ -2292,6 +2475,7 @@
     if (!url) {
       entry.sendState = 'fail';
       updateLootCardStatus(entry, zone);
+      if(entry.item) recordInventoryAction('discord_send', entry.item, characterForLootEntry(entry), {lootId:entry.uid, result:'falha: webhook não configurado'});
       return;
     }
     entry.sendState = 'sending';
@@ -2352,6 +2536,7 @@
       entry.sendState = 'fail';
     }
     updateLootCardStatus(entry, zone);
+    if(entry.item) recordInventoryAction('discord_send', entry.item, characterForLootEntry(entry), {lootId:entry.uid, result:entry.sendState === 'ok' ? 'enviado' : 'falha'});
   }
 
   // ---------- pescaria ----------
@@ -2360,7 +2545,6 @@
   const fishBtn = document.getElementById('fish-btn');
   const fishResultEl = document.getElementById('fish-result');
   let fishHistory = [];
-  let fishUid = 0;
 
   function rollFish(){
     const totalFishWeight = FISH_POOL.reduce((a,b)=>a+b.fish,0);
@@ -2375,9 +2559,14 @@
       }
       if (!caught) caught = FISH_POOL[FISH_POOL.length - 1];
     }
-    const tok = selectedToken();
-    const entry = {kind:'fish', item: caught, uid: ++fishUid, sendState:'idle', foundBy: playerName(), coord: tok ? gridRef(tok.lat, tok.lng) : null};
+    const character = selectedCharacter();
+    const entry = {
+      kind:'fish', item:caught, locKey:'rios', uid:newId(), sendState:'idle', foundBy:playerName(),
+      coord:character ? gridRef(character.entity.lat, character.entity.lng) : null,
+      characterType:character ? character.type : null, characterId:character ? character.id : null
+    };
     fishHistory.unshift(entry);
+    if(caught) recordFoundItem(entry);
     renderFishResults();
     if (autoSendBox.checked) sendLootToDiscord(entry);
   }
@@ -2404,15 +2593,29 @@
           <div class="result-loc">Rios, Igarapés e Margens</div>
           <div class="found-by">Pescado por: ${escapeHtml(entry.foundBy)}</div>
         </div>
-        <div class="fish-name">${isNothing ? 'Nada fisgou a isca desta vez' : entry.item.name}</div>
-        <div class="fish-desc">${isNothing ? 'A linha voltou vazia. Vale tentar de novo em outro ponto do rio.' : entry.item.utility}</div>
+        <div class="fish-name">${isNothing ? 'Nada fisgou a isca desta vez' : escapeHtml(entry.item.name)}</div>
+        <div class="fish-desc">${isNothing ? 'A linha voltou vazia. Vale tentar de novo em outro ponto do rio.' : escapeHtml(entry.item.utility)}</div>
         ${entry.coord ? `<div class="result-coord">📍 ${entry.coord}</div>` : ''}
-        <div class="send-row">
-          <button class="send-btn" data-action="send">Enviar ao Discord</button>
-          <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
-        </div>
+        ${!isNothing ? `
+          <div class="send-row">
+            <button class="send-btn" data-action="send">Enviar ao Discord</button>
+            <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
+          </div>
+          <div class="inventory-choice-row">
+            ${entry.inventoryDecision ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage || '')}</span>` : `
+              ${entry.inventoryMessage ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage)}</span>` : ''}
+              <button type="button" class="inventory-action-btn keep" data-action="keep">Adicionar ao inventário</button>
+              <button type="button" class="inventory-action-btn leave" data-action="leave">Deixar no local</button>
+            `}
+          </div>
+        ` : ''}
       `;
-      card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
+      const sendBtn = card.querySelector('[data-action="send"]');
+      const keepBtn = card.querySelector('[data-action="keep"]');
+      const leaveBtn = card.querySelector('[data-action="leave"]');
+      if(sendBtn) sendBtn.addEventListener('click', () => sendLootToDiscord(entry));
+      if(keepBtn) keepBtn.addEventListener('click', () => decideLootItem(entry, true));
+      if(leaveBtn) leaveBtn.addEventListener('click', () => decideLootItem(entry, false));
       fishResultEl.appendChild(card);
     });
     fishResultEl.appendChild(clearFishBtn);
@@ -2448,13 +2651,18 @@
       const rarity = rarityInfo(item, worstLoc);
       return `
       <tr>
-        <td>${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
-        <td>${item.category}</td>
+        <td>${escapeHtml(item.name)}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
+        <td>${escapeHtml(item.category)}</td>
         <td>${item.locations.map(l => `<span class="mini-tag">${LOC_NAMES[l].split(' ')[0]}</span>`).join('')}</td>
-        <td>${item.utility}</td>
+        <td>${escapeHtml(item.utility)}</td>
+        <td><button type="button" class="inventory-action-btn keep catalog-add-btn" data-add-item="${item.id}">Adicionar</button></td>
       </tr>
     `;
     }).join('');
+    itemTbody.querySelectorAll('[data-add-item]').forEach(button => {
+      const item = ITEMS.find(entry => String(entry.id) === button.dataset.addItem);
+      button.addEventListener('click', () => addCatalogItem(item));
+    });
   }
 
   const itemSearchInput = document.getElementById('item-search-input');
@@ -2469,12 +2677,141 @@
   itemSearchInput.addEventListener('input', applyItemFilters);
   itemFilterLoc.addEventListener('change', applyItemFilters);
 
+  async function addCatalogItem(item){
+    if(!item) return;
+    const character = selectedCharacter();
+    const result = await addItemToInventory(item, character, 'catalog', null);
+    if(!result.ok) alert(result.reason);
+    else alert(`${item.name} adicionado ao inventário de ${character.name}.`);
+  }
+
+  function renderInventoryPanel(){
+    const summary = document.getElementById('inventory-summary');
+    const itemsEl = document.getElementById('inventory-items');
+    const targetSelect = document.getElementById('inventory-trade-target');
+    const inventoryCharacterSelect = document.getElementById('inventory-character-select');
+    if(!summary || !itemsEl || !targetSelect || !inventoryCharacterSelect || !charSelect) return;
+    const selected = selectedCharacter();
+    const records = characterRecords();
+    inventoryCharacterSelect.innerHTML = '<option value="">Selecione um token ou NPC</option>' + records.map(character =>
+      `<option value="${escapeHtml(characterKey(character))}">${character.type === 'npc' ? 'NPC' : 'Jogador'} · ${escapeHtml(character.name)}</option>`
+    ).join('');
+    if(records.some(character => characterKey(character) === charSelect.value)) inventoryCharacterSelect.value = charSelect.value;
+    const previousTarget = targetSelect.value;
+    targetSelect.innerHTML = '<option value="">Selecione outro personagem</option>' + records
+      .filter(character => !selected || characterKey(character) !== characterKey(selected))
+      .map(character => `<option value="${escapeHtml(characterKey(character))}">${character.type === 'npc' ? 'NPC' : 'Jogador'} · ${escapeHtml(character.name)}</option>`).join('');
+    if(previousTarget && Array.from(targetSelect.options).some(option => option.value === previousTarget)) targetSelect.value = previousTarget;
+    if(!selected){
+      summary.innerHTML = '<div class="empty-hint">Selecione um token de jogador ou NPC acima para abrir seu inventário.</div>';
+      itemsEl.innerHTML = '<div class="empty-hint">Nenhum personagem selecionado.</div>';
+      return;
+    }
+    const inventory = characterInventory(selected);
+    const percent = Math.min(100, inventory.length / INVENTORY_LIMIT * 100);
+    summary.innerHTML = `<div class="inventory-summary-top"><strong>${escapeHtml(selected.name)}</strong><span>${inventory.length}/${INVENTORY_LIMIT} itens</span></div><div class="inventory-capacity"><span style="width:${percent}%"></span></div>`;
+    if(!inventory.length){
+      itemsEl.innerHTML = '<div class="empty-hint">Este inventário ainda está vazio.</div>';
+      return;
+    }
+    itemsEl.innerHTML = inventory.map(item => `
+      <article class="inventory-item-card" data-instance="${escapeHtml(item.instanceId || '')}">
+        <div class="inventory-item-copy"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.category || 'Item')}</span></div>
+        <div class="inventory-item-actions">
+          <button type="button" class="inventory-action-btn" data-action="use">Usar</button>
+          <button type="button" class="inventory-action-btn leave" data-action="discard">Descartar</button>
+          <button type="button" class="inventory-action-btn keep" data-action="trade">Trocar</button>
+        </div>
+      </article>
+    `).join('');
+    itemsEl.querySelectorAll('[data-action]').forEach(button => {
+      button.addEventListener('click', () => handleInventoryAction(selected, button.closest('[data-instance]').dataset.instance, button.dataset.action));
+    });
+  }
+
+  function parseCharacterKey(key){
+    const separator = (key || '').indexOf(':');
+    return separator < 0 ? null : findCharacter(key.slice(0, separator), key.slice(separator + 1));
+  }
+  async function handleInventoryAction(owner, instanceId, action){
+    const current = findCharacter(owner.type, owner.id);
+    if(!current) return;
+    const inventory = characterInventory(current);
+    const itemIndex = inventory.findIndex(item => item.instanceId === instanceId);
+    if(itemIndex < 0) return;
+    const item = inventory[itemIndex];
+    if(action === 'use' || action === 'discard'){
+      inventory.splice(itemIndex, 1);
+      await saveCharacterInventory(current);
+      await recordInventoryAction(action === 'use' ? 'used' : 'discarded', item, current, {source:item.source || null, lootId:item.lootId || null});
+      renderInventoryPanel();
+      return;
+    }
+    const destination = parseCharacterKey(document.getElementById('inventory-trade-target').value);
+    if(!destination){
+      await recordInventoryAction('trade_failed_no_target', item, current, {fromCharacter:current.name});
+      alert('Selecione outro personagem para realizar a troca.');
+      return;
+    }
+    if(characterKey(current) === characterKey(destination)) return;
+    const destinationInventory = characterInventory(destination);
+    if(destinationInventory.length >= INVENTORY_LIMIT){
+      await recordInventoryAction('trade_failed_full', item, current, {fromCharacter:current.name, toCharacter:destination.name, capacity:INVENTORY_LIMIT});
+      alert(`O inventário de ${destination.name} está cheio.`);
+      return;
+    }
+    inventory.splice(itemIndex, 1);
+    destinationInventory.push({...item, transferredAt:Date.now()});
+    await Promise.all([saveCharacterInventory(current), saveCharacterInventory(destination)]);
+    await recordInventoryAction('traded', item, current, {
+      fromCharacter:current.name, toCharacter:destination.name,
+      from:{id:current.id, type:current.type}, to:{id:destination.id, type:destination.type}
+    });
+    renderInventoryPanel();
+  }
+
+  const AUDIT_ACTION_LABELS = {
+    item_found:'Item encontrado', loot_kept:'Item mantido', catch_kept:'Captura mantida',
+    left_at_location:'Deixado no local', added_from_catalog:'Adicionado pelo catálogo',
+    used:'Usado', discarded:'Descartado', traded:'Trocado', deleted_with_entity:'Perdido com exclusão',
+    add_failed_no_character:'Adição recusada: personagem não selecionado',
+    add_failed_full:'Adição recusada: inventário cheio',
+    trade_failed_no_target:'Troca recusada: destino não selecionado',
+    trade_failed_full:'Troca recusada: inventário de destino cheio', discord_send:'Envio ao Discord'
+  };
+  function renderInventoryAudit(){
+    const list = document.getElementById('inventory-audit-list');
+    if(!list) return;
+    if(!inventoryLog.length){
+      list.innerHTML = '<div class="empty-hint">Ainda não há ações registradas.</div>';
+      return;
+    }
+    list.innerHTML = inventoryLog.map(event => {
+      const time = new Date(event.at).toLocaleString('pt-BR');
+      const action = AUDIT_ACTION_LABELS[event.action] || event.action;
+      const itemName = event.item ? event.item.name : 'Sem item';
+      const person = event.character ? event.character.name : 'Sem personagem';
+      const transfer = event.toCharacter ? ` → ${event.toCharacter}` : '';
+      const place = event.location ? ` · ${event.location}` : '';
+      const result = event.result ? ` · ${event.result}` : '';
+      return `<article class="audit-entry"><time>${escapeHtml(time)}</time><strong>${escapeHtml(action)}</strong><span>${escapeHtml(itemName)}</span><small>${escapeHtml(person + transfer + place + result)} · por ${escapeHtml(event.performedBy || 'Desconhecido')}</small></article>`;
+    }).join('');
+  }
+
   // ---------- abrir/fechar a gaveta ----------
   const saqueDrawer = document.getElementById('saque-drawer');
   const drawerBackdrop = document.getElementById('drawer-backdrop');
-  function openDrawer(){
+  function setDrawerTab(tab){
+    document.querySelectorAll('.drawer-tab').forEach(button => button.classList.toggle('active', button.dataset.panel === tab));
+    document.querySelectorAll('.drawer-panel').forEach(panel => panel.classList.toggle('active', panel.id === `${tab}-panel`));
+    if(tab === 'inventory') renderInventoryPanel();
+    if(tab === 'audit') renderInventoryAudit();
+  }
+  document.querySelectorAll('.drawer-tab').forEach(button => button.addEventListener('click', () => setDrawerTab(button.dataset.panel)));
+  function openDrawer(tab){
     refreshCharacterOptions();
     if(typeof closeNavDrawer === 'function') closeNavDrawer();
+    setDrawerTab(tab || 'loot');
     saqueDrawer.classList.add('open');
     drawerBackdrop.classList.add('open');
   }
@@ -2483,13 +2820,40 @@
     drawerBackdrop.classList.remove('open');
   }
   document.getElementById('drawer-toggle-btn').addEventListener('click', () => {
-    saqueDrawer.classList.contains('open') ? closeDrawer() : openDrawer();
+    saqueDrawer.classList.contains('open') ? closeDrawer() : openDrawer('loot');
+  });
+  document.getElementById('inventory-toggle-btn').addEventListener('click', () => {
+    saqueDrawer.classList.contains('open') ? setDrawerTab('inventory') : openDrawer('inventory');
   });
   document.getElementById('drawer-close-btn').addEventListener('click', closeDrawer);
   drawerBackdrop.addEventListener('click', closeDrawer);
 
+  charSelect.addEventListener('change', renderInventoryPanel);
+  document.getElementById('inventory-character-select').addEventListener('change', event => {
+    charSelect.value = event.target.value;
+    renderInventoryPanel();
+  });
+  function initInventoryAuditSync(){
+    if(firebaseReady){
+      firebaseDb.ref('tau-volantis/' + KEY_INVENTORY_LOG).on('value', snap => {
+        const data = snap.val() || {};
+        inventoryLog = Array.isArray(data) ? data.slice() : Object.keys(data).map(key => data[key]).filter(Boolean);
+        inventoryLog.sort((a, b) => (b.at || 0) - (a.at || 0));
+        saveLocal(KEY_INVENTORY_LOG, inventoryLog);
+        renderInventoryAudit();
+      }, err => console.error('Erro ao sincronizar auditoria do inventário', err));
+    }else{
+      loadKey(KEY_INVENTORY_LOG).then(data => {
+        inventoryLog = Array.isArray(data) ? data : [];
+        renderInventoryAudit();
+      });
+    }
+  }
+  initInventoryAuditSync();
+
   renderLootResults();
   renderFishResults();
   refreshCharacterOptions();
+  renderInventoryAudit();
 
 })();
