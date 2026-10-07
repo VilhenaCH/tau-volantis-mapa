@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tau Volantis — Mapa de Campo</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 <link rel="stylesheet" href="style.css">
 </head>
@@ -60,10 +62,11 @@
         </div>
 
         <div class="popover-section">
-          <div class="vs-group-label">Equipe e navegação</div>
+          <div class="vs-group-label">Mapa</div>
           <div class="toolbar-group">
             <button class="tool-btn" id="nav-drawer-toggle-btn"><span class="dot" style="background:var(--ice-300)"></span>Lista do mapa</button>
             <button class="tool-btn" id="token-select-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Selecionar tokens</button>
+            <button class="tool-btn" id="fab-tools" type="button" title="Ferramentas do mapa" aria-label="Ferramentas do mapa" aria-expanded="false"><span class="dot" style="background:var(--hazard)"></span>Ferramentas do mapa</button>
           </div>
         </div>
 
@@ -145,23 +148,15 @@
       <div class="weather-meta-line" id="weather-meta-line"></div>
     </div>
 
-    <!-- Ações principais da partida: adicionar, ferramentas, saque e mochila. -->
+    <!-- Ações principais da partida: buscar, adicionar e suprimentos. -->
     <div class="action-cluster" id="action-cluster">
       <button class="action-fab tabbar-item" id="fab-add" type="button" title="Adicionar" aria-label="Adicionar ao mapa" aria-expanded="false">
         <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-7.6-7-12.4A7 7 0 0 1 12 1a7 7 0 0 1 7 7.6C19 13.4 12 21 12 21z"></path><circle cx="12" cy="8.5" r="2.4"></circle></svg></span>
-        <span class="tab-label">Adicionar</span>
+        <span class="tab-label">Criar</span>
       </button>
-      <button class="action-fab tabbar-item" id="fab-tools" type="button" title="Ferramentas" aria-label="Ferramentas" aria-expanded="false">
-        <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"></path></svg></span>
-        <span class="tab-label">Ferram.</span>
-      </button>
-      <button class="action-fab tabbar-item" id="fab-loot" type="button" title="Abrir saque" aria-label="Abrir saque" aria-expanded="false">
+      <button class="action-fab tabbar-item" id="fab-loot" type="button" title="Abrir suprimentos" aria-label="Abrir suprimentos" aria-expanded="false">
         <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l1 13H4L5 8Z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M9 13h6"></path></svg></span>
-        <span class="tab-label">Saque</span>
-      </button>
-      <button class="action-fab tabbar-item" id="fab-inventory" type="button" title="Abrir mochila" aria-label="Abrir mochila" aria-expanded="false">
-        <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v10H5V10Z"></path><path d="M9 7V5a3 3 0 0 1 6 0v2"></path><path d="M5 13h14"></path><path d="M9 13v2h6v-2"></path></svg></span>
-        <span class="tab-label">Mochila</span>
+        <span class="tab-label">Itens</span>
       </button>
     </div>
     <!-- fundo da barra de navegação inferior no celular (decorativo,
@@ -201,6 +196,7 @@
 </main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 
 <!-- Firebase Realtime Database — sincroniza pins, tokens, áreas e rotas
@@ -212,12 +208,16 @@
   <div class="drawer-backdrop" id="drawer-backdrop"></div>
   <div id="saque-drawer">
     <div class="drawer-header">
-      <div class="eyebrow">Sessão cooperativa · Recursos</div>
+      <div class="eyebrow">Sessão · recursos</div>
       <h2>Suprimentos
         <button type="button" class="drawer-close" id="drawer-close-btn" title="Fechar">&times;</button>
       </h2>
     </div>
-    <nav class="drawer-tabs" aria-label="Menu de saque">
+    <div class="drawer-character">
+      <label for="char-select">Personagem ativo</label>
+      <select id="char-select"><option value="">Sobrevivente desconhecido</option></select>
+    </div>
+    <nav class="drawer-tabs" aria-label="Suprimentos">
       <button type="button" class="drawer-tab active" data-panel="loot">Saque</button>
       <button type="button" class="drawer-tab" data-panel="inventory">Inventário</button>
       <button type="button" class="drawer-tab" data-panel="audit">Auditoria</button>
@@ -225,17 +225,13 @@
     <div class="drawer-body">
       <section class="drawer-panel active" id="loot-panel">
 
-      <p class="section-label">Personagem &amp; Discord</p>
       <div class="discord-panel">
-        <div class="dp-title">Personagem (do mapa)</div>
-        <select id="char-select">
-          <option value="">Sobrevivente desconhecido</option>
-        </select>
-        <div class="char-hint">Selecione um token de jogador ou NPC. O saque/pesca usa a posição do personagem para registrar o setor aproximado.</div>
-        <div class="dp-title" style="margin-top:0.3rem;">Webhook do Discord</div>
-        <input type="text" id="webhook-input" placeholder="https://discord.com/api/webhooks/..." value="">
-        <label class="dp-toggle"><input type="checkbox" id="auto-send" checked> Enviar automaticamente a cada busca</label>
-        <div class="dp-note">O link do webhook fica salvo apenas nesta aba/dispositivo.</div>
+        <details class="optional-settings">
+          <summary>Discord · opcional</summary>
+          <input type="text" id="webhook-input" placeholder="Webhook do Discord" value="">
+          <label class="dp-toggle"><input type="checkbox" id="auto-send" checked> Enviar achados automaticamente</label>
+          <div class="dp-note">O webhook fica salvo neste dispositivo.</div>
+        </details>
       </div>
 
       <p class="section-label">Locais urbanos e industriais</p>
@@ -247,19 +243,15 @@
       <p class="section-label">Pescaria</p>
       <div class="fish-panel">
         <h3>🎣 Rios, Igarapés e Margens</h3>
-        <p>O personagem selecionado lança a linha e tenta a sorte — pode não fisgar nada, ou trazer desde um peixe comum até uma captura rara.</p>
+        <p>Pesque com o personagem ativo. Algumas capturas são raras.</p>
         <button class="fish-btn" id="fish-btn">Lançar a linha</button>
         <div id="fish-result"><div class="fish-empty">Nenhuma tentativa de pesca ainda.</div></div>
       </div>
 
-      <p class="section-label">Resultado da busca</p>
+      <p class="section-label">Último achado</p>
       <div id="result-zone">
-        <div class="empty-hint">Nenhuma busca realizada ainda. Clique em um local acima para vasculhar.</div>
+        <div class="empty-hint">Nenhum achado ainda.</div>
       </div>
-
-      <p class="section-label">Bancada de campo</p>
-      <p class="char-hint">Combine itens do inventário do personagem selecionado. As receitas usam somente itens já existentes no catálogo.</p>
-      <div id="loot-crafting-recipes" class="crafting-recipes"></div>
 
       <div style="margin-top:1.6rem;">
         <button class="browse-toggle" id="saque-browse-toggle">▸ Ver tabela completa de itens</button>
@@ -283,23 +275,19 @@
 
       </section>
       <section class="drawer-panel" id="inventory-panel">
-        <p class="section-label">Personagem</p>
-        <select id="inventory-character-select"><option value="">Selecione um token ou NPC</option></select>
         <div class="inventory-summary" id="inventory-summary"></div>
         <p class="section-label">Itens carregados</p>
         <div id="inventory-items"></div>
         <p class="section-label">Bancada de campo</p>
-        <p class="char-hint">Combine componentes guardados neste inventário para fabricar equipamentos de sobrevivência.</p>
+        <p class="char-hint">Combine itens que você já carrega.</p>
         <div id="inventory-crafting-recipes" class="crafting-recipes"></div>
         <div class="inventory-trade-bar">
           <label for="inventory-trade-target">Transferir item para</label>
           <select id="inventory-trade-target"><option value="">Selecione outro personagem</option></select>
         </div>
-        <p class="char-hint">Cada item ocupa um espaço. O limite é de 20 itens por personagem.</p>
       </section>
       <section class="drawer-panel" id="audit-panel">
-        <p class="section-label">Registro interno de ações</p>
-        <p class="char-hint">Histórico compartilhado de itens encontrados, mantidos, deixados, usados, descartados, transferidos e fabricados.</p>
+        <p class="section-label">Histórico de itens</p>
         <div id="inventory-audit-list"></div>
       </section>
 

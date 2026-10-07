@@ -364,8 +364,21 @@
     maxZoom: 19
   });
 
-  const pinsLayer = L.layerGroup().addTo(map);
-  const tokensLayer = L.layerGroup().addTo(map);
+  // Pins e personagens compartilham uma camada com agrupamento por proximidade.
+  // No zoom máximo, pontos coincidentes podem ser abertos em leque.
+  const mapEntitiesLayer = L.markerClusterGroup ? L.markerClusterGroup({
+    maxClusterRadius: zoom => zoom >= 16 ? 28 : 48,
+    spiderfyOnMaxZoom: true,
+    zoomToBoundsOnClick: true,
+    showCoverageOnHover: false,
+    spiderfyDistanceMultiplier: 1.35,
+    iconCreateFunction: cluster => L.divIcon({
+      html: `<span>${cluster.getChildCount()}</span>`,
+      className: 'tv-marker-cluster',
+      iconSize: L.point(42, 42),
+      iconAnchor: L.point(21, 21)
+    })
+  }).addTo(map) : L.layerGroup().addTo(map);
   const shapesLayer = L.layerGroup().addTo(map);
   const routesLayer = L.layerGroup().addTo(map);
 
@@ -389,7 +402,7 @@
     const src = e.popup && e.popup._source;
     if(!src) return;
     if(src._pinId !== undefined) editingPinId = src._pinId;
-    if(tokensLayer.hasLayer(src)) tokenPopupActive = true;
+    if(src._tokenId !== undefined || src._groupId !== undefined) tokenPopupActive = true;
     if(shapesLayer.hasLayer(src)) shapePopupActive = true;
     if(routesLayer.hasLayer(src)) routePopupActive = true;
   });
@@ -399,7 +412,7 @@
     // ao fechar, libera a trava e recupera qualquer atualização remota que
     // tenha chegado enquanto o popup estava aberto
     if(src._pinId !== undefined && src._pinId === editingPinId){ editingPinId = null; renderPins(); }
-    if(tokensLayer.hasLayer(src)){ tokenPopupActive = false; renderTokens(); }
+    if(src._tokenId !== undefined || src._groupId !== undefined){ tokenPopupActive = false; renderTokens(); }
     if(shapesLayer.hasLayer(src)){ shapePopupActive = false; renderShapes(); }
     if(routesLayer.hasLayer(src)){ routePopupActive = false; renderRoutes(); }
   });
@@ -1254,7 +1267,7 @@
         // busca o pin atual na hora de abrir o popup (nunca o objeto "congelado"
         // no momento da criação do marker), pra sempre mostrar dado fresco
         marker.bindPopup(() => buildPinPopupContent(pins.find(pp => pp.id === pin.id) || pin));
-        marker.addTo(pinsLayer);
+        marker.addTo(mapEntitiesLayer);
         pinMarkers[pin.id] = marker;
       } else if(pin.id !== pinDraggingId && pin.id !== editingPinId){
         // protegido: enquanto está sendo arrastado ou com o popup de edição
@@ -1268,7 +1281,7 @@
     // remove marcadores de pins que não existem mais / saíram de vista
     Object.keys(pinMarkers).forEach(id => {
       if(!seen.has(id)){
-        pinsLayer.removeLayer(pinMarkers[id]);
+        mapEntitiesLayer.removeLayer(pinMarkers[id]);
         delete pinMarkers[id];
       }
     });
@@ -1278,7 +1291,9 @@
   }
   function openPinPopupById(id){
     const marker = pinMarkers[id];
-    if(marker && marker.openPopup) marker.openPopup();
+    if(!marker || !marker.openPopup) return;
+    if(mapEntitiesLayer.zoomToShowLayer) mapEntitiesLayer.zoomToShowLayer(marker, () => marker.openPopup());
+    else marker.openPopup();
   }
 
   // ---------- seleção múltipla de tokens (mover vários em grupo) ----------
@@ -1442,7 +1457,7 @@
   }
 
   function renderTokens(){
-    tokensLayer.clearLayers();
+    new Set(Object.values(tokenMarkers)).forEach(marker => mapEntitiesLayer.removeLayer(marker));
     Object.keys(tokenMarkers).forEach(k => delete tokenMarkers[k]);
 
     // tokens "dentro" de um veículo/abrigo não aparecem soltos no mapa
@@ -1507,7 +1522,7 @@
       });
 
       marker.bindPopup(() => buildGroupPopupContent(gid, members));
-      marker.addTo(tokensLayer);
+      marker.addTo(mapEntitiesLayer);
     });
 
     // ---- tokens individuais (não empilhados, não dentro de veículo/abrigo) ----
@@ -1572,16 +1587,17 @@
       });
 
       if(!tokenSelectMode) marker.bindPopup(() => buildTokenPopupContent(token));
-      marker.addTo(tokensLayer);
+      marker.addTo(mapEntitiesLayer);
     });
     document.getElementById('stat-tokens').textContent = tokens.length;
     if(typeof refreshCharacterOptions === 'function') refreshCharacterOptions();
     if(typeof renderNavList === 'function') renderNavList();
   }
   function openTokenPopupById(id){
-    tokensLayer.eachLayer(l => {
-      if(l._tokenId === id && l.openPopup) l.openPopup();
-    });
+    const marker = tokenMarkers[id];
+    if(!marker || !marker.openPopup) return;
+    if(mapEntitiesLayer.zoomToShowLayer) mapEntitiesLayer.zoomToShowLayer(marker, () => marker.openPopup());
+    else marker.openPopup();
   }
 
   function renderShapes(){
@@ -2000,7 +2016,7 @@
     pins.forEach(p => {
       if((p.title||'').toLowerCase().includes(q) || (p.note||'').toLowerCase().includes(q)){
         results.push({ kicker:'Pin no mapa', label:p.title || 'Pin', latlng:[p.lat,p.lng],
-          openPopup: () => { pinsLayer.eachLayer(l => { if(l.getLatLng && l.getLatLng().lat===p.lat && l.getLatLng().lng===p.lng) l.openPopup(); }); } });
+          openPopup: () => openPinPopupById(p.id) });
       }
     });
     shapes.forEach(s => {
@@ -2759,7 +2775,6 @@
     });
   }
   function renderCraftingPanels(character){
-    renderCraftingPanel('loot-crafting-recipes', character);
     renderCraftingPanel('inventory-crafting-recipes', character);
   }
   async function craftInventoryRecipe(recipeId){
@@ -2801,15 +2816,10 @@
     const summary = document.getElementById('inventory-summary');
     const itemsEl = document.getElementById('inventory-items');
     const targetSelect = document.getElementById('inventory-trade-target');
-    const inventoryCharacterSelect = document.getElementById('inventory-character-select');
-    if(!summary || !itemsEl || !targetSelect || !inventoryCharacterSelect || !charSelect) return;
+    if(!summary || !itemsEl || !targetSelect || !charSelect) return;
     const selected = selectedCharacter();
     renderCraftingPanels(selected);
     const records = characterRecords();
-    inventoryCharacterSelect.innerHTML = '<option value="">Selecione um token ou NPC</option>' + records.map(character =>
-      `<option value="${escapeHtml(characterKey(character))}">${character.type === 'npc' ? 'NPC' : 'Jogador'} · ${escapeHtml(character.name)}</option>`
-    ).join('');
-    if(records.some(character => characterKey(character) === charSelect.value)) inventoryCharacterSelect.value = charSelect.value;
     const previousTarget = targetSelect.value;
     targetSelect.innerHTML = '<option value="">Selecione outro personagem</option>' + records
       .filter(character => !selected || characterKey(character) !== characterKey(selected))
@@ -2938,11 +2948,8 @@
   }
   function syncDrawerActionButtons(){
     const isOpen = Boolean(saqueDrawer && saqueDrawer.classList.contains('open'));
-    const activeTab = document.querySelector('.drawer-tab.active')?.dataset.panel;
-    const lootButton = document.getElementById('fab-loot');
-    const inventoryButton = document.getElementById('fab-inventory');
-    if(lootButton){ lootButton.classList.toggle('active', isOpen && activeTab === 'loot'); lootButton.setAttribute('aria-expanded', String(isOpen && activeTab === 'loot')); }
-    if(inventoryButton){ inventoryButton.classList.toggle('active', isOpen && activeTab === 'inventory'); inventoryButton.setAttribute('aria-expanded', String(isOpen && activeTab === 'inventory')); }
+    const suppliesButton = document.getElementById('fab-loot');
+    if(suppliesButton){ suppliesButton.classList.toggle('active', isOpen); suppliesButton.setAttribute('aria-expanded', String(isOpen)); }
   }
   function openDrawerFromShortcut(tab){
     appPopovers.forEach(popover => popover.close());
@@ -2955,15 +2962,10 @@
     openDrawer(tab);
   }
   document.getElementById('fab-loot').addEventListener('click', () => openDrawerFromShortcut('loot'));
-  document.getElementById('fab-inventory').addEventListener('click', () => openDrawerFromShortcut('inventory'));
   document.getElementById('drawer-close-btn').addEventListener('click', closeDrawer);
   drawerBackdrop.addEventListener('click', closeDrawer);
 
   charSelect.addEventListener('change', renderInventoryPanel);
-  document.getElementById('inventory-character-select').addEventListener('change', event => {
-    charSelect.value = event.target.value;
-    renderInventoryPanel();
-  });
   function initInventoryAuditSync(){
     if(firebaseReady){
       firebaseDb.ref('tau-volantis/' + KEY_INVENTORY_LOG).on('value', snap => {
