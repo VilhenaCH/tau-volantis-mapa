@@ -1,0 +1,143 @@
+{
+  "rules": {
+    "tau-volantis": {
+      "players": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && $uid === auth.uid"
+        }
+      },
+      "user-shortcuts": {
+        "$uid": {
+          ".read": "auth != null && $uid === auth.uid",
+          ".write": "auth != null && $uid === auth.uid"
+        }
+      },
+      "campaign-meta": {
+        ".read": "auth != null",
+        "$cid": {
+          ".write": "auth != null && (!data.exists() || !data.child('masterId').exists() || data.child('masterId').val() === auth.uid)",
+          "members": {
+            "$uid": {
+              ".write": "auth != null && $uid === auth.uid && !data.exists() && newData.child('role').val() === 'player'"
+            }
+          }
+        }
+      },
+      "campaign-sessions": {
+        "$cid": {
+          ".read": "auth != null",
+          ".write": "auth != null && root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid"
+        }
+      },
+      "campaigns": {
+        "$cid": {
+          "tv-map:pins": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:tokens": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:shapes": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:routes": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:weather": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:inventories": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:characters": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:recipes": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:clock": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:shortcuts": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
+          },
+          "tv-map:rolls": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            "$id": {
+              ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid) && !data.exists()"
+            }
+          },
+          "tv-map:loot-log": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            "$id": {
+              ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid) && !data.exists()"
+            }
+          }
+        }
+      },
+      "tv-map:pins": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:tokens": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:shapes": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:routes": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:weather": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:inventories": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:characters": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:recipes": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:clock": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:shortcuts": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:rolls": {
+        ".read": "auth != null",
+        "$id": {
+          ".write": "auth != null && !data.exists()"
+        }
+      },
+      "tv-map:loot-log": {
+        ".read": "auth != null",
+        "$id": {
+          ".write": "auth != null && !data.exists()"
+        }
+      }
+    }
+  }
+}

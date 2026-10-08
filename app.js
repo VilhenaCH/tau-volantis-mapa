@@ -43,8 +43,134 @@
   const KEY_SHAPES = 'tv-map:shapes';
   const KEY_ROUTES = 'tv-map:routes';
   const KEY_WEATHER = 'tv-map:weather';
-  const KEY_INVENTORY_LOG = 'tv-map:inventory-log';
-  const INVENTORY_LIMIT = 20;
+  const KEY_INV = 'tv-map:inventories';
+  const KEY_LOG = 'tv-map:loot-log';
+  let MAX_INV = 20;
+  const KEY_CHARS = 'tv-map:characters';
+  const KEY_ROLLS = 'tv-map:rolls';
+  const KEY_RECIPES = 'tv-map:recipes';
+  const KEY_CLOCK = 'tv-map:clock';
+  const KEY_SHORTCUTS = 'tv-map:shortcuts';
+  const DB_KEYS = new Set([KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS]);
+  const SCOPED_KEYS = new Set([KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG].concat(Array.from(DB_KEYS)));
+
+  // ---------- campanhas: todo dado de jogo pertence a uma campanha ----------
+  // A campanha "legacy" (a que já existia) continua nos caminhos antigos, sem
+  // copiar nem mover nada. As campanhas novas gravam em campaigns/{id}/...
+  let activeCampaignId = (function(){
+    try{ return localStorage.getItem('tv-map:active-campaign') || 'legacy'; }catch(e){ return 'legacy'; }
+  })();
+  const syncOff = [];
+  function scopedKey(key, cid){
+    cid = cid || activeCampaignId;
+    return (cid === 'legacy' || !SCOPED_KEYS.has(key)) ? key : 'campaigns/' + cid + '/' + key;
+  }
+  function localKey(key, cid){
+    cid = cid || activeCampaignId;
+    return (cid === 'legacy' || !SCOPED_KEYS.has(key)) ? key : 'tv-map:c:' + cid + ':' + key.slice(7);
+  }
+  function fbRefOf(key){ return firebaseDb.ref('tau-volantis/' + scopedKey(key)); }
+  function listen(ref, cb, errCb){
+    ref.on('value', cb, errCb);
+    syncOff.push(() => ref.off('value', cb));
+  }
+  function detachSync(){
+    while(syncOff.length){ try{ syncOff.pop()(); }catch(e){} }
+  }
+
+  // Banco simples para os módulos novos (fichas, rolagens, sessões, receitas...).
+  // Com Firebase usa o mesmo banco do mapa; sem Firebase guarda tudo no navegador.
+  const DB = (function(){
+    let tree = {};
+    const subs = [];
+    try{ tree = JSON.parse(localStorage.getItem('tv-map:db') || '{}') || {}; }catch(e){ tree = {}; }
+    const persist = () => { try{ localStorage.setItem('tv-map:db', JSON.stringify(tree)); }catch(e){} };
+    const parts = p => p.split('/').filter(Boolean);
+    function getLocal(path){
+      let n = tree;
+      for(const k of parts(path)){ if(n == null || typeof n !== 'object') return null; n = n[k]; }
+      return n === undefined ? null : n;
+    }
+    function setLocal(path, val){
+      const ps = parts(path);
+      if(!ps.length) return;
+      let n = tree;
+      for(let i = 0; i < ps.length - 1; i++){
+        if(n[ps[i]] == null || typeof n[ps[i]] !== 'object') n[ps[i]] = {};
+        n = n[ps[i]];
+      }
+      const last = ps[ps.length - 1];
+      if(val === null || val === undefined) delete n[last];
+      else n[last] = JSON.parse(JSON.stringify(val));
+    }
+    function notify(path){
+      subs.slice().forEach(s => {
+        if(s.path === path || s.path.startsWith(path + '/') || path.startsWith(s.path + '/')) s.cb(getLocal(s.path));
+      });
+    }
+    return {
+      getLocal,
+      async get(path){
+        if(firebaseReady){
+          try{ return (await firebaseDb.ref('tau-volantis/' + path).once('value')).val(); }
+          catch(e){ console.error('Falha ao ler', path, e); return null; }
+        }
+        return getLocal(path);
+      },
+      async set(path, val){
+        if(firebaseReady){
+          try{ await firebaseDb.ref('tau-volantis/' + path).set(val); return true; }
+          catch(e){ console.error('Falha ao gravar', path, e); return false; }
+        }
+        setLocal(path, val); persist(); notify(path);
+        return true;
+      },
+      async update(map){
+        if(firebaseReady){
+          try{ await firebaseDb.ref('tau-volantis').update(map); return true; }
+          catch(e){ console.error('Falha ao gravar', e); return false; }
+        }
+        Object.keys(map).forEach(p => setLocal(p, map[p]));
+        persist();
+        Object.keys(map).forEach(notify);
+        return true;
+      },
+      newId(path){
+        return firebaseReady ? firebaseDb.ref('tau-volantis/' + path).push().key
+          : 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      },
+      ts(){ return firebaseReady ? firebase.database.ServerValue.TIMESTAMP : Date.now(); },
+      on(path, cb, limit){
+        if(firebaseReady){
+          let ref = firebaseDb.ref('tau-volantis/' + path);
+          if(limit) ref = ref.limitToLast(limit);
+          const h = snap => cb(snap.val());
+          ref.on('value', h, err => console.error('Erro de sincronização', path, err));
+          return () => ref.off('value', h);
+        }
+        const s = { path, cb };
+        subs.push(s);
+        Promise.resolve().then(() => { if(subs.indexOf(s) >= 0) cb(getLocal(path)); });
+        return () => { const i = subs.indexOf(s); if(i >= 0) subs.splice(i, 1); };
+      }
+    };
+  })();
+
+  // leitura/escrita de uma chave de campanha qualquer (usado ao copiar/excluir)
+  async function readScoped(cid, key){
+    if(firebaseReady){
+      try{ return (await firebaseDb.ref('tau-volantis/' + scopedKey(key, cid)).once('value')).val(); }
+      catch(e){ return null; }
+    }
+    if(DB_KEYS.has(key)) return DB.getLocal(scopedKey(key, cid));
+    try{ const raw = localStorage.getItem(localKey(key, cid)); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
+  }
+  async function writeScoped(cid, key, val){
+    if(firebaseReady){ await firebaseDb.ref('tau-volantis/' + scopedKey(key, cid)).set(val); return; }
+    if(DB_KEYS.has(key)){ await DB.set(scopedKey(key, cid), val); return; }
+    if(val === null) localStorage.removeItem(localKey(key, cid));
+    else localStorage.setItem(localKey(key, cid), JSON.stringify(val));
+  }
 
   const WEATHER_STATES = {
     calmo: { label: 'Calmo', desc: 'Céu claro, visibilidade normal.', emoji: '🌤️' },
@@ -59,7 +185,9 @@
   let tokens = [];
   let shapes = [];
   let routes = [];
-  let inventoryLog = [];
+  let inventories = {}; // donoId -> { itemUid: item }
+  let lootLog = [];     // registro de transações (somente acréscimo)
+  var invReady = false; // var de propósito: lido antes do módulo de inventário existir
   let weather = { state: 'calmo', updatedAt: null, updatedBy: null };
   let selectedPinType = null;
   let tokenModeOn = false;
@@ -67,23 +195,11 @@
   let routeModeOn = false;
   let idCounter = 1;
 
-  function newId(){ return 'id' + Date.now() + '-' + (idCounter++) + '-' + Math.random().toString(36).slice(2,8); }
+  function newId(){ return 'id' + (Date.now()) + '-' + (idCounter++); }
   function escapeHtml(str){
     const d = document.createElement('div');
     d.textContent = str || '';
     return d.innerHTML;
-  }
-  function characterDisplayName(entity){
-    const isNpc = !!entity && entity.type === 'npc';
-    const name = entity && (isNpc ? (entity.title || entity.label) : (entity.label || entity.title));
-    return String(name || (isNpc ? 'NPC' : 'Token')).trim() || (isNpc ? 'NPC' : 'Token');
-  }
-  function containerOccupants(pin){
-    if(pin.type !== 'veiculo' && pin.type !== 'abrigo') return [];
-    return [
-      ...tokens.filter(token => token.containerId === pin.id),
-      ...pins.filter(occupant => occupant.type === 'npc' && occupant.containerId === pin.id)
-    ];
   }
   function formatDistance(meters){
     if(meters < 1000) return Math.round(meters) + ' m';
@@ -145,20 +261,9 @@
     const el = document.getElementById('sync-status');
     if(!el) return;
     el.classList.remove('live','offline');
-    if(state === 'live'){
-      el.textContent = 'Online';
-      el.title = 'Sessão sincronizada em tempo real';
-      el.classList.add('live');
-    }
-    else if(state === 'offline'){
-      el.textContent = 'Offline · local';
-      el.title = 'Sem conexão com a sessão online; os dados ficam neste navegador';
-      el.classList.add('offline');
-    }
-    else{
-      el.textContent = 'Conectando';
-      el.title = 'Conectando à sessão online';
-    }
+    if(state === 'live'){ el.textContent = 'Tempo real — conectado'; el.classList.add('live'); }
+    else if(state === 'offline'){ el.textContent = 'Sem Firebase — salvando só neste navegador'; el.classList.add('offline'); }
+    else { el.textContent = 'Conectando...'; }
   }
 
   // ---------- login com Google + camada de "jogador" ----------
@@ -297,13 +402,13 @@
 
   function loadLocal(key){
     try{
-      const raw = localStorage.getItem(key);
+      const raw = localStorage.getItem(localKey(key));
       return raw ? JSON.parse(raw) : [];
     }catch(e){ return []; }
   }
   function saveLocal(key, data){
     try{
-      localStorage.setItem(key, JSON.stringify(data));
+      localStorage.setItem(localKey(key), JSON.stringify(data));
       return true;
     }catch(e){ console.error('Erro ao salvar localmente', key, e); return false; }
   }
@@ -313,7 +418,7 @@
     // inicial e as atualizações chegam pelo listener em tempo real (initRealtimeSync).
     if(hasCloudStorage){
       try{
-        const r = await window.storage.get(key, true);
+        const r = await window.storage.get(localKey(key).replace(/[\/\\'" ]/g, '_'), true);
         if(r) return JSON.parse(r.value);
       }catch(e){ /* cai pro localStorage abaixo */ }
     }
@@ -325,13 +430,13 @@
     saveLocal(key, data);
     if(firebaseReady){
       try{
-        await firebaseDb.ref('tau-volantis/' + key).set(data);
+        await firebaseDb.ref('tau-volantis/' + scopedKey(key)).set(data);
         return;
       }catch(e){ console.error('Falha ao salvar no Firebase', key, e); }
     }
     if(hasCloudStorage){
       try{
-        const r = await window.storage.set(key, JSON.stringify(data), true);
+        const r = await window.storage.set(localKey(key).replace(/[\/\\'" ]/g, '_'), JSON.stringify(data), true);
         if(!r) console.error('Falha ao salvar na nuvem, usando apenas local', key);
       }catch(e){ console.error('Falha ao salvar na nuvem, usando apenas local', key, e); }
     }
@@ -364,23 +469,8 @@
     maxZoom: 19
   });
 
-  // Pins e personagens compartilham uma camada com agrupamento por proximidade.
-  // No zoom máximo, pontos coincidentes podem ser abertos em leque.
-  const mapEntitiesLayer = L.markerClusterGroup ? L.markerClusterGroup({
-    // Aumenta o espaçamento dos grupos nos níveis próximos, onde os nomes
-    // começavam a se cruzar; no zoom máximo, o toque abre o grupo em leque.
-    maxClusterRadius: zoom => zoom >= 16 ? 56 : 72,
-    spiderfyOnMaxZoom: true,
-    zoomToBoundsOnClick: true,
-    showCoverageOnHover: false,
-    spiderfyDistanceMultiplier: 1.35,
-    iconCreateFunction: cluster => L.divIcon({
-      html: `<span>${cluster.getChildCount()}</span>`,
-      className: 'tv-marker-cluster',
-      iconSize: L.point(42, 42),
-      iconAnchor: L.point(21, 21)
-    })
-  }).addTo(map) : L.layerGroup().addTo(map);
+  const pinsLayer = L.layerGroup().addTo(map);
+  const tokensLayer = L.layerGroup().addTo(map);
   const shapesLayer = L.layerGroup().addTo(map);
   const routesLayer = L.layerGroup().addTo(map);
 
@@ -404,7 +494,7 @@
     const src = e.popup && e.popup._source;
     if(!src) return;
     if(src._pinId !== undefined) editingPinId = src._pinId;
-    if(src._tokenId !== undefined || src._groupId !== undefined) tokenPopupActive = true;
+    if(tokensLayer.hasLayer(src)) tokenPopupActive = true;
     if(shapesLayer.hasLayer(src)) shapePopupActive = true;
     if(routesLayer.hasLayer(src)) routePopupActive = true;
   });
@@ -414,7 +504,7 @@
     // ao fechar, libera a trava e recupera qualquer atualização remota que
     // tenha chegado enquanto o popup estava aberto
     if(src._pinId !== undefined && src._pinId === editingPinId){ editingPinId = null; renderPins(); }
-    if(src._tokenId !== undefined || src._groupId !== undefined){ tokenPopupActive = false; renderTokens(); }
+    if(tokensLayer.hasLayer(src)){ tokenPopupActive = false; renderTokens(); }
     if(shapesLayer.hasLayer(src)){ shapePopupActive = false; renderShapes(); }
     if(routesLayer.hasLayer(src)){ routePopupActive = false; renderRoutes(); }
   });
@@ -562,12 +652,10 @@
   function openViewSettings(){
     viewSettingsPopover.classList.add('open');
     viewSettingsBackdrop.classList.add('open');
-    viewSettingsToggle.setAttribute('aria-expanded', 'true');
   }
   function closeViewSettings(){
     viewSettingsPopover.classList.remove('open');
     viewSettingsBackdrop.classList.remove('open');
-    viewSettingsToggle.setAttribute('aria-expanded', 'false');
   }
   viewSettingsToggle.addEventListener('click', (ev) => {
     ev.stopPropagation();
@@ -610,18 +698,17 @@
       trigger.classList.add('active');
       trigger.setAttribute('aria-expanded', 'true');
     }
-    function close(restoreFocus = false){
+    function close(){
       popover.classList.remove('open');
       backdrop.classList.remove('open');
       trigger.classList.remove('active');
       trigger.setAttribute('aria-expanded', 'false');
-      if(restoreFocus) trigger.focus();
     }
     trigger.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      popover.classList.contains('open') ? close(true) : open();
+      popover.classList.contains('open') ? close() : open();
     });
-    backdrop.addEventListener('click', () => close(true));
+    backdrop.addEventListener('click', close);
     return { open, close, popover, trigger };
   }
 
@@ -631,6 +718,7 @@
     registerAppPopover('account-toggle-btn', 'account-popover', 'account-backdrop'),
     registerAppPopover('fab-add', 'add-popover', 'add-backdrop'),
     registerAppPopover('fab-tools', 'tools-popover', 'tools-backdrop'),
+    registerAppPopover('fab-system', 'system-popover', 'system-backdrop'),
   ].filter(Boolean);
 
   // abrir um fecha os outros, pra nunca empilhar dois de uma vez na tela
@@ -656,7 +744,7 @@
     const entry = appPopovers.find(p => p.popover.id === id);
     if(!entry) return;
     entry.popover.querySelectorAll('.tool-btn').forEach(btn => {
-      btn.addEventListener('click', () => setTimeout(() => entry.close(true), 120));
+      btn.addEventListener('click', () => setTimeout(entry.close, 120));
     });
   });
 
@@ -704,19 +792,17 @@
     const isBig = isNpc || isContainer;
     const sizeCls = isNpc ? ' pin-wrap-npc' : (isContainer ? ` pin-wrap-${typeId}` : '');
     // veículo/abrigo mostram quantos tokens e NPCs estão "dentro" deles
-    const occupants = isContainer ? containerOccupants(pin) : [];
-    const occupantCount = occupants.length;
+    const occupantCount = isContainer
+      ? (typeof tokens !== 'undefined' ? tokens.filter(t => t.containerId === pin.id).length : 0)
+        + (typeof pins !== 'undefined' ? pins.filter(p => p.type === 'npc' && p.containerId === pin.id).length : 0)
+      : 0;
     const occupancyBadge = occupantCount > 0 ? `<div class="pin-occupancy">${occupantCount}</div>` : '';
-    const occupantNames = occupants.map(characterDisplayName).join(' · ');
-    const occupantNamesTag = occupantNames
-      ? `<span class="pin-occupants-tag">${escapeHtml(occupantNames)}</span>`
-      : '';
     // NPC ganha etiqueta de nome abaixo do badge, seguindo a mesma regra dos
     // tokens: só a primeira palavra do nome, pra não tampar o mapa
     const npcNameTag = isNpc ? `<span class="pin-name-tag">${escapeHtml((pin.title || 'NPC').trim().split(/\s+/)[0])}</span>` : '';
     return L.divIcon({
       className: '',
-      html: `<div class="pin-wrap${lockCls}${sizeCls}">${ping}${occupancyBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}${occupantNamesTag}</div>`,
+      html: `<div class="pin-wrap${lockCls}${sizeCls}">${ping}${occupancyBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
       iconSize: isBig ? [44,44] : [30,30],
       iconAnchor: isBig ? [22,38] : [15,26],
       popupAnchor: isBig ? [0,-35] : [0,-24]
@@ -725,7 +811,7 @@
   // ícone de um "empilhamento" liderado por um NPC (sem jogador na pilha) —
   // reaproveita o badge redondo do NPC, só troca o ícone padrão pelo emblema
   // de contagem quando há mais de um integrante no mesmo ponto
-  function npcGroupIcon(pin, stackCount, groupMembers){
+  function npcGroupIcon(pin, stackCount){
     const defaultColor = (PIN_TYPES.find(t => t.id === 'npc') || {}).color || 'var(--ice-300)';
     const color = pin.color || defaultColor;
     const hasPhoto = !!pin.image;
@@ -736,8 +822,10 @@
       ? `background:var(--bg-2); border-color:${escapeHtml(color)}`
       : `background:${color}; border-color:var(--bg-0)`;
     const stackBadge = stackCount && stackCount > 1 ? `<div class="pin-occupancy" style="background:var(--hazard)">${stackCount}</div>` : '';
-    const groupNames = (groupMembers || [pin]).map(characterDisplayName).join(' · ');
-    const npcNameTag = `<span class="group-members-tag">${escapeHtml(groupNames)}</span>`;
+    // mesma regra de nome dos tokens: primeira palavra do nome, com "+N" quando
+    // o NPC lidera um empilhamento
+    const npcShortName = escapeHtml((pin.title || 'NPC').trim().split(/\s+/)[0]);
+    const npcNameTag = `<span class="pin-name-tag">${stackCount && stackCount > 1 ? `${npcShortName} +${stackCount - 1}` : npcShortName}</span>`;
     return L.divIcon({
       className: '',
       html: `<div class="pin-wrap pin-wrap-npc">${stackBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
@@ -746,7 +834,7 @@
       popupAnchor: [0,-35]
     });
   }
-  function tokenIcon(token, stackCount, groupMembers){
+  function tokenIcon(token, stackCount){
     const borderColor = token.color || '#8fd7e8';
     const isSelected = (typeof selectedTokenIds !== 'undefined') && selectedTokenIds.has(token.id);
     let inner;
@@ -755,20 +843,17 @@
     } else {
       inner = `<span>${escapeHtml((token.label || 'TK').slice(0,2).toUpperCase())}</span>`;
     }
-    const name = characterDisplayName(token);
-    // tokens individuais mantêm a etiqueta compacta; grupos mostram todos os nomes.
+    const name = (token.label || 'Token').trim();
+    // mostra só a primeira palavra do nome (evita etiqueta gigante tampando o mapa)
     const shortName = escapeHtml(name.split(/\s+/)[0]);
     const isStack = stackCount && stackCount > 1;
     const stackAttrs = isStack ? ` data-count="${stackCount}"` : '';
-    const groupNames = (groupMembers || []).map(characterDisplayName).join(' · ');
-    const nameLabel = isStack && groupNames
-      ? `<span class="group-members-tag">${escapeHtml(groupNames)}</span>`
-      : `<span class="token-name-tag">${shortName}</span>`;
+    const nameLabel = isStack ? `${shortName} +${stackCount - 1}` : shortName;
     return L.divIcon({
       className: '',
       html: `<div class="token-wrap">
                <div class="token-icon${isSelected ? ' selected' : ''}${isStack ? ' is-stack' : ''}"${stackAttrs} style="border-color:${escapeHtml(borderColor)}; color:${escapeHtml(borderColor)}">${inner}</div>
-               ${nameLabel}
+               <span class="token-name-tag">${nameLabel}</span>
              </div>`,
       iconSize: [44,64],
       iconAnchor: [22,22]
@@ -776,37 +861,6 @@
   }
 
   // ---------- pin popup (create/edit) ----------
-  function confirmInventoryLossBeforeDeletion(entity, entityType){
-    const inventory = Array.isArray(entity.inventory) ? entity.inventory : [];
-    const entityName = entityType === 'token'
-      ? (entity.label || 'Token')
-      : (entity.title || (entityType === 'npc' ? 'NPC' : 'Casa/abrigo'));
-    const entityDescription = entityType === 'house' ? 'esta casa/abrigo' : entityType === 'npc' ? 'este NPC' : 'este token';
-    const inventoryWarning = inventory.length
-      ? `O inventário contém ${inventory.length} item(ns), e todos serão perdidos permanentemente.`
-      : `Todo o inventário que ${entityDescription} possuir será perdido permanentemente.`;
-    if(!window.confirm(`Excluir "${entityName}"?\n\n${inventoryWarning}`)) return false;
-    const confirmation = window.prompt(`Para concluir a exclusão de "${entityName}" e perder o inventário, digite exatamente EXCLUIR:`);
-    if(confirmation !== 'EXCLUIR'){
-      if(confirmation !== null) window.alert('Exclusão cancelada. A palavra digitada não corresponde a EXCLUIR.');
-      return false;
-    }
-    return true;
-  }
-  async function auditInventoryLossOnDeletion(entity, entityType){
-    const inventory = Array.isArray(entity.inventory) ? entity.inventory.slice() : [];
-    if(!inventory.length) return;
-    const character = {
-      id:String(entity.id),
-      type:entityType,
-      entity,
-      name:entityType === 'token' ? (entity.label || 'Token') : (entity.title || entity.label || 'Personagem')
-    };
-    await Promise.all(inventory.map(item => recordInventoryAction('deleted_with_entity', item, character, {
-      deletedEntityType:entityType,
-      result:'inventário perdido com a exclusão da entidade'
-    })));
-  }
   function buildPinPopupContent(pin){
     const container = document.createElement('div');
     const typeLabel = (PIN_TYPES.find(t => t.id === pin.type) || {label:pin.type}).label;
@@ -815,7 +869,9 @@
     // veículos e abrigos podem "conter" tokens dentro deles (jogadores e/ou NPCs),
     // como forma de agrupar quem está ali sem lotar o mapa de tokens soltos
     const isContainer = pin.type === 'veiculo' || pin.type === 'abrigo';
-    const occupants = isContainer ? containerOccupants(pin) : [];
+    const occupants = isContainer
+      ? [...tokens.filter(t => t.containerId === pin.id), ...pins.filter(p => p.type === 'npc' && p.containerId === pin.id)]
+      : [];
     container.innerHTML = `
       <div class="popup-kicker">${typeLabel}</div>
       ${pin.ownerName ? `<div class="popup-owner">Criado por: ${escapeHtml(pin.ownerName)}</div>` : ''}
@@ -839,6 +895,7 @@
           ${pin.image ? '<button type="button" class="pin-image-clear">Remover imagem</button>' : ''}
         </div>
       </div>` : ''}
+      ${isNpc ? `<button type="button" class="inv-open-btn">🎒 Inventário (${capTxt(pin.id)})</button>` : ''}
       <div class="icon-picker-label">Alterar ícone</div>
       <div class="icon-picker icon-picker-inline">${buildIconPickerHtml(pin.type)}</div>
       <div class="popup-actions">
@@ -850,12 +907,12 @@
     if(isContainer){
       const list = container.querySelector('.occupant-list-pin');
       if(occupants.length === 0){
-        list.innerHTML = '<div class="occupant-empty">Vazio — arraste um token ou NPC para este pin para colocar alguém aqui.</div>';
+        list.innerHTML = '<div class="occupant-empty">Vazio — arraste um token pra cima deste pin no mapa pra colocar alguém aqui.</div>';
       } else {
         occupants.forEach(t => {
           const row = document.createElement('div');
           row.className = 'occupant-row';
-          row.innerHTML = `<span class="occupant-name">${escapeHtml(characterDisplayName(t))}</span>
+          row.innerHTML = `<span class="occupant-name">${escapeHtml(t.label || 'Token')}</span>
             <button type="button" class="release">Retirar</button>`;
           row.querySelector('.release').addEventListener('click', async () => {
             const isPinOccupant = t.type === 'npc';
@@ -903,6 +960,8 @@
         preview.style.borderColor = colorInput.value;
       });
     }
+    const pinInvBtn = container.querySelector('.inv-open-btn');
+    if(pinInvBtn) pinInvBtn.addEventListener('click', () => { map.closePopup(); openInventory(pin.id); });
     container.querySelector('.lock').addEventListener('click', async () => {
       pin.locked = !pin.locked;
       await saveKey(KEY_PINS, pins);
@@ -944,10 +1003,10 @@
       map.closePopup();
       saveKey(KEY_PINS, pins); // salva em segundo plano — a UI já reagiu na hora
     });
-    container.querySelector('.del').addEventListener('click', async () => {
-      const needsInventoryConfirmation = pin.type === 'npc' || pin.type === 'abrigo' || pin.type === 'casa';
-      if(needsInventoryConfirmation && !confirmInventoryLossBeforeDeletion(pin, pin.type === 'npc' ? 'npc' : 'house')) return;
-      if(needsInventoryConfirmation) await auditInventoryLossOnDeletion(pin, pin.type === 'npc' ? 'npc' : 'house');
+    container.querySelector('.del').addEventListener('click', () => {
+      if(isNpc && invCount(pin.id) > 0 &&
+         !window.confirm(`Este NPC tem ${invCount(pin.id)} item(ns) no inventário. Excluir apaga o inventário (a perda fica no registro). Continuar?`)) return;
+      if(isNpc) removeHolderInventory(pin.id, 'NPC excluído');
       // libera quem estava "dentro" desse veículo/abrigo antes de excluir o pin
       let releasedTokens = false;
       tokens.forEach(t => {
@@ -1033,11 +1092,15 @@
           ${token.image ? '<button type="button" class="token-image-clear">Remover imagem</button>' : ''}
         </div>
       </div>
+      <button type="button" class="inv-open-btn">🎒 Inventário (${capTxt(token.id)})</button>
+      <button type="button" class="inv-open-btn ficha-open-btn">📇 Ficha e dados</button>
       <div class="popup-actions">
         <button class="save">Salvar</button>
         <button class="del">Remover</button>
       </div>
     `;
+    container.querySelector('.inv-open-btn').addEventListener('click', () => { map.closePopup(); openInventory(token.id); });
+    container.querySelector('.ficha-open-btn').addEventListener('click', () => { map.closePopup(); hub.charToken = token.id; rollUI.who = token.id; openHub('ficha'); });
     const preview = container.querySelector('.token-preview');
     const colorInput = container.querySelector('.token-color-input');
     colorInput.addEventListener('input', () => { preview.style.borderColor = colorInput.value; });
@@ -1073,9 +1136,10 @@
       map.closePopup();
       saveKey(KEY_TOKENS, tokens);
     });
-    container.querySelector('.del').addEventListener('click', async () => {
-      if(!confirmInventoryLossBeforeDeletion(token, 'token')) return;
-      await auditInventoryLossOnDeletion(token, 'token');
+    container.querySelector('.del').addEventListener('click', () => {
+      if(invCount(token.id) > 0 &&
+         !window.confirm(`Este token tem ${invCount(token.id)} item(ns) no inventário. Remover apaga o inventário (a perda fica no registro). Continuar?`)) return;
+      removeHolderInventory(token.id, 'token removido');
       tokens = tokens.filter(t => t.id !== token.id);
       renderTokens();
       map.closePopup();
@@ -1272,7 +1336,7 @@
         // busca o pin atual na hora de abrir o popup (nunca o objeto "congelado"
         // no momento da criação do marker), pra sempre mostrar dado fresco
         marker.bindPopup(() => buildPinPopupContent(pins.find(pp => pp.id === pin.id) || pin));
-        marker.addTo(mapEntitiesLayer);
+        marker.addTo(pinsLayer);
         pinMarkers[pin.id] = marker;
       } else if(pin.id !== pinDraggingId && pin.id !== editingPinId){
         // protegido: enquanto está sendo arrastado ou com o popup de edição
@@ -1286,19 +1350,16 @@
     // remove marcadores de pins que não existem mais / saíram de vista
     Object.keys(pinMarkers).forEach(id => {
       if(!seen.has(id)){
-        mapEntitiesLayer.removeLayer(pinMarkers[id]);
+        pinsLayer.removeLayer(pinMarkers[id]);
         delete pinMarkers[id];
       }
     });
     document.getElementById('stat-pins').textContent = pins.length;
-    if(typeof refreshCharacterOptions === 'function') refreshCharacterOptions();
     if(typeof renderNavList === 'function') renderNavList();
   }
   function openPinPopupById(id){
     const marker = pinMarkers[id];
-    if(!marker || !marker.openPopup) return;
-    if(mapEntitiesLayer.zoomToShowLayer) mapEntitiesLayer.zoomToShowLayer(marker, () => marker.openPopup());
-    else marker.openPopup();
+    if(marker && marker.openPopup) marker.openPopup();
   }
 
   // ---------- seleção múltipla de tokens (mover vários em grupo) ----------
@@ -1419,7 +1480,7 @@
       const isPinMember = m.type === 'npc';
       const row = document.createElement('div');
       row.className = 'occupant-row';
-      row.innerHTML = `<span class="occupant-name">${escapeHtml(characterDisplayName(m))}</span>
+      row.innerHTML = `<span class="occupant-name">${escapeHtml(m.label || m.title || 'Token')}</span>
         <button type="button" class="edit">Editar</button>
         <button type="button" class="leave">Tirar</button>`;
       row.querySelector('.edit').addEventListener('click', () => {
@@ -1462,7 +1523,7 @@
   }
 
   function renderTokens(){
-    new Set(Object.values(tokenMarkers)).forEach(marker => mapEntitiesLayer.removeLayer(marker));
+    tokensLayer.clearLayers();
     Object.keys(tokenMarkers).forEach(k => delete tokenMarkers[k]);
 
     // tokens "dentro" de um veículo/abrigo não aparecem soltos no mapa
@@ -1499,7 +1560,7 @@
       // for só de NPCs, usa o badge redondo de NPC no lugar do quadrado de token
       const lead = members.find(m => m.type !== 'npc') || members[0];
       const isLeadNpc = lead.type === 'npc';
-      const icon = isLeadNpc ? npcGroupIcon(lead, members.length, members) : tokenIcon(lead, members.length, members);
+      const icon = isLeadNpc ? npcGroupIcon(lead, members.length) : tokenIcon(lead, members.length);
       const marker = L.marker([lead.lat, lead.lng], { icon, draggable:true });
       marker._groupId = gid;
       members.forEach(m => { tokenMarkers[m.id] = marker; });
@@ -1527,7 +1588,7 @@
       });
 
       marker.bindPopup(() => buildGroupPopupContent(gid, members));
-      marker.addTo(mapEntitiesLayer);
+      marker.addTo(tokensLayer);
     });
 
     // ---- tokens individuais (não empilhados, não dentro de veículo/abrigo) ----
@@ -1592,17 +1653,16 @@
       });
 
       if(!tokenSelectMode) marker.bindPopup(() => buildTokenPopupContent(token));
-      marker.addTo(mapEntitiesLayer);
+      marker.addTo(tokensLayer);
     });
     document.getElementById('stat-tokens').textContent = tokens.length;
     if(typeof refreshCharacterOptions === 'function') refreshCharacterOptions();
     if(typeof renderNavList === 'function') renderNavList();
   }
   function openTokenPopupById(id){
-    const marker = tokenMarkers[id];
-    if(!marker || !marker.openPopup) return;
-    if(mapEntitiesLayer.zoomToShowLayer) mapEntitiesLayer.zoomToShowLayer(marker, () => marker.openPopup());
-    else marker.openPopup();
+    tokensLayer.eachLayer(l => {
+      if(l._tokenId === id && l.openPopup) l.openPopup();
+    });
   }
 
   function renderShapes(){
@@ -1660,67 +1720,37 @@
   const navDrawer = document.getElementById('nav-drawer');
   const navDrawerBackdrop = document.getElementById('nav-drawer-backdrop');
   const navSearchInput = document.getElementById('nav-search-input');
-  let navDrawerReturnFocus = null;
-  function setDrawerVisibility(drawer, backdrop, isOpen){
-    drawer.classList.toggle('open', isOpen);
-    drawer.setAttribute('aria-hidden', String(!isOpen));
-    drawer.toggleAttribute('inert', !isOpen);
-    backdrop.classList.toggle('open', isOpen);
-    backdrop.setAttribute('aria-hidden', String(!isOpen));
-  }
-  function restoreDrawerFocus(target, fallbackId){
-    if(target && target.isConnected && target.tabIndex >= 0 && !target.closest('[inert]') && target.getClientRects().length){
-      target.focus();
-      return;
-    }
-    document.getElementById(fallbackId)?.focus();
-  }
-  function containDrawerTabFocus(drawer, event){
-    if(event.key !== 'Tab') return;
-    const focusable = Array.from(drawer.querySelectorAll(
-      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
-    )).filter(element => element.getClientRects().length > 0);
-    if(!focusable.length){ event.preventDefault(); drawer.focus(); return; }
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if(event.shiftKey && (document.activeElement === first || document.activeElement === drawer)){
-      event.preventDefault(); last.focus();
-    }else if(!event.shiftKey && (document.activeElement === last || document.activeElement === drawer)){
-      event.preventDefault(); first.focus();
-    }
-  }
   function openNavDrawer(){
-    navDrawerReturnFocus = document.activeElement;
-    closeDrawer({restoreFocus:false});
+    closeDrawerIfOpen();
     renderNavList();
-    setDrawerVisibility(navDrawer, navDrawerBackdrop, true);
-    document.getElementById('nav-drawer-toggle-btn')?.setAttribute('aria-expanded', 'true');
-    requestAnimationFrame(() => navDrawer.focus());
+    navDrawer.classList.add('open');
+    navDrawerBackdrop.classList.add('open');
   }
-  function closeNavDrawer(restoreFocus = true){
-    setDrawerVisibility(navDrawer, navDrawerBackdrop, false);
-    document.getElementById('nav-drawer-toggle-btn')?.setAttribute('aria-expanded', 'false');
-    const target = navDrawerReturnFocus;
-    navDrawerReturnFocus = null;
-    if(restoreFocus !== false){
-      restoreDrawerFocus(target, 'menu-toggle-btn');
-    }
+  function closeNavDrawer(){
+    navDrawer.classList.remove('open');
+    navDrawerBackdrop.classList.remove('open');
+  }
+  // closes the saque drawer if it's open, so only one drawer is ever open at once
+  function closeDrawerIfOpen(){
+    const sd = document.getElementById('saque-drawer');
+    const sb = document.getElementById('drawer-backdrop');
+    if(sd && sd.classList.contains('open')){ sd.classList.remove('open'); sb.classList.remove('open'); }
+    if(typeof closeInventory === 'function') closeInventory();
+    if(typeof closeHub === 'function') closeHub();
   }
   document.getElementById('nav-drawer-toggle-btn').addEventListener('click', () => {
-    appPopovers.forEach(popover => popover.close());
     navDrawer.classList.contains('open') ? closeNavDrawer() : openNavDrawer();
   });
   document.getElementById('nav-drawer-close-btn').addEventListener('click', closeNavDrawer);
   navDrawerBackdrop.addEventListener('click', closeNavDrawer);
   navSearchInput.addEventListener('input', renderNavList);
-  navDrawer.addEventListener('keydown', event => containDrawerTabFocus(navDrawer, event));
 
   document.getElementById('token-select-toggle-btn').addEventListener('click', () => {
     setTokenSelectMode(!tokenSelectMode);
-    appPopovers.forEach(popover => popover.close());
   });
 
   function renderNavList(){
+    if(typeof invHoldersChanged === 'function') invHoldersChanged();
     const listPins = document.getElementById('nav-list-pins');
     const listTokens = document.getElementById('nav-list-tokens');
     const listShapes = document.getElementById('nav-list-shapes');
@@ -1925,7 +1955,6 @@
         type: selectedPinType,
         title: typeLabel,
         note: '',
-        ...(selectedPinType === 'npc' ? { inventory: [] } : {}),
         ...ownerFields()
       };
       pins.push(pin);
@@ -1935,7 +1964,7 @@
       // open the new pin's popup for immediate editing
       openPinPopupById(pin.id);
     } else if(tokenModeOn){
-      const token = { id:newId(), lat:e.latlng.lat, lng:e.latlng.lng, label:'Token', inventory:[], ...ownerFields() };
+      const token = { id:newId(), lat:e.latlng.lat, lng:e.latlng.lng, label:'Token', ...ownerFields() };
       tokens.push(token);
       await saveKey(KEY_TOKENS, tokens);
       renderTokens();
@@ -1996,21 +2025,9 @@
   });
   map.on(L.Draw.Event.DRAWSTOP, hideDrawHint);
 
-  // ESC fecha a superfície ativa ou cancela o modo de desenho/medição.
+  // ESC cancels any active drawing/measuring mode
   document.addEventListener('keydown', (e) => {
-    if(e.key !== 'Escape') return;
-    if(circleModeOn || routeModeOn){ clearModes(); return; }
-    if(navDrawer.classList.contains('open')){ closeNavDrawer(); return; }
-    if(saqueDrawer.classList.contains('open')){ closeDrawer(); return; }
-    if(viewSettingsPopover.classList.contains('open')){
-      closeViewSettings();
-      viewSettingsToggle.focus();
-      return;
-    }
-    const openPopover = appPopovers.find(entry => entry.popover.classList.contains('open'));
-    if(openPopover){
-      openPopover.close(true);
-    }
+    if(e.key === 'Escape' && (circleModeOn || routeModeOn)) clearModes();
   });
 
   // ---------- search: local pins/áreas/rotas + place search via Nominatim (OSM) ----------
@@ -2060,7 +2077,7 @@
     pins.forEach(p => {
       if((p.title||'').toLowerCase().includes(q) || (p.note||'').toLowerCase().includes(q)){
         results.push({ kicker:'Pin no mapa', label:p.title || 'Pin', latlng:[p.lat,p.lng],
-          openPopup: () => openPinPopupById(p.id) });
+          openPopup: () => { pinsLayer.eachLayer(l => { if(l.getLatLng && l.getLatLng().lat===p.lat && l.getLatLng().lng===p.lng) l.openPopup(); }); } });
       }
     });
     shapes.forEach(s => {
@@ -2123,7 +2140,8 @@
 
   // ---------- reset ----------
   document.getElementById('reset-btn').addEventListener('click', async () => {
-    if(!window.confirm('Isso remove todos os pins, tokens, áreas e rotas do mapa para todos. Confirmar?')) return;
+    if(!window.confirm('Isso remove todos os pins, tokens, áreas, rotas e inventários do mapa para todos (o registro de transações é mantido). Confirmar?')) return;
+    clearAllInventories();
     pins = []; tokens = []; shapes = []; routes = [];
     await Promise.all([saveKey(KEY_PINS, pins), saveKey(KEY_TOKENS, tokens), saveKey(KEY_SHAPES, shapes), saveKey(KEY_ROUTES, routes)]);
     renderPins(); renderTokens(); renderShapes(); renderRoutes();
@@ -2136,18 +2154,16 @@
   // o grafo de agrupamento/seleção múltipla).
   let tokenDragActive = false;
 
-  function initRealtimeSync(){
+  function attachMapSync(){
     if(!firebaseReady){
       setSyncStatus('offline');
       (async function initFallback(){
         try{
-          const [p, t, s, r, w, audit] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES), loadKey(KEY_WEATHER), loadKey(KEY_INVENTORY_LOG)]);
+          const [p, t, s, r, w] = await Promise.all([loadKey(KEY_PINS), loadKey(KEY_TOKENS), loadKey(KEY_SHAPES), loadKey(KEY_ROUTES), loadKey(KEY_WEATHER)]);
           pins = p; tokens = t; shapes = s; routes = r;
           weather = (w && w.state) ? w : weather;
-          inventoryLog = Array.isArray(audit) ? audit : [];
           renderPins(); renderTokens(); renderShapes(); renderRoutes();
           applyWeatherVisual();
-          refreshCharacterOptions(); renderInventoryPanel();
         }catch(e){
           console.error('Falha ao carregar dados do mapa', e);
         }finally{
@@ -2176,27 +2192,23 @@
       }
     }, 8000);
 
-    firebaseDb.ref('tau-volantis/' + KEY_PINS).on('value', snap => {
+    listen(fbRefOf(KEY_PINS), snap => {
       pins = snap.val() || [];
       saveLocal(KEY_PINS, pins);
       renderPins(); // por diff: nunca derruba o pin que outra pessoa está editando
-      if(typeof refreshCharacterOptions === 'function') refreshCharacterOptions();
-      if(typeof renderInventoryPanel === 'function') renderInventoryPanel();
       markLoaded(1);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (pins)', err); setSyncStatus('offline'); markLoaded(1); });
 
-    firebaseDb.ref('tau-volantis/' + KEY_TOKENS).on('value', snap => {
+    listen(fbRefOf(KEY_TOKENS), snap => {
       tokens = snap.val() || [];
       saveLocal(KEY_TOKENS, tokens);
       if(!tokenDragActive && !tokenPopupActive) renderTokens();
-      if(typeof refreshCharacterOptions === 'function') refreshCharacterOptions();
-      if(typeof renderInventoryPanel === 'function') renderInventoryPanel();
       markLoaded(2);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (tokens)', err); setSyncStatus('offline'); markLoaded(2); });
 
-    firebaseDb.ref('tau-volantis/' + KEY_SHAPES).on('value', snap => {
+    listen(fbRefOf(KEY_SHAPES), snap => {
       shapes = snap.val() || [];
       saveLocal(KEY_SHAPES, shapes);
       if(!shapePopupActive) renderShapes();
@@ -2204,7 +2216,7 @@
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (áreas)', err); setSyncStatus('offline'); markLoaded(4); });
 
-    firebaseDb.ref('tau-volantis/' + KEY_ROUTES).on('value', snap => {
+    listen(fbRefOf(KEY_ROUTES), snap => {
       routes = snap.val() || [];
       saveLocal(KEY_ROUTES, routes);
       if(!routePopupActive) renderRoutes();
@@ -2212,7 +2224,7 @@
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (rotas)', err); setSyncStatus('offline'); markLoaded(8); });
 
-    firebaseDb.ref('tau-volantis/' + KEY_WEATHER).on('value', snap => {
+    listen(fbRefOf(KEY_WEATHER), snap => {
       const w = snap.val();
       weather = (w && w.state) ? w : { state: 'calmo', updatedAt: null, updatedBy: null };
       saveLocal(KEY_WEATHER, weather);
@@ -2221,14 +2233,13 @@
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (clima)', err); setSyncStatus('offline'); markLoaded(16); });
   }
-  initRealtimeSync();
+  attachMapSync();
 
 
   // ================= SAQUE DRAWER (integração do sistema de saque) =================
-  const LOOT_DATA = window.TAU_VOLANTIS_LOOT_DATA;
+  const LOOT_DATA = JSON.parse(document.getElementById('loot-data').textContent);
   const LOC_NAMES = LOOT_DATA.locNames;
   const ITEMS = LOOT_DATA.items;
-  const CRAFTING_RECIPES = window.TAU_VOLANTIS_CRAFTING_RECIPES || [];
   const LOC_ORDER = ["casas","farmacias","bases","veiculos","oficinas","mercados","acampamentos","fazendas","florestas","rios","convergencia"];
   const RURAL_LOCS = ["fazendas","florestas","rios"];
   const URBAN_LOCS = LOC_ORDER.filter(k => !RURAL_LOCS.includes(k) && k !== "convergencia");
@@ -2289,152 +2300,27 @@
   const autoSendBox = document.getElementById('auto-send');
   const charSelect = document.getElementById('char-select');
   let lootHistory = [];
+  let lootUid = 0;
 
-  // ---------- personagens, inventários e trilha de auditoria ----------
-  function characterName(entity, type){
-    if(type === 'npc') return (entity.title || entity.label || 'NPC').trim() || 'NPC';
-    return (entity.label || 'Token').trim() || 'Token';
-  }
-  function characterRecords(){
-    return [
-      ...tokens.map(entity => { if(!Array.isArray(entity.inventory)) entity.inventory = []; return {type:'token', id:String(entity.id), entity, name:characterName(entity, 'token')}; }),
-      ...pins.filter(entity => entity.type === 'npc').map(entity => { if(!Array.isArray(entity.inventory)) entity.inventory = []; return {type:'npc', id:String(entity.id), entity, name:characterName(entity, 'npc')}; })
-    ];
-  }
-  function characterKey(character){ return character ? `${character.type}:${character.id}` : ''; }
-  function findCharacter(type, id){
-    const entity = type === 'npc'
-      ? pins.find(p => String(p.id) === String(id) && p.type === 'npc')
-      : tokens.find(t => String(t.id) === String(id));
-    return entity ? {type, id:String(entity.id), entity, name:characterName(entity, type)} : null;
-  }
-  function selectedCharacter(){
-    if(!charSelect || !charSelect.value) return null;
-    const separator = charSelect.value.indexOf(':');
-    if(separator < 0) return null;
-    return findCharacter(charSelect.value.slice(0, separator), charSelect.value.slice(separator + 1));
-  }
+  // ---------- personagem: espelha os tokens marcados no mapa ----------
   function refreshCharacterOptions(){
     if(!charSelect) return;
     const prev = charSelect.value;
-    const records = characterRecords();
-    charSelect.innerHTML = '<option value="">Sobrevivente desconhecido</option>' + records.map(character =>
-      `<option value="${escapeHtml(characterKey(character))}">${character.type === 'npc' ? 'NPC' : 'Jogador'} · ${escapeHtml(character.name)}</option>`
-    ).join('');
-    if(records.some(character => characterKey(character) === prev)) charSelect.value = prev;
-    renderInventoryPanel();
+    charSelect.innerHTML = '<option value="">Sobrevivente desconhecido</option>' +
+      tokens.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label || 'Token')}</option>`).join('');
+    if(prev && tokens.some(t => t.id === prev)) charSelect.value = prev;
   }
+
   function selectedToken(){
-    const character = selectedCharacter();
-    return character && character.type === 'token' ? character.entity : null;
+    const id = charSelect.value;
+    if(!id) return null;
+    return tokens.find(t => t.id === id) || null;
   }
+
   function playerName(){
-    const character = selectedCharacter();
-    return character ? character.name : 'Sobrevivente desconhecido';
-  }
-  function characterInventory(character){
-    if(!character) return [];
-    if(!Array.isArray(character.entity.inventory)) character.entity.inventory = [];
-    return character.entity.inventory;
-  }
-  async function saveCharacterInventory(character){
-    if(!character) return;
-    if(character.type === 'npc') await saveKey(KEY_PINS, pins);
-    else await saveKey(KEY_TOKENS, tokens);
-  }
-  function auditActor(character){ return currentPlayer ? currentPlayer.playerName : (character && character.entity.ownerName) || 'Jogador não identificado'; }
-  async function recordInventoryAction(action, item, character, metadata){
-    const event = {
-      id:newId(), at:Date.now(), action,
-      item:item ? {instanceId:item.instanceId || null, catalogId:item.catalogId || item.id || null, name:item.name, category:item.category || ''} : null,
-      character:character ? {id:character.id, type:character.type, name:character.name} : null,
-      performedBy:auditActor(character),
-      ...(metadata || {})
-    };
-    inventoryLog.unshift(event);
-    saveLocal(KEY_INVENTORY_LOG, inventoryLog);
-    renderInventoryAudit();
-    if(firebaseReady){
-      try{ await firebaseDb.ref('tau-volantis/' + KEY_INVENTORY_LOG).push().set(event); }
-      catch(e){ console.error('Falha ao registrar ação do inventário', e); }
-    }else{
-      await saveKey(KEY_INVENTORY_LOG, inventoryLog);
-    }
-    return event;
-  }
-  function inventoryItemFrom(item, source, entry){
-    return {
-      instanceId:newId(), catalogId:item.id, name:item.name, category:item.category,
-      utility:item.utility || '', calibre:item.calibre || null, addedAt:Date.now(), source,
-      lootId:entry ? entry.uid : null
-    };
-  }
-  async function addItemToInventory(item, character, source, entry){
-    if(!character){
-      await recordInventoryAction('add_failed_no_character', item, null, {source, lootId:entry ? entry.uid : null});
-      return {ok:false, reason:'Selecione um token de jogador ou NPC primeiro.'};
-    }
-    const inventory = characterInventory(character);
-    if(inventory.length >= INVENTORY_LIMIT){
-      await recordInventoryAction('add_failed_full', item, character, {source, lootId:entry ? entry.uid : null, capacity:INVENTORY_LIMIT});
-      return {ok:false, reason:`Inventário cheio (${INVENTORY_LIMIT}/${INVENTORY_LIMIT}).`};
-    }
-    const storedItem = inventoryItemFrom(item, source, entry);
-    inventory.push(storedItem);
-    await saveCharacterInventory(character);
-    await recordInventoryAction(source === 'loot' ? 'loot_kept' : source === 'fish' ? 'catch_kept' : 'added_from_catalog', storedItem, character, {
-      source, lootId:entry ? entry.uid : null, location:entry && entry.locKey ? LOC_NAMES[entry.locKey] : null
-    });
-    renderInventoryPanel();
-    return {ok:true, item:storedItem};
-  }
-  function openInventoryTab(){ openDrawer('inventory'); }
-
-  // ---------- coordenada aproximada de onde o saque/pesca foi realizado ----------
-  // Converte lat/lng num "setor" tipo grade tática (ex: "Setor N7"), em vez de
-  // expor coordenadas GPS reais — mais no clima do mapa de sobrevivência.
-  const GRID_CELL_DEG = 0.012; // ~1.3km por célula, no centro de SP
-  function gridRef(lat, lng){
-    const originLat = SP_CENTER[0] + GRID_CELL_DEG * 13;
-    const originLng = SP_CENTER[1] - GRID_CELL_DEG * 13;
-    const col = Math.floor((lng - originLng) / GRID_CELL_DEG);
-    const row = Math.floor((originLat - lat) / GRID_CELL_DEG);
-    let letters = '';
-    let n = Math.max(0, col);
-    do{
-      letters = String.fromCharCode(65 + (n % 26)) + letters;
-      n = Math.floor(n / 26) - 1;
-    }while(n >= 0);
-    return `Setor ${letters}${Math.max(0, row)}`;
-  }
-
-  function characterForLootEntry(entry){
-    return entry.characterType ? findCharacter(entry.characterType, entry.characterId) : selectedCharacter();
-  }
-  async function recordFoundItem(entry){
-    if(!entry.item) return;
-    await recordInventoryAction('item_found', entry.item, characterForLootEntry(entry), {
-      source:entry.kind, lootId:entry.uid,
-      location:entry.locKey ? LOC_NAMES[entry.locKey] : 'Pescaria',
-      foundBy:entry.foundBy, coord:entry.coord || null
-    });
-  }
-  async function decideLootItem(entry, keep){
-    if(!entry.item || entry.inventoryDecision) return;
-    const character = characterForLootEntry(entry);
-    if(!keep){
-      entry.inventoryDecision = 'left';
-      entry.inventoryMessage = 'Deixado no local';
-      await recordInventoryAction('left_at_location', entry.item, character, {
-        source:entry.kind, lootId:entry.uid,
-        location:entry.locKey ? LOC_NAMES[entry.locKey] : 'Pescaria', foundBy:entry.foundBy
-      });
-    }else{
-      const result = await addItemToInventory(entry.item, character, entry.kind === 'fish' ? 'fish' : 'loot', entry);
-      entry.inventoryMessage = result.ok ? `Mantido por ${character.name}` : result.reason;
-      if(result.ok) entry.inventoryDecision = 'kept';
-    }
-    if(entry.kind === 'fish') renderFishResults(); else renderLootResults();
+    const tok = selectedToken();
+    if(tok) return (tok.label || 'Token').trim() || 'Sobrevivente desconhecido';
+    return "Sobrevivente desconhecido";
   }
 
   // Armas de fogo e munição são de posse civil muito restrita no Brasil, então
@@ -2454,12 +2340,6 @@
     if (w <= 3) return {label:"Incomum", cls:"rarity-incomum"};
     return {label:"Comum", cls:"rarity-comum"};
   }
-  function lootArtKey(item){
-    const category = (item && item.category || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    if(category.includes('anomalo')) return 'anomaly';
-    if(category.includes('armas') || category.includes('municao')) return 'weapon';
-    return 'field-kit';
-  }
   function weightedPick(pool, locKey){
     const weights = pool.map(it => getWeight(it, locKey));
     const total = weights.reduce((a,b)=>a+b,0);
@@ -2474,69 +2354,51 @@
   function rollLoot(locKey){
     const pool = byLoc[locKey];
     const item = weightedPick(pool, locKey);
-    const character = selectedCharacter();
-    const entry = {
-      kind:'loot', item, locKey, uid:newId(), sendState:'idle', foundBy:playerName(),
-      coord:character ? gridRef(character.entity.lat, character.entity.lng) : null,
-      characterType:character ? character.type : null, characterId:character ? character.id : null
-    };
+    const tok = selectedToken();
+    const lf = locFields(tok);
+    if(!exploreGate(lf)) return;
+    const entry = Object.assign({kind:'loot', item, locKey, uid: ++lootUid, sendState: 'idle', foundBy: playerName(), holderId: tok ? tok.id : null, decision: 'pending'}, lf);
+    explorePostRoll(entry);
     lootHistory.unshift(entry);
-    recordFoundItem(entry);
+    logFound(entry);
     renderLootResults();
     if (autoSendBox.checked) sendLootToDiscord(entry);
   }
 
   function renderLootResults(){
     if(lootHistory.length === 0){
-      resultZone.innerHTML = '<div class="empty-hint">Sem achados nesta sessão. Escolha um local para vasculhar.</div>';
+      resultZone.innerHTML = '<div class="empty-hint">Nenhuma busca realizada ainda. Clique em um local acima para vasculhar.</div>';
       return;
     }
     resultZone.innerHTML = '';
     const clearBtn = document.createElement('button');
     clearBtn.className = 'clear-btn';
     clearBtn.textContent = 'Limpar histórico';
-    clearBtn.addEventListener('click', () => { lootHistory = []; renderLootResults(); });
+    clearBtn.addEventListener('click', () => { flushPending(lootHistory); lootHistory = []; renderLootResults(); });
 
     lootHistory.slice(0, 25).forEach((entry) => {
       const {item, locKey, foundBy, coord} = entry;
       const rarity = rarityInfo(item, locKey);
       const card = document.createElement('div');
       card.className = 'result-card' + (item.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '');
-      card.dataset.art = lootArtKey(item);
       card.dataset.uid = entry.uid;
       card.innerHTML = `
         <div class="result-top">
           <div class="result-loc">Buscado em: ${LOC_NAMES[locKey]}</div>
-          <div class="found-by">${escapeHtml(foundBy)}</div>
+          <div class="found-by">Encontrado por: ${escapeHtml(foundBy)}</div>
         </div>
-        <div class="result-title-row">
-          <div class="result-name">${escapeHtml(item.name)}</div>
-          <span class="rarity-tag ${rarity.cls}">${rarity.label}</span>
+        <div class="result-name">${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span></div>
+        <span class="result-cat">${item.category}</span>
+        <div class="result-utility"><b>Utilidade:</b> ${item.utility}</div>
+        ${compatLine(item)}
+        ${coordHtml(entry)}
+        <div class="send-row">
+          <button class="send-btn" data-action="send">Enviar ao Discord</button>
+          <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
         </div>
-        <span class="result-cat">${escapeHtml(item.category)}</span>
-        <div class="inventory-choice-row">
-          ${entry.inventoryDecision ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage || '')}</span>` : `
-            ${entry.inventoryMessage ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage)}</span>` : ''}
-            <button type="button" class="inventory-action-btn keep" data-action="keep">Adicionar ao inventário</button>
-            <button type="button" class="inventory-action-btn leave" data-action="leave">Deixar no local</button>
-          `}
-        </div>
-        <details class="result-details">
-          <summary>Ficha do item e envio</summary>
-          <div class="result-utility"><b>Utilidade:</b> ${escapeHtml(item.utility)}</div>
-          ${compatLine(item)}
-          ${coord ? `<div class="result-coord">${coord}</div>` : ''}
-          <div class="send-row">
-            <button class="send-btn" data-action="send">Enviar ao Discord</button>
-            <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
-          </div>
-        </details>
       `;
       card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
-      const keepBtn = card.querySelector('[data-action="keep"]');
-      const leaveBtn = card.querySelector('[data-action="leave"]');
-      if(keepBtn) keepBtn.addEventListener('click', () => decideLootItem(entry, true));
-      if(leaveBtn) leaveBtn.addEventListener('click', () => decideLootItem(entry, false));
+      attachDecision(card, entry);
       resultZone.appendChild(card);
     });
     resultZone.appendChild(clearBtn);
@@ -2565,7 +2427,6 @@
     if (!url) {
       entry.sendState = 'fail';
       updateLootCardStatus(entry, zone);
-      if(entry.item) recordInventoryAction('discord_send', entry.item, characterForLootEntry(entry), {lootId:entry.uid, result:'falha: webhook não configurado'});
       return;
     }
     entry.sendState = 'sending';
@@ -2579,7 +2440,7 @@
         { name: "Atividade", value: "Pescaria", inline: true },
         { name: "Encontrado por", value: entry.foundBy, inline: true }
       ];
-      if(entry.coord) fields.push({ name: "Coordenada aproximada", value: entry.coord, inline: true });
+      if(entry.coord) fields.push({ name: "Local aproximado (lat, lng)", value: entry.coord, inline: true });
       payload = {
         username: "Tau Volantis — Registro de Saque",
         embeds: [{
@@ -2601,7 +2462,7 @@
         { name: "Raridade", value: rarity.label, inline: true },
         { name: "Encontrado por", value: foundBy, inline: true }
       ];
-      if(coord) fields.push({ name: "Coordenada aproximada", value: coord, inline: true });
+      if(coord) fields.push({ name: "Local aproximado (lat, lng)", value: coord, inline: true });
       payload = {
         username: "Tau Volantis — Registro de Saque",
         embeds: [{
@@ -2626,7 +2487,6 @@
       entry.sendState = 'fail';
     }
     updateLootCardStatus(entry, zone);
-    if(entry.item) recordInventoryAction('discord_send', entry.item, characterForLootEntry(entry), {lootId:entry.uid, result:entry.sendState === 'ok' ? 'enviado' : 'falha'});
   }
 
   // ---------- pescaria ----------
@@ -2635,6 +2495,7 @@
   const fishBtn = document.getElementById('fish-btn');
   const fishResultEl = document.getElementById('fish-result');
   let fishHistory = [];
+  let fishUid = 0;
 
   function rollFish(){
     const totalFishWeight = FISH_POOL.reduce((a,b)=>a+b.fish,0);
@@ -2649,14 +2510,10 @@
       }
       if (!caught) caught = FISH_POOL[FISH_POOL.length - 1];
     }
-    const character = selectedCharacter();
-    const entry = {
-      kind:'fish', item:caught, locKey:'rios', uid:newId(), sendState:'idle', foundBy:playerName(),
-      coord:character ? gridRef(character.entity.lat, character.entity.lng) : null,
-      characterType:character ? character.type : null, characterId:character ? character.id : null
-    };
+    const tok = selectedToken();
+    const entry = Object.assign({kind:'fish', item: caught, uid: ++fishUid, sendState:'idle', foundBy: playerName(), holderId: tok ? tok.id : null, decision: 'pending'}, locFields(tok));
     fishHistory.unshift(entry);
-    if(caught) recordFoundItem(entry);
+    logFound(entry);
     renderFishResults();
     if (autoSendBox.checked) sendLootToDiscord(entry);
   }
@@ -2671,7 +2528,7 @@
     const clearFishBtn = document.createElement('button');
     clearFishBtn.className = 'clear-btn';
     clearFishBtn.textContent = 'Limpar histórico de pesca';
-    clearFishBtn.addEventListener('click', () => { fishHistory = []; renderFishResults(); });
+    clearFishBtn.addEventListener('click', () => { flushPending(fishHistory); fishHistory = []; renderFishResults(); });
 
     fishHistory.slice(0, 10).forEach(entry => {
       const card = document.createElement('div');
@@ -2683,29 +2540,16 @@
           <div class="result-loc">Rios, Igarapés e Margens</div>
           <div class="found-by">Pescado por: ${escapeHtml(entry.foundBy)}</div>
         </div>
-        <div class="fish-name">${isNothing ? 'Nada fisgou a isca desta vez' : escapeHtml(entry.item.name)}</div>
-        <div class="fish-desc">${isNothing ? 'A linha voltou vazia. Vale tentar de novo em outro ponto do rio.' : escapeHtml(entry.item.utility)}</div>
-        ${entry.coord ? `<div class="result-coord">📍 ${entry.coord}</div>` : ''}
-        ${!isNothing ? `
-          <div class="send-row">
-            <button class="send-btn" data-action="send">Enviar ao Discord</button>
-            <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
-          </div>
-          <div class="inventory-choice-row">
-            ${entry.inventoryDecision ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage || '')}</span>` : `
-              ${entry.inventoryMessage ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage)}</span>` : ''}
-              <button type="button" class="inventory-action-btn keep" data-action="keep">Adicionar ao inventário</button>
-              <button type="button" class="inventory-action-btn leave" data-action="leave">Deixar no local</button>
-            `}
-          </div>
-        ` : ''}
+        <div class="fish-name">${isNothing ? 'Nada fisgou a isca desta vez' : entry.item.name}</div>
+        <div class="fish-desc">${isNothing ? 'A linha voltou vazia. Vale tentar de novo em outro ponto do rio.' : entry.item.utility}</div>
+        ${coordHtml(entry)}
+        <div class="send-row">
+          <button class="send-btn" data-action="send">Enviar ao Discord</button>
+          <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
+        </div>
       `;
-      const sendBtn = card.querySelector('[data-action="send"]');
-      const keepBtn = card.querySelector('[data-action="keep"]');
-      const leaveBtn = card.querySelector('[data-action="leave"]');
-      if(sendBtn) sendBtn.addEventListener('click', () => sendLootToDiscord(entry));
-      if(keepBtn) keepBtn.addEventListener('click', () => decideLootItem(entry, true));
-      if(leaveBtn) leaveBtn.addEventListener('click', () => decideLootItem(entry, false));
+      card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
+      attachDecision(card, entry);
       fishResultEl.appendChild(card);
     });
     fishResultEl.appendChild(clearFishBtn);
@@ -2716,9 +2560,7 @@
   const saqueBrowsePanel = document.getElementById('saque-browse-panel');
   saqueBrowseToggle.addEventListener('click', () => {
     saqueBrowsePanel.classList.toggle('open');
-    const isOpen = saqueBrowsePanel.classList.contains('open');
-    saqueBrowseToggle.setAttribute('aria-expanded', String(isOpen));
-    saqueBrowseToggle.textContent = (isOpen ? '▾' : '▸') + ` Ver tabela completa de ${ITEMS.length} itens`;
+    saqueBrowseToggle.textContent = (saqueBrowsePanel.classList.contains('open') ? '▾' : '▸') + ` Ver tabela completa de ${ITEMS.length} itens`;
     if(saqueBrowsePanel.classList.contains('open') && !saqueBrowsePanel.dataset.built){
       buildItemTable();
       saqueBrowsePanel.dataset.built = '1';
@@ -2743,18 +2585,14 @@
       const rarity = rarityInfo(item, worstLoc);
       return `
       <tr>
-        <td data-label="Item">${escapeHtml(item.name)}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
-        <td data-label="Categoria">${escapeHtml(item.category)}</td>
-        <td data-label="Locais">${item.locations.map(l => `<span class="mini-tag">${LOC_NAMES[l].split(' ')[0]}</span>`).join('')}</td>
-        <td data-label="Utilidade">${escapeHtml(item.utility)}</td>
-        <td data-label="Inventário"><button type="button" class="inventory-action-btn keep catalog-add-btn" data-add-item="${item.id}">Adicionar</button></td>
+        <td>${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
+        <td>${item.category}</td>
+        <td>${item.locations.map(l => `<span class="mini-tag">${LOC_NAMES[l].split(' ')[0]}</span>`).join('')}</td>
+        <td>${item.utility}</td>
+        <td><button type="button" class="inv-add-btn" data-id="${item.id}">＋ Inventário</button></td>
       </tr>
     `;
     }).join('');
-    itemTbody.querySelectorAll('[data-add-item]').forEach(button => {
-      const item = ITEMS.find(entry => String(entry.id) === button.dataset.addItem);
-      button.addEventListener('click', () => addCatalogItem(item));
-    });
   }
 
   const itemSearchInput = document.getElementById('item-search-input');
@@ -2769,311 +2607,1599 @@
   itemSearchInput.addEventListener('input', applyItemFilters);
   itemFilterLoc.addEventListener('change', applyItemFilters);
 
-  async function addCatalogItem(item){
-    if(!item) return;
-    const character = selectedCharacter();
-    const result = await addItemToInventory(item, character, 'catalog', null);
-    if(!result.ok) alert(result.reason);
-    else alert(`${item.name} adicionado ao inventário de ${character.name}.`);
-  }
-
-  function catalogItemById(itemId){
-    return ITEMS.find(item => String(item.id) === String(itemId)) || null;
-  }
-  function inventoryHasCatalogItem(storedItem, catalogItem){
-    return !!catalogItem && (
-      String(storedItem.catalogId || '') === String(catalogItem.id) ||
-      storedItem.name === catalogItem.name
-    );
-  }
-  function findCraftingIngredientIndexes(inventory, recipe){
-    const selectedIndexes = new Set();
-    for(const ingredient of recipe.ingredients){
-      const catalogItem = catalogItemById(ingredient.itemId);
-      if(!catalogItem) return null;
-      const needed = Math.max(1, Number(ingredient.quantity) || 1);
-      const availableIndexes = [];
-      inventory.forEach((storedItem, index) => {
-        if(!selectedIndexes.has(index) && inventoryHasCatalogItem(storedItem, catalogItem)) availableIndexes.push(index);
-      });
-      if(availableIndexes.length < needed) return null;
-      availableIndexes.slice(0, needed).forEach(index => selectedIndexes.add(index));
-    }
-    return Array.from(selectedIndexes);
-  }
-  function renderCraftingPanel(containerId, character){
-    const panel = document.getElementById(containerId);
-    if(!panel) return;
-    const inventory = character ? characterInventory(character) : [];
-    if(!CRAFTING_RECIPES.length){
-      panel.innerHTML = '<div class="empty-hint">Nenhuma receita cadastrada.</div>';
-      return;
-    }
-    panel.innerHTML = CRAFTING_RECIPES.map(recipe => {
-      const output = catalogItemById(recipe.outputItemId);
-      const ingredientLines = recipe.ingredients.map(ingredient => {
-        const catalogItem = catalogItemById(ingredient.itemId);
-        const needed = Math.max(1, Number(ingredient.quantity) || 1);
-        const available = catalogItem ? inventory.filter(item => inventoryHasCatalogItem(item, catalogItem)).length : 0;
-        const ready = !!character && available >= needed;
-        return `<li class="${ready ? 'ready' : ''}">${escapeHtml(catalogItem ? catalogItem.name : 'Item fora do catálogo')} <span>${available}/${needed}</span></li>`;
-      }).join('');
-      const canCraft = !!character && !!output && !!findCraftingIngredientIndexes(inventory, recipe);
-      return `
-        <article class="crafting-card">
-          <div class="crafting-output"><span>Resultado</span><strong>${escapeHtml(output ? output.name : 'Receita inválida')}</strong></div>
-          <p class="crafting-description">${escapeHtml(recipe.description || (output && output.utility) || '')}</p>
-          <div class="crafting-ingredients-label">Componentes necessários</div>
-          <ul class="crafting-ingredients">${ingredientLines}</ul>
-          <button type="button" class="inventory-action-btn keep" data-craft-recipe="${escapeHtml(recipe.id)}" ${canCraft ? '' : 'disabled'}>Combinar e fabricar</button>
-        </article>
-      `;
-    }).join('');
-    panel.querySelectorAll('[data-craft-recipe]').forEach(button => {
-      button.addEventListener('click', () => craftInventoryRecipe(button.dataset.craftRecipe));
-    });
-  }
-  function renderCraftingPanels(character){
-    renderCraftingPanel('inventory-crafting-recipes', character);
-  }
-  async function craftInventoryRecipe(recipeId){
-    const recipe = CRAFTING_RECIPES.find(entry => entry.id === recipeId);
-    const character = selectedCharacter();
-    const output = recipe && catalogItemById(recipe.outputItemId);
-    if(!recipe || !output || !character) return;
-    const inventory = characterInventory(character);
-    const ingredientIndexes = findCraftingIngredientIndexes(inventory, recipe);
-    if(!ingredientIndexes){
-      alert('Os componentes necessários não estão mais disponíveis neste inventário.');
-      renderInventoryPanel();
-      return;
-    }
-    const finalSize = inventory.length - ingredientIndexes.length + 1;
-    if(finalSize > INVENTORY_LIMIT){
-      alert(`Não há espaço para o resultado do crafting (${inventory.length}/${INVENTORY_LIMIT}).`);
-      return;
-    }
-    const consumedItems = ingredientIndexes.map(index => inventory[index]);
-    ingredientIndexes.sort((a,b) => b - a).forEach(index => inventory.splice(index, 1));
-    const craftedItem = inventoryItemFrom(output, 'crafting', null);
-    craftedItem.recipeId = recipe.id;
-    craftedItem.craftedAt = Date.now();
-    inventory.push(craftedItem);
-    await saveCharacterInventory(character);
-    await Promise.all(consumedItems.map(item => recordInventoryAction('craft_consumed', item, character, {
-      recipeId:recipe.id, recipeName:output.name, craftedItem:output.name,
-      result:`Componente consumido para fabricar ${output.name}`
-    })));
-    await recordInventoryAction('crafted', craftedItem, character, {
-      recipeId:recipe.id, recipeName:output.name, consumedItems:consumedItems.map(item => item.name),
-      result:`Fabricado com: ${consumedItems.map(item => item.name).join(', ')}`
-    });
-    renderInventoryPanel();
-  }
-
-  function renderInventoryPanel(){
-    const summary = document.getElementById('inventory-summary');
-    const itemsEl = document.getElementById('inventory-items');
-    const targetSelect = document.getElementById('inventory-trade-target');
-    if(!summary || !itemsEl || !targetSelect || !charSelect) return;
-    const selected = selectedCharacter();
-    renderCraftingPanels(selected);
-    const records = characterRecords();
-    const previousTarget = targetSelect.value;
-    targetSelect.innerHTML = '<option value="">Selecione outro personagem</option>' + records
-      .filter(character => !selected || characterKey(character) !== characterKey(selected))
-      .map(character => `<option value="${escapeHtml(characterKey(character))}">${character.type === 'npc' ? 'NPC' : 'Jogador'} · ${escapeHtml(character.name)}</option>`).join('');
-    if(previousTarget && Array.from(targetSelect.options).some(option => option.value === previousTarget)) targetSelect.value = previousTarget;
-    if(!selected){
-      summary.innerHTML = '<div class="empty-hint">Selecione um token de jogador ou NPC acima para abrir seu inventário.</div>';
-      itemsEl.innerHTML = '<div class="empty-hint">Nenhum personagem selecionado.</div>';
-      return;
-    }
-    const inventory = characterInventory(selected);
-    const percent = Math.min(100, inventory.length / INVENTORY_LIMIT * 100);
-    summary.innerHTML = `<div class="inventory-summary-top"><strong>${escapeHtml(selected.name)}</strong><span>${inventory.length}/${INVENTORY_LIMIT} itens</span></div><div class="inventory-capacity"><span style="width:${percent}%"></span></div>`;
-    if(!inventory.length){
-      itemsEl.innerHTML = '<div class="empty-hint">Este inventário ainda está vazio.</div>';
-      return;
-    }
-    itemsEl.innerHTML = inventory.map(item => `
-      <article class="inventory-item-card" data-art="${lootArtKey(item)}" data-instance="${escapeHtml(item.instanceId || '')}">
-        <div class="inventory-item-copy"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.category || 'Item')}</span></div>
-        <div class="inventory-item-actions">
-          <button type="button" class="inventory-action-btn" data-action="use">Usar</button>
-          <button type="button" class="inventory-action-btn leave" data-action="discard">Descartar</button>
-          <button type="button" class="inventory-action-btn keep" data-action="trade">Trocar</button>
-        </div>
-      </article>
-    `).join('');
-    itemsEl.querySelectorAll('[data-action]').forEach(button => {
-      button.addEventListener('click', () => handleInventoryAction(selected, button.closest('[data-instance]').dataset.instance, button.dataset.action));
-    });
-  }
-
-  function parseCharacterKey(key){
-    const separator = (key || '').indexOf(':');
-    return separator < 0 ? null : findCharacter(key.slice(0, separator), key.slice(separator + 1));
-  }
-  async function handleInventoryAction(owner, instanceId, action){
-    const current = findCharacter(owner.type, owner.id);
-    if(!current) return;
-    const inventory = characterInventory(current);
-    const itemIndex = inventory.findIndex(item => item.instanceId === instanceId);
-    if(itemIndex < 0) return;
-    const item = inventory[itemIndex];
-    if(action === 'use' || action === 'discard'){
-      inventory.splice(itemIndex, 1);
-      await saveCharacterInventory(current);
-      await recordInventoryAction(action === 'use' ? 'used' : 'discarded', item, current, {source:item.source || null, lootId:item.lootId || null});
-      renderInventoryPanel();
-      return;
-    }
-    const destination = parseCharacterKey(document.getElementById('inventory-trade-target').value);
-    if(!destination){
-      await recordInventoryAction('trade_failed_no_target', item, current, {fromCharacter:current.name});
-      alert('Selecione outro personagem para realizar a troca.');
-      return;
-    }
-    if(characterKey(current) === characterKey(destination)) return;
-    const destinationInventory = characterInventory(destination);
-    if(destinationInventory.length >= INVENTORY_LIMIT){
-      await recordInventoryAction('trade_failed_full', item, current, {fromCharacter:current.name, toCharacter:destination.name, capacity:INVENTORY_LIMIT});
-      alert(`O inventário de ${destination.name} está cheio.`);
-      return;
-    }
-    inventory.splice(itemIndex, 1);
-    destinationInventory.push({...item, transferredAt:Date.now()});
-    await Promise.all([saveCharacterInventory(current), saveCharacterInventory(destination)]);
-    await recordInventoryAction('traded', item, current, {
-      fromCharacter:current.name, toCharacter:destination.name,
-      from:{id:current.id, type:current.type}, to:{id:destination.id, type:destination.type}
-    });
-    renderInventoryPanel();
-  }
-
-  const AUDIT_ACTION_LABELS = {
-    item_found:'Item encontrado', loot_kept:'Item mantido', catch_kept:'Captura mantida',
-    left_at_location:'Deixado no local', added_from_catalog:'Adicionado pelo catálogo',
-    used:'Usado', discarded:'Descartado', traded:'Trocado', deleted_with_entity:'Perdido com exclusão',
-    craft_consumed:'Ingrediente consumido no crafting', crafted:'Item fabricado',
-    add_failed_no_character:'Adição recusada: personagem não selecionado',
-    add_failed_full:'Adição recusada: inventário cheio',
-    trade_failed_no_target:'Troca recusada: destino não selecionado',
-    trade_failed_full:'Troca recusada: inventário de destino cheio', discord_send:'Envio ao Discord'
-  };
-  function renderInventoryAudit(){
-    const list = document.getElementById('inventory-audit-list');
-    if(!list) return;
-    if(!inventoryLog.length){
-      list.innerHTML = '<div class="empty-hint">Ainda não há ações registradas.</div>';
-      return;
-    }
-    list.innerHTML = inventoryLog.map(event => {
-      const time = new Date(event.at).toLocaleString('pt-BR');
-      const action = AUDIT_ACTION_LABELS[event.action] || event.action;
-      const itemName = event.item ? event.item.name : 'Sem item';
-      const person = event.character ? event.character.name : 'Sem personagem';
-      const transfer = event.toCharacter ? ` → ${event.toCharacter}` : '';
-      const place = event.location ? ` · ${event.location}` : '';
-      const result = event.result ? ` · ${event.result}` : '';
-      return `<article class="audit-entry"><time>${escapeHtml(time)}</time><strong>${escapeHtml(action)}</strong><span>${escapeHtml(itemName)}</span><small>${escapeHtml(person + transfer + place + result)} · por ${escapeHtml(event.performedBy || 'Desconhecido')}</small></article>`;
-    }).join('');
-  }
-
   // ---------- abrir/fechar a gaveta ----------
   const saqueDrawer = document.getElementById('saque-drawer');
   const drawerBackdrop = document.getElementById('drawer-backdrop');
-  let suppliesDrawerReturnFocus = null;
-  function setDrawerTab(tab){
-    document.querySelectorAll('.drawer-tab').forEach(button => {
-      const active = button.dataset.panel === tab;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-selected', String(active));
-      button.tabIndex = active ? 0 : -1;
-    });
-    document.querySelectorAll('.drawer-panel').forEach(panel => {
-      const active = panel.id === `${tab}-panel`;
-      panel.classList.toggle('active', active);
-      panel.setAttribute('aria-hidden', String(!active));
-    });
-    if(tab === 'inventory') renderInventoryPanel();
-    if(tab === 'audit') renderInventoryAudit();
-    syncDrawerActionButtons();
-  }
-  document.querySelectorAll('.drawer-tab').forEach(button => button.addEventListener('click', () => setDrawerTab(button.dataset.panel)));
-  document.querySelector('.drawer-tabs').addEventListener('keydown', event => {
-    const tabs = Array.from(document.querySelectorAll('.drawer-tab'));
-    const currentIndex = tabs.indexOf(document.activeElement);
-    let nextIndex = currentIndex;
-    if(event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
-    else if(event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-    else if(event.key === 'Home') nextIndex = 0;
-    else if(event.key === 'End') nextIndex = tabs.length - 1;
-    else return;
-    event.preventDefault();
-    tabs[nextIndex].focus();
-    tabs[nextIndex].click();
-  });
-  function openDrawer(tab){
-    if(!saqueDrawer.classList.contains('open')) suppliesDrawerReturnFocus = document.activeElement;
+  function openDrawer(){
     refreshCharacterOptions();
-    if(typeof closeNavDrawer === 'function') closeNavDrawer(false);
-    setDrawerTab(tab || 'loot');
-    setDrawerVisibility(saqueDrawer, drawerBackdrop, true);
-    syncDrawerActionButtons();
-    requestAnimationFrame(() => saqueDrawer.focus());
+    if(typeof closeNavDrawer === 'function') closeNavDrawer();
+    closeInventory();
+    closeHub();
+    saqueDrawer.classList.add('open');
+    drawerBackdrop.classList.add('open');
   }
-  function closeDrawer(options = {}){
-    const shouldRestoreFocus = options.restoreFocus !== false;
-    setDrawerVisibility(saqueDrawer, drawerBackdrop, false);
-    syncDrawerActionButtons();
-    const target = suppliesDrawerReturnFocus;
-    suppliesDrawerReturnFocus = null;
-    if(shouldRestoreFocus) restoreDrawerFocus(target, 'fab-loot');
+  function closeDrawer(){
+    saqueDrawer.classList.remove('open');
+    drawerBackdrop.classList.remove('open');
   }
-  function syncDrawerActionButtons(){
-    const isOpen = Boolean(saqueDrawer && saqueDrawer.classList.contains('open'));
-    const suppliesButton = document.getElementById('fab-loot');
-    if(suppliesButton){ suppliesButton.classList.toggle('active', isOpen); suppliesButton.setAttribute('aria-expanded', String(isOpen)); }
-  }
-  function openDrawerFromShortcut(tab){
-    appPopovers.forEach(popover => popover.close());
-    if(saqueDrawer.classList.contains('open')){
-      const activeTab = document.querySelector('.drawer-tab.active')?.dataset.panel;
-      if(activeTab === tab) closeDrawer();
-      else setDrawerTab(tab);
-      return;
-    }
-    openDrawer(tab);
-  }
-  document.getElementById('fab-loot').addEventListener('click', () => openDrawerFromShortcut('loot'));
+  document.getElementById('drawer-toggle-btn').addEventListener('click', () => {
+    saqueDrawer.classList.contains('open') ? closeDrawer() : openDrawer();
+  });
   document.getElementById('drawer-close-btn').addEventListener('click', closeDrawer);
   drawerBackdrop.addEventListener('click', closeDrawer);
-  saqueDrawer.addEventListener('keydown', event => containDrawerTabFocus(saqueDrawer, event));
 
-  charSelect.addEventListener('change', renderInventoryPanel);
-  function initInventoryAuditSync(){
+  // ================= INVENTÁRIO + REGISTRO (AUDITORIA) =================
+  // Cada token de jogador e cada NPC (pin do tipo npc) tem um inventário de até
+  // MAX_INV itens. Os itens ficam em tv-map:inventories/{donoId}/{itemUid} — um
+  // filho por item, assim duas pessoas mexendo em itens diferentes nunca se
+  // sobrescrevem. Toda ação gera uma entrada em tv-map:loot-log/{id}, gravada
+  // NA MESMA operação atômica (update multi-caminho) que altera o inventário:
+  // ou os dois acontecem, ou nenhum. O registro só recebe entradas novas.
+  const ITEMS_BY_ID = {};
+  ITEMS.forEach(i => { ITEMS_BY_ID[i.id] = i; });
+  const CONSUMABLE_CATS = new Set(['Comida','Bebidas','Itens Médicos','Munição','Combustível e Aquecimento','Plantas, Ervas e Cultivos']);
+  function consumableByDefault(inv){
+    const ref = ITEMS_BY_ID[inv.itemId];
+    return CONSUMABLE_CATS.has(inv.category) || !!(ref && typeof ref.fish === 'number');
+  }
+
+  const ACTION_LABELS = {
+    saque:'Saque', guardar:'Guardou', recusar:'Não manteve', adicionar:'Adicionou (tabela)',
+    usar:'Usou', descartar:'Descartou', troca:'Troca', craft:'Fabricação', inv_removido:'Inventário removido'
+  };
+  const SOURCE_LABELS = { saque:'saque', pesca:'pesca', tabela:'tabela de itens', inventario:'inventário' };
+
+  const invDrawer = document.getElementById('inv-drawer');
+  const invBackdrop = document.getElementById('inv-drawer-backdrop');
+  const itemAddDest = document.getElementById('item-add-dest');
+  const invUI = { holderId:null, tab:'inv', trade:null, panel:null, logHolder:'', logAction:'' };
+  let lastHolderSig = '';
+
+  function toast(msg, isErr){
+    const el = document.createElement('div');
+    el.className = 'inv-toast' + (isErr ? ' err' : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2800);
+  }
+  function newUid(prefix){ return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  // ---------- donos de inventário ----------
+  function holderList(){
+    return tokens.map(t => ({ id:t.id, type:'token', name:(t.label || 'Token') }))
+      .concat(pins.filter(p => p.type === 'npc').map(p => ({ id:p.id, type:'npc', name:(p.title || 'NPC') })));
+  }
+  function holderById(id){ return id ? (holderList().find(h => h.id === id) || null) : null; }
+  function invItems(hid){
+    const o = (hid && inventories[hid]) || {};
+    return Object.keys(o).map(k => o[k]).sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+  }
+  function invCount(hid){ return hid && inventories[hid] ? Object.keys(inventories[hid]).length : 0; }
+  function holderOptionsHtml(list, withCount){
+    const tk = list.filter(h => h.type === 'token'), np = list.filter(h => h.type === 'npc');
+    const opt = h => `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}${withCount ? ` (${capTxt(h.id)})` : ''}</option>`;
+    return (tk.length ? `<optgroup label="Jogadores">${tk.map(opt).join('')}</optgroup>` : '') +
+           (np.length ? `<optgroup label="NPCs">${np.map(opt).join('')}</optgroup>` : '');
+  }
+
+  // ---------- registro ----------
+  function actorFields(){
+    return {
+      actorId: currentUser ? currentUser.uid : null,
+      actorName: currentPlayer ? currentPlayer.playerName : 'Anônimo (sem login)'
+    };
+  }
+  function itemRef(i){
+    return { uid: i.uid || null, itemId: i.itemId != null ? i.itemId : i.id, name: i.name, category: i.category };
+  }
+  function mkLog(action, holder, extra){
+    return Object.assign({
+      action,
+      holderId: holder ? holder.id : null,
+      holderName: holder ? holder.name : 'Sobrevivente desconhecido',
+      holderType: holder ? holder.type : null,
+      sessionId: (campaignMeta && campaignMeta.activeSessionId) || null
+    }, actorFields(), extra || {});
+  }
+
+  // Grava alterações de inventário + entradas de registro de uma vez só.
+  // invOps: { 'donoId/itemUid': objeto | null, 'donoId': null }
+  async function commitInv(invOps, logEntries){
+    const entries = (logEntries || []).map(e => Object.assign({
+      id: firebaseReady ? fbRefOf(KEY_LOG).push().key : newUid('lg'),
+      ts: firebaseReady ? firebase.database.ServerValue.TIMESTAMP : Date.now()
+    }, e));
     if(firebaseReady){
-      firebaseDb.ref('tau-volantis/' + KEY_INVENTORY_LOG).on('value', snap => {
-        const data = snap.val() || {};
-        inventoryLog = Array.isArray(data) ? data.slice() : Object.keys(data).map(key => data[key]).filter(Boolean);
-        inventoryLog.sort((a, b) => (b.at || 0) - (a.at || 0));
-        saveLocal(KEY_INVENTORY_LOG, inventoryLog);
-        renderInventoryAudit();
-      }, err => console.error('Erro ao sincronizar auditoria do inventário', err));
-    }else{
-      loadKey(KEY_INVENTORY_LOG).then(data => {
-        inventoryLog = Array.isArray(data) ? data : [];
-        renderInventoryAudit();
+      const upd = {};
+      Object.keys(invOps).forEach(p => { upd[scopedKey(KEY_INV) + '/' + p] = invOps[p]; });
+      entries.forEach(e => { upd[scopedKey(KEY_LOG) + '/' + e.id] = JSON.parse(JSON.stringify(e)); });
+      try{
+        await firebaseDb.ref('tau-volantis').update(upd);
+        return true;
+      }catch(err){
+        console.error('Falha ao gravar inventário/registro', err);
+        toast('Não foi possível salvar (confira as regras do Firebase).', true);
+        return false;
+      }
+    }
+    // sem Firebase: aplica na memória e salva local
+    Object.keys(invOps).forEach(p => {
+      const parts = p.split('/'), h = parts[0], u = parts[1];
+      if(invOps[p] === null){
+        if(u === undefined) delete inventories[h];
+        else if(inventories[h]){ delete inventories[h][u]; if(!Object.keys(inventories[h]).length) delete inventories[h]; }
+      } else {
+        (inventories[h] = inventories[h] || {})[u] = invOps[p];
+      }
+    });
+    lootLog = lootLog.concat(entries);
+    await Promise.all([saveKey(KEY_INV, inventories), saveKey(KEY_LOG, lootLog)]);
+    onInvChanged();
+    return true;
+  }
+
+  // ---------- ações ----------
+  async function addItemTo(holderId, item, source, action, logExtra, instExtra){
+    const holder = holderById(holderId);
+    if(!holder){ toast('Escolha um personagem ou NPC primeiro.', true); return false; }
+    if(invCount(holderId) >= MAX_INV){ toast(`Inventário de ${holder.name} cheio (${fmtCount(MAX_INV)}).`, true); return false; }
+    const inst = { uid:newUid('it'), itemId:item.id, name:item.name, category:item.category, source, addedAt:Date.now(), addedBy:actorFields().actorName };
+    if(instExtra) Object.assign(inst, instExtra);
+    const ok = await commitInv(
+      { [holderId + '/' + inst.uid]: inst },
+      [mkLog(action, holder, Object.assign({ item:itemRef(inst), source, invAfter:invCount(holderId) + 1 }, logExtra || {}))]
+    );
+    if(ok) toast(`${item.name} → inventário de ${holder.name}`);
+    return ok;
+  }
+
+  function lootSource(entry){ return entry.kind === 'fish' ? 'pesca' : 'saque'; }
+  function logFound(entry){
+    if(!entry.item) return;
+    commitInv({}, [mkLog('saque', holderById(entry.holderId), {
+      item:itemRef(entry.item), source:lootSource(entry),
+      locName: entry.kind === 'fish' ? LOC_NAMES['rios'] : LOC_NAMES[entry.locKey],
+      coord: entry.coord || null, lat: entry.lat != null ? entry.lat : null, lng: entry.lng != null ? entry.lng : null,
+      pinId: entry.pinId || null, pinTitle: entry.pinTitle || null
+    })]);
+  }
+  async function keepLoot(entry){
+    if(entry.decision !== 'pending') return;
+    entry.decision = 'working';
+    renderLootResults(); renderFishResults();
+    const ok = await addItemTo(entry.holderId, entry.item, lootSource(entry), 'guardar', entry.lat != null ? { lat:entry.lat, lng:entry.lng } : null, entry.lat != null ? { foundAt:entry.coord } : null);
+    entry.decision = ok ? 'kept' : 'pending';
+    renderLootResults(); renderFishResults();
+  }
+  async function declineLoot(entry, reason){
+    if(entry.decision !== 'pending') return;
+    entry.decision = 'declined';
+    renderLootResults(); renderFishResults();
+    await commitInv({}, [mkLog('recusar', holderById(entry.holderId), { item:itemRef(entry.item), source:lootSource(entry), reason:reason || null })]);
+  }
+  // ao limpar o histórico de saque, o que ficou sem decisão vira "não mantido"
+  // no registro, pra auditoria nunca ficar com item "no limbo"
+  function flushPending(list){
+    const logs = [];
+    list.forEach(e => {
+      if(e.item && e.decision === 'pending'){
+        e.decision = 'declined';
+        logs.push(mkLog('recusar', holderById(e.holderId), { item:itemRef(e.item), source:lootSource(e), reason:'histórico limpo sem decisão' }));
+      }
+    });
+    if(logs.length) commitInv({}, logs);
+  }
+  function buildDecisionEl(entry){
+    const el = document.createElement('div');
+    el.className = 'loot-decision';
+    const holder = holderById(entry.holderId);
+    if(entry.decision === 'kept'){
+      el.innerHTML = `<div class="loot-decision-state kept">✓ Guardado no inventário de ${escapeHtml(holder ? holder.name : entry.foundBy)}</div>`;
+      return el;
+    }
+    if(entry.decision === 'declined'){
+      el.innerHTML = '<div class="loot-decision-state declined">✕ Não mantido</div>';
+      return el;
+    }
+    const n = holder ? invCount(holder.id) : 0;
+    const full = !!holder && n >= MAX_INV;
+    const working = entry.decision === 'working';
+    let warn = '';
+    if(!holder) warn = 'Selecione um personagem (token) antes de saquear para poder guardar o item.';
+    else if(full) warn = 'Inventário cheio. Libere espaço (usar, trocar ou descartar) ou escolha "Não manter".';
+    el.innerHTML = `
+      <div class="loot-decision-q">Manter no inventário${holder ? ' de ' + escapeHtml(holder.name) : ''}?</div>
+      <div class="loot-decision-btns">
+        <button type="button" class="inv-mini-btn primary" data-act="keep" ${(!holder || full || working) ? 'disabled' : ''}>${working ? 'Guardando...' : `Guardar (${n}/${MAX_INV})`}</button>
+        <button type="button" class="inv-mini-btn danger" data-act="decline" ${working ? 'disabled' : ''}>Não manter</button>
+      </div>
+      ${warn ? `<div class="loot-decision-warn">${warn}</div>` : ''}`;
+    el.querySelector('[data-act="keep"]').addEventListener('click', () => keepLoot(entry));
+    el.querySelector('[data-act="decline"]').addEventListener('click', () => declineLoot(entry));
+    return el;
+  }
+  function attachDecision(card, entry){
+    if(!entry.item) return;
+    card.insertBefore(buildDecisionEl(entry), card.querySelector('.send-row'));
+  }
+
+  async function doUse(hid, uid, consume, note){
+    const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
+    if(!holder || !inst){ toast('Item não encontrado.', true); return; }
+    const ok = await commitInv(consume ? { [hid + '/' + uid]: null } : {},
+      [mkLog('usar', holder, { item:itemRef(inst), consumed:!!consume, note:note || null, source:'inventario', invAfter:invCount(hid) - (consume ? 1 : 0) })]);
+    if(ok){ invUI.panel = null; toast(consume ? `${inst.name} usado e consumido.` : `${inst.name} usado.`); renderInvDrawer(); }
+  }
+  async function doDiscard(hid, uid, note){
+    const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
+    if(!holder || !inst){ toast('Item não encontrado.', true); return; }
+    const ok = await commitInv({ [hid + '/' + uid]: null },
+      [mkLog('descartar', holder, { item:itemRef(inst), note:note || null, source:'inventario', invAfter:invCount(hid) - 1 })]);
+    if(ok){ invUI.panel = null; toast(`${inst.name} descartado.`); renderInvDrawer(); }
+  }
+  async function doTrade(){
+    const t = invUI.trade;
+    const a = holderById(invUI.holderId), b = holderById(t && t.otherId);
+    if(!a || !b) return;
+    const giveItems = t.give.map(u => inventories[a.id] && inventories[a.id][u]).filter(Boolean);
+    const takeItems = t.take.map(u => inventories[b.id] && inventories[b.id][u]).filter(Boolean);
+    if(giveItems.length !== t.give.length || takeItems.length !== t.take.length){
+      toast('Algum item mudou de lugar enquanto você montava a troca. Refaça.', true);
+      renderInvDrawer(); return;
+    }
+    if(!giveItems.length && !takeItems.length) return;
+    const aAfter = invCount(a.id) - giveItems.length + takeItems.length;
+    const bAfter = invCount(b.id) + giveItems.length - takeItems.length;
+    if(aAfter > MAX_INV || bAfter > MAX_INV){ toast(`A troca excede o limite de ${MAX_INV} itens.`, true); return; }
+    const ops = {};
+    const moved = (inst) => Object.assign({}, inst, { source:'troca', addedAt:Date.now() });
+    giveItems.forEach(i => { ops[a.id + '/' + i.uid] = null; ops[b.id + '/' + i.uid] = moved(i); });
+    takeItems.forEach(i => { ops[b.id + '/' + i.uid] = null; ops[a.id + '/' + i.uid] = moved(i); });
+    const ok = await commitInv(ops, [mkLog('troca', a, {
+      counterpartId:b.id, counterpartName:b.name, counterpartType:b.type,
+      gave:giveItems.map(itemRef), got:takeItems.map(itemRef),
+      note:t.note || null, source:'inventario', invAfter:aAfter, counterpartInvAfter:bAfter
+    })]);
+    if(ok){ invUI.trade = null; toast('Troca concluída.'); renderInvDrawer(); }
+  }
+  // dono removido do mapa: o inventário some, mas o conteúdo fica registrado
+  function removeHolderInventory(hid, reason){
+    const items = invItems(hid);
+    if(!items.length) return;
+    const holder = holderById(hid) || { id:hid, name:'(removido)', type:null };
+    commitInv({ [hid]: null }, [mkLog('inv_removido', holder, { items:items.map(itemRef), reason:reason || null })]);
+  }
+  function clearAllInventories(){
+    const ids = Object.keys(inventories);
+    if(!ids.length) return;
+    const ops = {}, logs = [];
+    ids.forEach(hid => {
+      ops[hid] = null;
+      logs.push(mkLog('inv_removido', holderById(hid) || { id:hid, name:'(removido)', type:null },
+        { items:invItems(hid).map(itemRef), reason:'mapa reiniciado' }));
+    });
+    commitInv(ops, logs);
+  }
+
+  // ---------- gaveta de inventário ----------
+  function openInventory(hid){
+    closeHub();
+    closeDrawer();
+    closeNavDrawer();
+    if(hid) invUI.holderId = hid;
+    else if(!invUI.holderId || !holderById(invUI.holderId)) invUI.holderId = charSelect.value || (holderList()[0] || {}).id || null;
+    invUI.trade = null; invUI.panel = null;
+    renderInvDrawer();
+    invDrawer.classList.add('open');
+    invBackdrop.classList.add('open');
+  }
+  function closeInventory(){
+    invDrawer.classList.remove('open');
+    invBackdrop.classList.remove('open');
+  }
+  function setInvTab(tab){
+    invUI.tab = tab;
+    renderInvDrawer();
+  }
+
+  function renderInvDrawer(){
+    const hl = holderList();
+    const hs = document.getElementById('inv-holder-select');
+    hs.innerHTML = hl.length ? holderOptionsHtml(hl, true) : '<option value="">Nenhum token ou NPC no mapa</option>';
+    if(!hl.some(h => h.id === invUI.holderId)) invUI.holderId = hl[0] ? hl[0].id : null;
+    hs.value = invUI.holderId || '';
+
+    invDrawer.querySelectorAll('.inv-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === invUI.tab));
+    document.getElementById('inv-pane-inv').style.display = invUI.tab === 'inv' ? '' : 'none';
+    document.getElementById('inv-pane-log').style.display = invUI.tab === 'log' ? '' : 'none';
+    if(invUI.tab === 'log'){ renderInvLog(); return; }
+
+    const hid = invUI.holderId, n = invCount(hid);
+    const fill = document.getElementById('inv-cap-fill');
+    const cc = cfg();
+    const pct = cc.invMode === 'slots' ? n / MAX_INV : (cc.invMode === 'carga' ? invWeight(hid) / cc.invLimit : 0);
+    fill.style.width = Math.min(100, pct * 100) + '%';
+    fill.className = pct >= 1 ? 'full' : (pct >= 0.8 ? 'warn' : '');
+    document.getElementById('inv-cap-text').textContent = capTxt(hid);
+    document.getElementById('inv-trade-open').disabled = !hid;
+
+    renderTradePanel();
+
+    const list = document.getElementById('inv-list');
+    list.innerHTML = '';
+    const items = invItems(hid);
+    if(!hid){
+      list.innerHTML = '<div class="inv-empty">Crie um token ou um NPC no mapa para ter um inventário.</div>';
+      return;
+    }
+    if(!items.length){
+      list.innerHTML = '<div class="inv-empty">Inventário vazio. Itens chegam por saque, pela tabela de itens ou por troca.</div>';
+      return;
+    }
+    items.forEach(inv => {
+      const ref = ITEMS_BY_ID[inv.itemId];
+      const row = document.createElement('div');
+      row.className = 'inv-item' + (inv.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '');
+      row.innerHTML = `
+        <div class="inv-item-name">${escapeHtml(inv.name)}</div>
+        <span class="inv-item-cat">${escapeHtml(inv.category)}</span>
+        ${ref ? `<div class="inv-item-util">${escapeHtml(ref.utility)}</div>${compatLine(ref)}` : ''}
+        ${inv.foundAt ? `<div class="inv-item-util">📍 Achado em: ${escapeHtml(inv.foundAt)}</div>` : ''}
+        <div class="inv-item-actions">
+          <button type="button" class="inv-mini-btn" data-act="use">Usar</button>
+          <button type="button" class="inv-mini-btn" data-act="trade">Trocar</button>
+          <button type="button" class="inv-mini-btn danger" data-act="discard">Descartar</button>
+        </div>`;
+      row.querySelector('[data-act="use"]').addEventListener('click', () => {
+        invUI.panel = { type:'use', uid:inv.uid, consume:consumableByDefault(inv), note:'' };
+        renderInvDrawer();
       });
+      row.querySelector('[data-act="discard"]').addEventListener('click', () => {
+        invUI.panel = { type:'discard', uid:inv.uid, note:'' };
+        renderInvDrawer();
+      });
+      row.querySelector('[data-act="trade"]').addEventListener('click', () => {
+        invUI.trade = { otherId:null, give:[inv.uid], take:[], note:'' };
+        invUI.panel = null;
+        renderInvDrawer();
+        document.getElementById('inv-trade-panel').scrollIntoView({ block:'nearest' });
+      });
+      const pn = invUI.panel;
+      if(pn && pn.uid === inv.uid){
+        const box = document.createElement('div');
+        box.className = 'inv-inline';
+        if(pn.type === 'use'){
+          box.innerHTML = `
+            <label><input type="checkbox" data-role="consume" ${pn.consume ? 'checked' : ''}> Consumir (remove do inventário)</label>
+            <input type="text" data-role="note" maxlength="140" placeholder="Observação (opcional)" value="${escapeHtml(pn.note)}">
+            <div class="inv-inline-actions">
+              <button type="button" class="inv-mini-btn primary" data-act="ok">Confirmar uso</button>
+              <button type="button" class="inv-mini-btn" data-act="cancel">Cancelar</button>
+            </div>`;
+          box.querySelector('[data-role="consume"]').addEventListener('change', e => { pn.consume = e.target.checked; });
+        } else {
+          box.innerHTML = `
+            <p>Descartar remove o item do inventário de vez. A ação fica registrada.</p>
+            <input type="text" data-role="note" maxlength="140" placeholder="Observação (opcional)" value="${escapeHtml(pn.note)}">
+            <div class="inv-inline-actions">
+              <button type="button" class="inv-mini-btn danger" data-act="ok">Confirmar descarte</button>
+              <button type="button" class="inv-mini-btn" data-act="cancel">Cancelar</button>
+            </div>`;
+        }
+        box.querySelector('[data-role="note"]').addEventListener('input', e => { pn.note = e.target.value.trim(); });
+        box.querySelector('[data-act="cancel"]').addEventListener('click', () => { invUI.panel = null; renderInvDrawer(); });
+        box.querySelector('[data-act="ok"]').addEventListener('click', () => {
+          if(pn.type === 'use') doUse(hid, inv.uid, pn.consume, pn.note);
+          else doDiscard(hid, inv.uid, pn.note);
+        });
+        row.appendChild(box);
+      }
+      list.appendChild(row);
+    });
+  }
+
+  function renderTradePanel(){
+    const box = document.getElementById('inv-trade-panel');
+    const t = invUI.trade;
+    if(!t){ box.innerHTML = ''; return; }
+    const me = holderById(invUI.holderId);
+    const others = holderList().filter(h => h.id !== invUI.holderId);
+    if(!me || !others.length){
+      box.innerHTML = '<div class="inv-empty">Não há outro token ou NPC no mapa para trocar.</div>';
+      invUI.trade = null;
+      return;
+    }
+    if(!t.otherId || !others.some(h => h.id === t.otherId)){ t.otherId = others[0].id; t.take = []; }
+    const other = holderById(t.otherId);
+    const mine = invItems(me.id), theirs = invItems(other.id);
+    t.give = t.give.filter(u => mine.some(i => i.uid === u));
+    t.take = t.take.filter(u => theirs.some(i => i.uid === u));
+    const aAfter = mine.length - t.give.length + t.take.length;
+    const bAfter = theirs.length + t.give.length - t.take.length;
+    const over = aAfter > MAX_INV || bAfter > MAX_INV;
+    const empty = !t.give.length && !t.take.length;
+    const checks = (list, side, sel) => list.length
+      ? list.map(i => `<label><input type="checkbox" data-side="${side}" value="${escapeHtml(i.uid)}" ${sel.includes(i.uid) ? 'checked' : ''}><span>${escapeHtml(i.name)}</span></label>`).join('')
+      : '<div class="inv-item-util">Nenhum item.</div>';
+    box.innerHTML = `
+      <div class="inv-trade">
+        <select data-role="other">${holderOptionsHtml(others, true)}</select>
+        <div class="inv-trade-cols">
+          <div class="inv-trade-col"><h4>Você entrega (${escapeHtml(me.name)})</h4>${checks(mine, 'give', t.give)}</div>
+          <div class="inv-trade-col"><h4>Você recebe (${escapeHtml(other.name)})</h4>${checks(theirs, 'take', t.take)}</div>
+        </div>
+        <div class="inv-trade-preview">
+          ${escapeHtml(me.name)}: ${fmtCount(aAfter)} · ${escapeHtml(other.name)}: ${fmtCount(bAfter)}
+          ${over ? `<br><span class="bad">A troca excede o limite de ${MAX_INV} itens.</span>` : ''}
+        </div>
+        <input type="text" data-role="note" maxlength="140" placeholder="Observação (opcional)" value="${escapeHtml(t.note || '')}">
+        <div class="inv-inline-actions">
+          <button type="button" class="inv-mini-btn primary" data-act="ok" ${(over || empty) ? 'disabled' : ''}>Confirmar troca</button>
+          <button type="button" class="inv-mini-btn" data-act="cancel">Cancelar</button>
+        </div>
+      </div>`;
+    const sel = box.querySelector('[data-role="other"]');
+    sel.value = t.otherId;
+    sel.addEventListener('change', () => { t.otherId = sel.value; t.take = []; renderInvDrawer(); });
+    box.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => {
+      const arr = cb.dataset.side === 'give' ? t.give : t.take;
+      const idx = arr.indexOf(cb.value);
+      if(cb.checked && idx < 0) arr.push(cb.value);
+      if(!cb.checked && idx >= 0) arr.splice(idx, 1);
+      renderInvDrawer();
+    }));
+    box.querySelector('[data-role="note"]').addEventListener('input', e => { t.note = e.target.value.trim(); });
+    box.querySelector('[data-act="cancel"]').addEventListener('click', () => { invUI.trade = null; renderInvDrawer(); });
+    box.querySelector('[data-act="ok"]').addEventListener('click', doTrade);
+  }
+
+  // ---------- registro (visualização) ----------
+  function fmtTs(ts){
+    if(!ts) return '';
+    try{ return new Date(ts).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' }); }
+    catch(e){ return ''; }
+  }
+  function namesOf(arr){ return (arr || []).map(i => `"${i.name}"`).join(', ') || 'nada'; }
+  function logText(e){
+    const who = escapeHtml(e.holderName || 'Sobrevivente desconhecido');
+    const it = e.item ? `"${escapeHtml(e.item.name)}"` : '';
+    const src = SOURCE_LABELS[e.source] || e.source || '';
+    switch(e.action){
+      case 'saque': return `${who} encontrou ${it}${e.locName ? ' em ' + escapeHtml(e.locName) : ''}${e.coord ? ' (📍 ' + escapeHtml(e.coord) + ')' : ''}${e.pinTitle ? ' · local: ' + escapeHtml(e.pinTitle) : ''}`;
+      case 'guardar': return `${who} guardou ${it} no inventário (${escapeHtml(src)}) · ${e.invAfter != null ? fmtCount(e.invAfter) : ''}`;
+      case 'recusar': return `${who} não manteve ${it}${e.reason ? ' (' + escapeHtml(e.reason) + ')' : ''}`;
+      case 'adicionar': return `${who} recebeu ${it} direto da tabela de itens · ${e.invAfter != null ? fmtCount(e.invAfter) : ''}`;
+      case 'usar': return `${who} usou ${it} · ${e.consumed ? 'consumido' : 'mantido no inventário'}`;
+      case 'descartar': return `${who} descartou ${it}`;
+      case 'troca': return `${who} ⇄ ${escapeHtml(e.counterpartName || '?')}: entregou ${escapeHtml(namesOf(e.gave))} · recebeu ${escapeHtml(namesOf(e.got))}`;
+      case 'craft': return `${who} ${e.outcome === 'sucesso' ? 'fabricou' : 'tentou fabricar'} "${escapeHtml(e.recipe || '?')}"${e.outcome === 'sucesso' ? '' : ' e falhou'} · usou: ${escapeHtml(namesOf(e.used))}${e.made && e.made.length ? ' · obteve: ' + escapeHtml(namesOf(e.made)) : ''}`;
+      case 'inv_removido': return `Inventário de ${who} removido${e.reason ? ' (' + escapeHtml(e.reason) + ')' : ''}: ${escapeHtml(namesOf(e.items))}`;
+      default: return who;
     }
   }
-  initInventoryAuditSync();
+  function logMatches(e){
+    if(invUI.logAction && e.action !== invUI.logAction) return false;
+    if(invUI.logHolder && e.holderId !== invUI.logHolder && e.counterpartId !== invUI.logHolder) return false;
+    return true;
+  }
+  function renderInvLog(){
+    const hsel = document.getElementById('inv-log-holder');
+    const asel = document.getElementById('inv-log-action');
+    const names = {};
+    lootLog.forEach(e => {
+      if(e.holderId) names[e.holderId] = e.holderName;
+      if(e.counterpartId) names[e.counterpartId] = e.counterpartName;
+    });
+    hsel.innerHTML = '<option value="">Todos os personagens</option>' +
+      Object.keys(names).map(id => `<option value="${escapeHtml(id)}">${escapeHtml(names[id] || '?')}</option>`).join('');
+    hsel.value = invUI.logHolder;
+    asel.innerHTML = '<option value="">Todas as ações</option>' +
+      Object.keys(ACTION_LABELS).map(k => `<option value="${k}">${ACTION_LABELS[k]}</option>`).join('');
+    asel.value = invUI.logAction;
+    const rows = lootLog.filter(logMatches).sort((a, b) => (b.ts || 0) - (a.ts || 0) || String(b.id).localeCompare(String(a.id)));
+    const box = document.getElementById('inv-log-list');
+    if(!rows.length){ box.innerHTML = '<div class="inv-empty">Nenhuma transação registrada.</div>'; return; }
+    box.innerHTML = rows.slice(0, 200).map(e => `
+      <div class="log-row">
+        <div class="log-meta">
+          <span class="log-badge ${escapeHtml(e.action)}">${escapeHtml(ACTION_LABELS[e.action] || e.action)}</span>
+          <span>${escapeHtml(fmtTs(e.ts))}</span>
+          <span>por ${escapeHtml(e.actorName || '?')}</span>
+        </div>
+        <div>${logText(e)}</div>
+        ${e.note ? `<div class="log-note">“${escapeHtml(e.note)}”</div>` : ''}
+      </div>`).join('') +
+      (rows.length > 200 ? `<div class="inv-log-note" style="margin-top:0.6rem;">Mostrando as 200 mais recentes de ${rows.length}. O CSV exporta todas as filtradas.</div>` : '');
+  }
+  function exportLogCsv(){
+    const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const rows = [['data','acao','personagem','tipo','contraparte','item_ou_entregue','recebido','origem','local','coordenada','consumido','por','observacao','motivo']];
+    lootLog.filter(logMatches).sort((a, b) => (a.ts || 0) - (b.ts || 0)).forEach(e => {
+      rows.push([
+        e.ts ? new Date(e.ts).toISOString() : '', e.action, e.holderName, e.holderType, e.counterpartName,
+        e.action === 'craft' ? (e.used || []).map(i => i.name).join(' | ') : e.action === 'troca' ? (e.gave || []).map(i => i.name).join(' | ') : (e.action === 'inv_removido' ? (e.items || []).map(i => i.name).join(' | ') : (e.item ? e.item.name : '')),
+        (e.action === 'craft' ? (e.made || []) : (e.got || [])).map(i => i.name).join(' | '),
+        e.source, e.locName, e.coord, e.consumed == null ? '' : (e.consumed ? 'sim' : 'não'), e.actorName, e.note, e.reason
+      ]);
+    });
+    const csv = '\ufeff' + rows.map(r => r.map(q).join(',')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+    a.download = 'registro-inventario.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  // ---------- ligações com o resto da interface ----------
+  function refreshAddDest(){
+    if(!invReady) return;
+    const prev = itemAddDest.value, hl = holderList();
+    itemAddDest.innerHTML = hl.length ? holderOptionsHtml(hl, true) : '<option value="">Nenhum token ou NPC no mapa</option>';
+    itemAddDest.value = (prev && hl.some(h => h.id === prev)) ? prev : (charSelect.value || (hl[0] || {}).id || '');
+  }
+  function updateSaqueInvCount(){
+    if(!invReady) return;
+    const t = selectedToken();
+    document.getElementById('saque-inv-count').textContent = t ? `Inventário: ${capTxt(t.id)}` : 'Inventário: escolha um personagem';
+  }
+  // chamado quando tokens/NPCs mudam (renderNavList): só reage se nomes/ids mudaram
+  function invHoldersChanged(){
+    if(!invReady) return;
+    const sig = holderList().map(h => h.id + ':' + h.name).join('|');
+    if(sig === lastHolderSig) return;
+    lastHolderSig = sig;
+    refreshAddDest(); updateSaqueInvCount();
+    if(invDrawer.classList.contains('open')) renderInvDrawer();
+  }
+  function onInvChanged(){
+    if(!invReady) return;
+    if(invDrawer.classList.contains('open')) renderInvDrawer();
+    renderLootResults(); renderFishResults();
+    refreshAddDest(); updateSaqueInvCount();
+  }
+
+  document.getElementById('inv-toggle-btn').addEventListener('click', () => {
+    invDrawer.classList.contains('open') ? closeInventory() : openInventory(null);
+  });
+  document.getElementById('saque-open-inv').addEventListener('click', () => openInventory(charSelect.value || null));
+  document.getElementById('inv-drawer-close-btn').addEventListener('click', closeInventory);
+  invBackdrop.addEventListener('click', closeInventory);
+  document.getElementById('inv-holder-select').addEventListener('change', e => {
+    invUI.holderId = e.target.value || null; invUI.trade = null; invUI.panel = null; renderInvDrawer();
+  });
+  document.getElementById('inv-trade-open').addEventListener('click', () => {
+    invUI.trade = { otherId:null, give:[], take:[], note:'' }; invUI.panel = null; renderInvDrawer();
+  });
+  invDrawer.querySelectorAll('.inv-tab').forEach(b => b.addEventListener('click', () => setInvTab(b.dataset.tab)));
+  document.getElementById('inv-log-holder').addEventListener('change', e => { invUI.logHolder = e.target.value; renderInvLog(); });
+  document.getElementById('inv-log-action').addEventListener('change', e => { invUI.logAction = e.target.value; renderInvLog(); });
+  document.getElementById('inv-log-export').addEventListener('click', exportLogCsv);
+  charSelect.addEventListener('change', () => {
+    if(charSelect.value) itemAddDest.value = charSelect.value;
+    updateSaqueInvCount();
+  });
+  // botão "＋ Inventário" da tabela completa de itens
+  itemTbody.addEventListener('click', e => {
+    const b = e.target.closest('.inv-add-btn');
+    if(!b) return;
+    const item = ITEMS_BY_ID[b.dataset.id];
+    if(item) addItemTo(itemAddDest.value, item, 'tabela', 'adicionar');
+  });
+
+  async function initInventorySync(){
+    if(firebaseReady){
+      listen(fbRefOf(KEY_INV), snap => {
+        inventories = snap.val() || {};
+        saveLocal(KEY_INV, inventories);
+        onInvChanged();
+      }, err => console.error('Erro de sincronização (inventários)', err));
+      listen(fbRefOf(KEY_LOG).limitToLast(500), snap => {
+        const arr = [];
+        snap.forEach(c => { arr.push(c.val()); });
+        lootLog = arr;
+        onInvChanged();
+      }, err => console.error('Erro de sincronização (registro)', err));
+    } else {
+      const [inv, lg] = await Promise.all([loadKey(KEY_INV), loadKey(KEY_LOG)]);
+      inventories = (inv && !Array.isArray(inv)) ? inv : {};
+      lootLog = Array.isArray(lg) ? lg : [];
+      onInvChanged();
+    }
+  }
+
+  // ================= CAMPANHAS · SESSÕES · DADOS · FICHA · MUNDO · OFÍCIO =================
+  const DIE_SIDES = [4, 6, 8, 10, 12, 20, 100];
+  const NEED_LIST = [['fome','Fome'],['sede','Sede'],['fadiga','Fadiga'],['exposicao','Exposição'],['estresse','Estresse'],['ferimentos','Ferimentos']];
+  const NEED_LEVELS = ['Sem marca','▲ Leve','▲▲ Moderado','▲▲▲ Grave','✖ Crítico'];
+  const EXPLORE_STATES = [['desconhecido','❔ Desconhecido'],['conhecido','📍 Conhecido'],['explorado','✔ Explorado'],['esgotado','⛔ Esgotado'],['ameaca','⚠ Sob ameaça'],['bloqueado','🚧 Bloqueado'],['seguro','🛡 Seguro']];
+  const CRAFT_FAMILIES = [['primeiros-socorros','Primeiros socorros'],['sobrevivencia','Sobrevivência'],['reparo','Reparo']];
+  const DEFAULT_MODULES = { card:true, clock:false, needs:false, explore:false, crafting:false };
+  const DEFAULT_CARD_MODULES = { identity:true, skills:true, notes:true, equip:true };
+
+  let campaigns = {};
+  let campaignMeta = null;
+  let sessions = {};
+  let characters = {};
+  let rolls = {};
+  let recipes = {};
+  let clock = null;
+  let campShortcuts = {};
+  let personalShortcuts = {};
+  let personalSubUid = '__none__';
+  let personalOff = null;
+  let legacyBooted = false;
+
+  const hubDrawer = document.getElementById('hub-drawer');
+  const hubBackdrop = document.getElementById('hub-drawer-backdrop');
+  const hubBody = document.getElementById('hub-body');
+  const hub = {
+    tab:'dados', charToken:null, craftHolder:null,
+    newCampaign:{ name:'', system:'', mode:'vazia', source:'legacy', copyTokens:true, copyInv:false, copyChars:false, copyRecipes:true, copyWeather:false },
+    sessionForm:{ title:'', date:'', present:[], extra:'' },
+    cfgDraft:null, recipeForm:null, joinCode:'', craftMsg:''
+  };
+  const rollUI = { counts:{ 20:1 }, expr:'', skill:'', bonuses:[], who:'', physical:false, phys:'', note:'', record:true, last:null, scName:'', scScope:'personal' };
+  let hubDirty = false;
+
+  // ---------- configuração da campanha ativa ----------
+  function catKey(c){ return String(c).replace(/[.#$\/\[\]]/g, '_'); }
+  function cfg(){
+    const c = (campaignMeta && campaignMeta.config) || {};
+    return {
+      invMode: ['slots','carga','livre'].includes(c.invMode) ? c.invMode : 'slots',
+      invLimit: Math.max(1, parseInt(c.invLimit, 10) || 20),
+      decimals: Number.isInteger(c.decimals) ? Math.min(6, Math.max(0, c.decimals)) : 4,
+      weights: c.weights || {},
+      modules: Object.assign({}, DEFAULT_MODULES, c.modules || {}),
+      cardModules: Object.assign({}, DEFAULT_CARD_MODULES, c.cardModules || {})
+    };
+  }
+  function applyConfig(){
+    const c = cfg();
+    MAX_INV = c.invMode === 'slots' ? c.invLimit : Infinity;
+    const sel = document.getElementById('loot-pin-row');
+    if(sel) sel.style.display = c.modules.explore ? '' : 'none';
+    refreshLootPins();
+  }
+  function itemWeight(inv){ const w = cfg().weights[catKey(inv.category)]; return typeof w === 'number' ? w : 1; }
+  function invWeight(hid){ return invItems(hid).reduce((a, i) => a + itemWeight(i), 0); }
+  function fmtNum(n){ return String(Math.round(n * 100) / 100).replace('.', ','); }
+  function weightBand(w, cap){ const r = w / cap; return r <= 0.5 ? 'leve' : (r <= 1 ? 'carregado' : '⚠ sobrecarregado'); }
+  function capTxt(hid){
+    const c = cfg(), n = invCount(hid);
+    if(c.invMode === 'slots') return `${n}/${MAX_INV}`;
+    if(c.invMode === 'livre') return `${n} itens`;
+    const w = invWeight(hid);
+    return `${n} itens · carga ${fmtNum(w)}/${c.invLimit} (${weightBand(w, c.invLimit)})`;
+  }
+  function fmtCount(n){ return cfg().invMode === 'slots' ? `${n}/${MAX_INV}` : `${n} itens`; }
+
+  // ---------- papéis ----------
+  function isMaster(){
+    if(!firebaseReady || !campaignMeta || !campaignMeta.masterId) return true;
+    return !!currentUser && campaignMeta.masterId === currentUser.uid;
+  }
+  function isUnclaimed(){ return !!campaignMeta && !campaignMeta.masterId; }
+  function canEditHolder(h){
+    if(!h) return false;
+    if(isMaster()) return true;
+    if(h.type !== 'token') return false;
+    const t = tokens.find(x => x.id === h.id);
+    return !!t && (!t.ownerId || (currentUser && t.ownerId === currentUser.uid));
+  }
+  function memberOf(m){
+    const u = currentUser && currentUser.uid;
+    return !!(u && ((m.members && m.members[u]) || m.masterId === u));
+  }
+  function visibleCampaigns(){
+    return Object.keys(campaigns).map(k => campaigns[k]).filter(m => m && (m.id === 'legacy' || !firebaseReady || memberOf(m)))
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  }
+  function newCode(){
+    const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s = ''; for(let i = 0; i < 6; i++) s += abc[Math.floor(Math.random() * abc.length)];
+    return s;
+  }
+  function todayStr(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+
+  // ---------- ligar/desligar tudo de uma campanha ----------
+  function resetCampaignState(){
+    pins = []; tokens = []; shapes = []; routes = [];
+    weather = { state:'calmo', updatedAt:null, updatedBy:null };
+    inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {};
+    lootHistory = []; fishHistory = [];
+    renderPins(); renderTokens(); renderShapes(); renderRoutes(); applyWeatherVisual();
+    renderLootResults(); renderFishResults();
+  }
+  function attachModuleSync(){
+    const on = (key, cb, limit) => syncOff.push(DB.on(scopedKey(key), cb, limit));
+    on(KEY_CHARS, v => { characters = v || {}; hubChanged(); });
+    on(KEY_ROLLS, v => { rolls = v || {}; hubChanged(); }, 300);
+    on(KEY_RECIPES, v => { recipes = v || {}; hubChanged(); });
+    on(KEY_CLOCK, v => { clock = v; updateHud(); hubChanged(); });
+    on(KEY_SHORTCUTS, v => { campShortcuts = v || {}; hubChanged(); });
+    syncOff.push(DB.on('campaign-sessions/' + activeCampaignId, v => { sessions = v || {}; updateHud(); hubChanged(); }));
+  }
+  function activateCampaign(id){
+    detachSync();
+    activeCampaignId = id;
+    try{ localStorage.setItem('tv-map:active-campaign', id); }catch(e){}
+    document.getElementById('map-loading').style.display = '';
+    resetCampaignState();
+    campaignMeta = campaigns[id] || null;
+    applyConfig();
+    attachMapSync();
+    initInventorySync();
+    attachModuleSync();
+    updateHud(); onInvChanged(); renderHub();
+  }
+  function bootstrapLegacy(){
+    if(legacyBooted) return;
+    legacyBooted = true;
+    const ts = DB.ts();
+    DB.update({
+      'campaign-meta/legacy': { id:'legacy', name:'Campanha atual', system:'Ordem Paranormal — Sobrevivendo ao Horror (adaptado)',
+        masterId:null, masterName:null, createdAt:ts, archived:false, joinCode:newCode(), activeSessionId:'inaugural',
+        note:'Criada a partir dos dados que já existiam. Nada foi movido.' },
+      'campaign-sessions/legacy/inaugural': { id:'inaugural', title:'Sessão inaugural', date:todayStr(), present:[], summary:'', createdAt:ts, closed:false }
+    });
+  }
+  function startMetaSync(){
+    DB.on('campaign-meta', v => {
+      campaigns = v || {};
+      if(!campaigns.legacy) bootstrapLegacy();
+      const m = campaigns[activeCampaignId];
+      if(!m && activeCampaignId !== 'legacy' && campaigns.legacy){ activateCampaign('legacy'); return; }
+      campaignMeta = m || null;
+      applyConfig(); updateHud(); onInvChanged(); hubChanged();
+    });
+  }
+
+  // ---------- campanhas: criar, trocar, arquivar, excluir ----------
+  async function createCampaign(f){
+    if(!isMaster()){ toast('Só o mestre cria campanhas.', true); return; }
+    if(firebaseReady && !currentUser){ toast('Entre com sua conta para criar uma campanha.', true); return; }
+    const name = (f.name || '').trim();
+    if(!name){ toast('Dê um nome à campanha.', true); return; }
+    const id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    const a = actorFields();
+    const src = campaigns[f.source] || null;
+    const meta = { id, name, system:(f.system || '').trim(), masterId:a.actorId, masterName:a.actorName, createdAt:DB.ts(),
+      archived:false, joinCode:newCode(), activeSessionId:'s1' };
+    if(a.actorId) meta.members = { [a.actorId]: { name:a.actorName, role:'master' } };
+    if(f.mode === 'duplicar' && src && src.config) meta.config = JSON.parse(JSON.stringify(src.config));
+    if(f.mode === 'modelo' || f.mode === 'duplicar'){
+      const keys = [KEY_PINS, KEY_SHAPES, KEY_ROUTES];
+      if(f.mode === 'duplicar'){
+        if(f.copyTokens) keys.push(KEY_TOKENS);
+        if(f.copyInv) keys.push(KEY_INV);
+        if(f.copyChars) keys.push(KEY_CHARS);
+        if(f.copyRecipes) keys.push(KEY_RECIPES);
+        if(f.copyWeather) keys.push(KEY_WEATHER);
+      }
+      for(const k of keys){
+        let v = await readScoped(f.source, k);
+        if(v == null) continue;
+        if(f.mode === 'modelo' && k === KEY_PINS && Array.isArray(v)) v = v.map(p => { const c = Object.assign({}, p); delete c.explore; return c; });
+        await writeScoped(id, k, v);
+      }
+    }
+    await DB.update({
+      ['campaign-meta/' + id]: meta,
+      ['campaign-sessions/' + id + '/s1']: { id:'s1', title:'Sessão 1', date:todayStr(), present:[], summary:'', createdAt:DB.ts(), closed:false }
+    });
+    hub.newCampaign.name = ''; hub.newCampaign.system = '';
+    renderHub();
+    if(window.confirm(`Campanha "${name}" criada. Abrir agora? (a campanha atual é salva e continua intacta)`)) activateCampaign(id);
+  }
+  function switchCampaign(id){
+    if(id === activeCampaignId) return;
+    const m = campaigns[id]; if(!m) return;
+    if(!window.confirm(`Trocar para a campanha "${m.name}"? Mapa, tokens, inventários e registros passam a ser os dela. A campanha atual fica salva.`)) return;
+    activateCampaign(id);
+  }
+  async function setArchived(id, v){
+    if(!isMaster()){ toast('Só o mestre arquiva campanhas.', true); return; }
+    if(id === activeCampaignId && v){ toast('Troque de campanha antes de arquivar esta.', true); return; }
+    await DB.set('campaign-meta/' + id + '/archived', v ? true : null);
+  }
+  async function deleteCampaign(id){
+    const m = campaigns[id];
+    if(!m || id === 'legacy'){ toast('A campanha original não pode ser excluída.', true); return; }
+    if(id === activeCampaignId){ toast('Troque de campanha antes de excluir esta.', true); return; }
+    if(!isMasterOf(m)){ toast('Só o mestre da campanha exclui.', true); return; }
+    const typed = window.prompt(`Excluir "${m.name}" apaga mapa, tokens, inventários, fichas e registros dela, sem volta.\nDigite o nome da campanha para confirmar:`);
+    if(typed == null || typed.trim() !== m.name){ if(typed != null) toast('Nome diferente. Nada foi apagado.', true); return; }
+    for(const k of SCOPED_KEYS){ await writeScoped(id, k, null); }
+    await DB.update({ ['campaign-meta/' + id]: null, ['campaign-sessions/' + id]: null });
+    toast('Campanha excluída.');
+  }
+  function isMasterOf(m){ return !firebaseReady || !m.masterId || (!!currentUser && m.masterId === currentUser.uid); }
+  async function joinCampaign(code){
+    code = String(code || '').trim().toUpperCase();
+    if(!firebaseReady){ toast('Sem Firebase, todas as campanhas deste navegador já aparecem na lista.'); return; }
+    if(!currentUser){ toast('Entre com sua conta para usar um código.', true); return; }
+    const m = Object.keys(campaigns).map(k => campaigns[k]).find(x => x && x.joinCode === code);
+    if(!m){ toast('Código não encontrado.', true); return; }
+    await DB.set(`campaign-meta/${m.id}/members/${currentUser.uid}`, { name:actorFields().actorName, role:'player' });
+    hub.joinCode = '';
+    toast(`Você entrou em "${m.name}".`);
+  }
+  async function claimMaster(){
+    if(!currentUser){ toast('Entre com sua conta para assumir como mestre.', true); return; }
+    if(!isUnclaimed()){ return; }
+    const a = actorFields();
+    await DB.update({
+      [`campaign-meta/${activeCampaignId}/masterId`]: a.actorId,
+      [`campaign-meta/${activeCampaignId}/masterName`]: a.actorName,
+      [`campaign-meta/${activeCampaignId}/members/${a.actorId}`]: { name:a.actorName, role:'master' }
+    });
+    toast('Você agora é o mestre desta campanha.');
+  }
+  async function saveConfig(){
+    if(!isMaster()){ toast('Só o mestre altera a configuração.', true); return; }
+    const d = hub.cfgDraft; if(!d) return;
+    const weights = {};
+    Object.keys(d.weights || {}).forEach(k => { const n = Number(d.weights[k]); if(!isNaN(n) && n >= 0 && n !== 1) weights[k] = n; });
+    const config = {
+      invMode:d.invMode, invLimit:Math.max(1, parseInt(d.invLimit, 10) || 20),
+      decimals:Math.min(6, Math.max(0, parseInt(d.decimals, 10) || 0)),
+      weights, modules:d.modules, cardModules:d.cardModules
+    };
+    await DB.update({
+      [`campaign-meta/${activeCampaignId}/name`]: (d.name || '').trim() || 'Campanha',
+      [`campaign-meta/${activeCampaignId}/system`]: (d.system || '').trim(),
+      [`campaign-meta/${activeCampaignId}/config`]: config
+    });
+    toast('Configuração salva.');
+    hub.cfgDraft = null; renderHub();
+  }
+
+  // ---------- sessões ----------
+  function activeSession(){ return campaignMeta && campaignMeta.activeSessionId ? (sessions[campaignMeta.activeSessionId] || null) : null; }
+  function candidateNames(){
+    const set = new Set();
+    if(campaignMeta && campaignMeta.members) Object.keys(campaignMeta.members).forEach(u => set.add(campaignMeta.members[u].name));
+    tokens.forEach(t => { if(t.ownerName) set.add(t.ownerName); });
+    return Array.from(set).filter(Boolean);
+  }
+  async function newSession(){
+    if(!isMaster()){ toast('Só o mestre abre sessões.', true); return; }
+    const f = hub.sessionForm;
+    const title = (f.title || '').trim() || ('Sessão ' + (Object.keys(sessions).length + 1));
+    const present = f.present.slice();
+    (f.extra || '').split(',').map(s => s.trim()).filter(Boolean).forEach(n => { if(!present.includes(n)) present.push(n); });
+    const id = DB.newId('campaign-sessions/' + activeCampaignId);
+    const upd = {
+      [`campaign-sessions/${activeCampaignId}/${id}`]: { id, title, date:f.date || todayStr(), present, summary:'', createdAt:DB.ts(), closed:false },
+      [`campaign-meta/${activeCampaignId}/activeSessionId`]: id
+    };
+    const prev = activeSession();
+    if(prev && !prev.closed) upd[`campaign-sessions/${activeCampaignId}/${prev.id}/closed`] = true;
+    await DB.update(upd);
+    hub.sessionForm = { title:'', date:'', present:[], extra:'' };
+    toast('Nova sessão aberta. O mundo continua o mesmo.');
+    renderHub();
+  }
+  async function saveSummary(text){
+    const s = activeSession(); if(!s) return;
+    if(!isMaster()){ toast('Só o mestre edita o resumo.', true); return; }
+    await DB.set(`campaign-sessions/${activeCampaignId}/${s.id}/summary`, text || null);
+    toast('Resumo salvo.');
+  }
+  async function closeSession(){
+    const s = activeSession(); if(!s || !isMaster()) return;
+    await DB.set(`campaign-sessions/${activeCampaignId}/${s.id}/closed`, true);
+  }
+
+  // ---------- faixa de status (HUD) ----------
+  function clockText(){
+    if(!clock || typeof clock.minutes !== 'number') return '';
+    const m = clock.minutes, day = (clock.day || 1);
+    return `Dia ${day} · ${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  }
+  function updateHud(){
+    const chip = document.getElementById('campaign-chip');
+    if(!chip) return;
+    const s = activeSession();
+    const parts = [campaignMeta ? campaignMeta.name + (campaignMeta.archived ? ' (arquivada)' : '') : 'Campanha', s ? s.title : 'sem sessão'];
+    if(cfg().modules.clock && clockText()) parts.push(clockText());
+    chip.textContent = '📖 ' + parts.join(' · ');
+    chip.setAttribute('aria-label', 'Campanha ativa: ' + parts.join(', ') + '. Abrir campanhas e sessões.');
+  }
+
+  // ---------- roller ----------
+  function rollDie(sides){
+    const c = (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) ? window.crypto : null;
+    if(!c) return 1 + Math.floor(Math.random() * sides);
+    const lim = Math.floor(0x100000000 / sides) * sides;
+    const a = new Uint32Array(1);
+    do{ c.getRandomValues(a); }while(a[0] >= lim);
+    return 1 + (a[0] % sides);
+  }
+  function parseExpr(str){
+    const s = String(str || '').replace(/\s+/g, '').toLowerCase();
+    if(!s) return { error:'Escreva uma expressão, ex.: 2d6+1d8+3.' };
+    const re = /([+-]?)(\d*)d(\d+)|([+-]?\d+)/y;
+    const counts = {}; let bonus = 0, i = 0;
+    while(i < s.length){
+      re.lastIndex = i;
+      const m = re.exec(s);
+      if(!m || m.index !== i) return { error:'Não entendi a expressão. Exemplo: 2d6+1d8+3.' };
+      if(m[3]){
+        if(m[1] === '-') return { error:'Dados negativos não são aceitos; use um bônus negativo.' };
+        const n = m[2] === '' ? 1 : +m[2], sd = +m[3];
+        if(!DIE_SIDES.includes(sd)) return { error:'Dados aceitos: ' + DIE_SIDES.map(d => 'd' + d).join(', ') + '.' };
+        if(n < 1 || n > 50) return { error:'Use de 1 a 50 dados de cada tipo.' };
+        counts[sd] = (counts[sd] || 0) + n;
+      } else bonus += +m[4];
+      i = re.lastIndex;
+    }
+    return { counts, bonus };
+  }
+  function applyExpr(){
+    const r = parseExpr(rollUI.expr);
+    if(r.error){ toast(r.error, true); return false; }
+    rollUI.counts = r.counts;
+    rollUI.bonuses = rollUI.bonuses.filter(b => b.label !== 'expressão');
+    if(r.bonus) rollUI.bonuses.push({ label:'expressão', value:r.bonus });
+    return true;
+  }
+  function poolOf(counts){ return DIE_SIDES.filter(s => (counts[s] || 0) > 0).map(s => ({ sides:s, n:counts[s] })); }
+  function fmtGroups(groups){ return groups.map(g => `${g.values.length > 1 ? g.values.length : ''}d${g.sides} [${g.values.join(', ')}]`).join(' + '); }
+  function fmtBonuses(bs){ return (bs || []).map(b => `${b.value >= 0 ? '+' : '−'}${Math.abs(b.value)}${b.label ? ' (' + b.label + ')' : ''}`).join(' '); }
+  async function doRoll(){
+    const pool = poolOf(rollUI.counts);
+    if(!pool.length){ toast('Adicione ao menos um dado.', true); return; }
+    let groups;
+    if(rollUI.physical){
+      const nums = (String(rollUI.phys).match(/-?\d+/g) || []).map(Number);
+      const need = pool.reduce((a, p) => a + p.n, 0);
+      if(nums.length !== need){ toast(`Informe ${need} resultado(s) dos dados físicos, na ordem dos dados.`, true); return; }
+      let i = 0;
+      groups = pool.map(p => ({ sides:p.sides, values:nums.slice(i, i += p.n) }));
+      if(groups.some(g => g.values.some(v => v < 1 || v > g.sides))){ toast('Algum resultado está fora do alcance do dado.', true); return; }
+    } else {
+      groups = pool.map(p => ({ sides:p.sides, values:Array.from({ length:p.n }, () => rollDie(p.sides)) }));
+    }
+    const bonuses = rollUI.bonuses.map(b => ({ label:(b.label || '').trim(), value:Number(b.value) })).filter(b => !isNaN(b.value) && b.value !== 0);
+    const diceSum = groups.reduce((a, g) => a + g.values.reduce((x, y) => x + y, 0), 0);
+    const bonusSum = bonuses.reduce((a, b) => a + b.value, 0);
+    const holder = holderById(rollUI.who);
+    const a = actorFields();
+    const rec = { skill:(rollUI.skill || '').trim(), groups, diceSum, bonuses, bonusSum, total:diceSum + bonusSum,
+      note:(rollUI.note || '').trim(), physical:!!rollUI.physical, tokenId:holder ? holder.id : null,
+      whoName:holder ? holder.name : a.actorName, actorId:a.actorId, actorName:a.actorName,
+      sessionId:(campaignMeta && campaignMeta.activeSessionId) || null };
+    rollUI.last = Object.assign({ ts:Date.now() }, rec);
+    if(rollUI.record){
+      const path = scopedKey(KEY_ROLLS);
+      const id = DB.newId(path);
+      await DB.set(path + '/' + id, Object.assign({ id, ts:DB.ts() }, JSON.parse(JSON.stringify(rec))));
+    }
+    renderHub();
+  }
+  function rollText(r){
+    return `${r.whoName || ''}${r.skill ? ' — ' + r.skill : ''}: ${fmtGroups(r.groups || [])}${r.bonuses && r.bonuses.length ? ' ' + fmtBonuses(r.bonuses) : ''} = ${r.total}${r.note ? ' (' + r.note + ')' : ''}${r.physical ? ' [dados físicos]' : ''}`;
+  }
+  function copyText(t){
+    try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t); toast('Copiado.'); return; } }catch(e){}
+    toast('Não foi possível copiar neste navegador.', true);
+  }
+  function ensurePersonalSub(){
+    const uid = currentUser ? currentUser.uid : 'local';
+    if(uid === personalSubUid) return;
+    personalSubUid = uid;
+    if(personalOff) personalOff();
+    personalOff = DB.on('user-shortcuts/' + uid, v => { personalShortcuts = v || {}; hubChanged(); });
+  }
+  function allShortcuts(){
+    const out = [];
+    Object.keys(personalShortcuts).forEach(k => out.push(Object.assign({ scope:'personal' }, personalShortcuts[k])));
+    const card = rollUI.who ? characters[rollUI.who] : null;
+    if(card && card.shortcuts) Object.keys(card.shortcuts).forEach(k => out.push(Object.assign({ scope:'character' }, card.shortcuts[k])));
+    Object.keys(campShortcuts).forEach(k => out.push(Object.assign({ scope:'campaign' }, campShortcuts[k])));
+    return out;
+  }
+  function scPath(sc){
+    if(sc.scope === 'personal') return `user-shortcuts/${currentUser ? currentUser.uid : 'local'}/${sc.id}`;
+    if(sc.scope === 'character') return `${scopedKey(KEY_CHARS)}/${rollUI.who}/shortcuts/${sc.id}`;
+    return `${scopedKey(KEY_SHORTCUTS)}/${sc.id}`;
+  }
+  async function saveShortcut(){
+    const pool = poolOf(rollUI.counts);
+    const name = (rollUI.scName || '').trim();
+    if(!name){ toast('Dê um nome ao atalho.', true); return; }
+    if(!pool.length){ toast('Adicione ao menos um dado.', true); return; }
+    const scope = rollUI.scScope;
+    if(scope === 'character' && !rollUI.who){ toast('Escolha um personagem para salvar na ficha.', true); return; }
+    if(scope === 'character' && !canEditHolder(holderById(rollUI.who))){ toast('Você não pode editar essa ficha.', true); return; }
+    if(scope === 'campaign' && !isMaster()){ toast('Só o mestre salva atalhos da campanha.', true); return; }
+    const sc = { id:DB.newId('user-shortcuts'), name, counts:rollUI.counts, skill:rollUI.skill || '', bonuses:rollUI.bonuses.map(b => ({ label:b.label || '', value:Number(b.value) || 0 })), scope };
+    delete sc.scope;
+    await DB.set(scPath(Object.assign({ scope }, sc)), sc);
+    rollUI.scName = '';
+    toast('Atalho salvo.');
+  }
+  function useShortcut(sc){
+    rollUI.counts = Object.assign({}, sc.counts || {});
+    rollUI.skill = sc.skill || '';
+    rollUI.bonuses = (sc.bonuses || []).map(b => ({ label:b.label, value:b.value }));
+    rollUI.physical = false;
+  }
+
+  // ---------- ficha leve ----------
+  function ensureCard(tokenId){
+    if(characters[tokenId]) return characters[tokenId];
+    const h = holderById(tokenId);
+    const t = tokens.find(x => x.id === tokenId);
+    const card = { tokenId, name:h ? h.name : '', player:(t && t.ownerName) || '', notes:'', reminders:[], skills:[], needs:{} };
+    characters[tokenId] = card;
+    return card;
+  }
+  let cardTimer = null;
+  function scheduleSaveCard(){
+    clearTimeout(cardTimer);
+    const id = hub.charToken;
+    cardTimer = setTimeout(() => {
+      const card = characters[id];
+      if(card) DB.set(`${scopedKey(KEY_CHARS)}/${id}`, JSON.parse(JSON.stringify(card)));
+    }, 450);
+  }
+
+  // ---------- mundo: relógio e exploração ----------
+  async function advanceClock(min){
+    if(!isMaster()){ toast('Só o mestre mexe no relógio.', true); return; }
+    let m = (clock && typeof clock.minutes === 'number') ? clock.minutes : 8 * 60;
+    let day = (clock && clock.day) || 1;
+    m += min;
+    while(m >= 1440){ m -= 1440; day++; }
+    while(m < 0){ m += 1440; day = Math.max(1, day - 1); }
+    await DB.set(scopedKey(KEY_CLOCK), { day, minutes:m, updatedBy:actorFields().actorName });
+  }
+  function pinExplore(p){ return Object.assign({ status:'desconhecido', clue:'', risk:'', reserve:null, lastLoot:'' }, p.explore || {}); }
+  function setPinExplore(id, field, value){
+    if(!isMaster()){ toast('Só o mestre altera o estado dos locais.', true); return; }
+    const p = pins.find(x => x.id === id); if(!p) return;
+    p.explore = Object.assign(pinExplore(p), { [field]: value }, { updatedBy:actorFields().actorName });
+    saveKey(KEY_PINS, pins);
+  }
+  function refreshLootPins(){
+    const sel = document.getElementById('loot-pin-select');
+    if(!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— nenhum —</option>' + pins.filter(p => p.type !== 'npc').map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.title || 'Pin')}</option>`).join('');
+    sel.value = pins.some(p => p.id === prev) ? prev : '';
+  }
+  function locFields(tok){
+    const d = cfg().decimals;
+    let pin = null;
+    const sel = document.getElementById('loot-pin-select');
+    if(cfg().modules.explore && sel && sel.value) pin = pins.find(p => p.id === sel.value) || null;
+    const src = tok || pin;
+    const base = { pinId:pin ? pin.id : null, pinTitle:pin ? (pin.title || 'Pin') : null };
+    if(!src || src.lat == null || src.lng == null) return Object.assign({ coord:null, lat:null, lng:null }, base);
+    return Object.assign({ coord:`${src.lat.toFixed(d)}, ${src.lng.toFixed(d)}`, lat:Number(src.lat.toFixed(d)), lng:Number(src.lng.toFixed(d)) }, base);
+  }
+  function exploreGate(lf){
+    const pin = lf.pinId ? pins.find(p => p.id === lf.pinId) : null;
+    if(pin && pin.explore && typeof pin.explore.reserve === 'number' && pin.explore.reserve <= 0){
+      toast(`A reserva de "${pin.title || 'Pin'}" está esgotada.`, true);
+      return false;
+    }
+    return true;
+  }
+  function explorePostRoll(entry){
+    const pin = entry.pinId ? pins.find(p => p.id === entry.pinId) : null;
+    if(!pin || !entry.item) return;
+    const ex = pinExplore(pin);
+    ex.lastLoot = entry.item.name;
+    if(typeof ex.reserve === 'number'){ ex.reserve = Math.max(0, ex.reserve - 1); if(ex.reserve === 0) ex.status = 'esgotado'; }
+    pin.explore = ex;
+    saveKey(KEY_PINS, pins);
+  }
+  function coordHtml(e){
+    if(e.lat == null) return e.coord ? `<div class="result-coord">📍 ${escapeHtml(e.coord)}</div>` : '<div class="result-coord">📍 sem localização</div>';
+    return `<div class="result-coord">📍 Local aproximado: ${escapeHtml(e.coord)}
+      <button type="button" class="coord-btn" data-coord-copy="${escapeHtml(e.coord)}">Copiar</button>
+      <button type="button" class="coord-btn" data-coord-go="${e.lat},${e.lng}">Ver no mapa</button></div>`;
+  }
+  document.addEventListener('click', ev => {
+    const c = ev.target.closest && ev.target.closest('[data-coord-copy]');
+    if(c){ copyText(c.dataset.coordCopy); return; }
+    const g = ev.target.closest && ev.target.closest('[data-coord-go]');
+    if(g){ const [la, ln] = g.dataset.coordGo.split(',').map(Number); map.flyTo([la, ln], Math.max(map.getZoom(), 15)); }
+  });
+
+  // ---------- ofício (crafting) ----------
+  function itemByName(n){
+    const k = String(n || '').trim().toLowerCase();
+    return ITEMS.find(i => i.name.toLowerCase() === k) || null;
+  }
+  function craftCheck(rec, hid){
+    const have = {};
+    invItems(hid).forEach(i => { (have[i.itemId] = have[i.itemId] || []).push(i); });
+    const missing = [];
+    (rec.ingredients || []).forEach(ing => {
+      const n = (have[ing.itemId] || []).length;
+      if(n < ing.qty) missing.push({ itemId:ing.itemId, need:ing.qty, have:n });
+    });
+    const toolOk = !rec.tool || (have[rec.tool] || []).length > 0;
+    return { missing, toolOk, canCraft:!missing.length && toolOk, have };
+  }
+  async function craftDo(rec, hid, outcome){
+    const holder = holderById(hid);
+    if(!holder){ toast('Escolha quem fabrica.', true); return; }
+    if(!canEditHolder(holder)){ toast('Você não pode usar o inventário de ' + holder.name + '.', true); return; }
+    const chk = craftCheck(rec, hid);
+    if(!chk.canCraft){ toast('Faltam materiais ou ferramenta.', true); return; }
+    const used = [];
+    const take = () => {
+      const left = {};
+      (rec.ingredients || []).forEach(ing => {
+        const list = chk.have[ing.itemId].slice();
+        for(let k = 0; k < ing.qty; k++){ const inst = list.shift(); used.push(inst); }
+      });
+      return left;
+    };
+    const ops = {};
+    let made = [];
+    const consume = outcome === 'sucesso' || !!rec.wasteOnFail;
+    if(consume){ take(); used.forEach(i => { ops[hid + '/' + i.uid] = null; }); }
+    if(outcome === 'sucesso'){
+      const ref = ITEMS_BY_ID[rec.result.itemId];
+      if(!ref){ toast('O item resultante não existe mais no catálogo.', true); return; }
+      const qty = Math.max(1, rec.result.qty || 1);
+      if(invCount(hid) - used.length + qty > MAX_INV){ toast('Sem espaço no inventário para o resultado.', true); return; }
+      for(let k = 0; k < qty; k++){
+        const inst = { uid:newUid('it'), itemId:ref.id, name:ref.name, category:ref.category, source:'craft', addedAt:Date.now(), addedBy:actorFields().actorName };
+        ops[hid + '/' + inst.uid] = inst; made.push(inst);
+      }
+    }
+    const ok = await commitInv(ops, [mkLog('craft', holder, {
+      recipe:rec.name, outcome, used:used.map(itemRef), made:made.map(itemRef), source:'inventario',
+      invAfter:invCount(hid) - used.length + made.length })]);
+    if(ok){ hub.craftMsg = outcome === 'sucesso' ? `Fabricado: ${made.map(m => m.name).join(', ')}.` : (consume ? 'Falhou: os materiais foram perdidos.' : 'Falhou: nada foi consumido.'); renderHub(); }
+  }
+  function blankRecipe(){ return { id:null, name:'', family:'sobrevivencia', resultName:'', resultQty:1, ingredients:[{ name:'', qty:1 }], toolName:'', station:'', skill:'', time:'', noise:'', risk:'', resolution:'', wasteOnFail:false, notes:'' }; }
+  async function saveRecipe(){
+    if(!isMaster()){ toast('Só o mestre cria receitas.', true); return; }
+    const f = hub.recipeForm; if(!f) return;
+    const res = itemByName(f.resultName);
+    if(!(f.name || '').trim()){ toast('Dê um nome à receita.', true); return; }
+    if(!res){ toast('Escolha o item resultante pelo nome do catálogo.', true); return; }
+    const merged = {};
+    for(const ing of f.ingredients){
+      if(!(ing.name || '').trim()) continue;
+      const it = itemByName(ing.name);
+      if(!it){ toast(`Ingrediente "${ing.name}" não está no catálogo.`, true); return; }
+      merged[it.id] = (merged[it.id] || 0) + Math.max(1, parseInt(ing.qty, 10) || 1);
+    }
+    if(!Object.keys(merged).length){ toast('Adicione ao menos um ingrediente.', true); return; }
+    let tool = null;
+    if((f.toolName || '').trim()){ const t = itemByName(f.toolName); if(!t){ toast('Ferramenta não está no catálogo.', true); return; } tool = t.id; }
+    const path = scopedKey(KEY_RECIPES);
+    const id = f.id || DB.newId(path);
+    const rec = { id, name:f.name.trim(), family:f.family, result:{ itemId:res.id, qty:Math.max(1, parseInt(f.resultQty, 10) || 1) },
+      ingredients:Object.keys(merged).map(k => ({ itemId:+k, qty:merged[k] })), tool, station:f.station || '', skill:f.skill || '',
+      time:f.time || '', noise:f.noise || '', risk:f.risk || '', resolution:f.resolution || '', wasteOnFail:!!f.wasteOnFail, notes:f.notes || '' };
+    await DB.set(path + '/' + id, rec);
+    hub.recipeForm = null; toast('Receita salva.'); renderHub();
+  }
+  function recipeToForm(r){
+    const nm = id => (ITEMS_BY_ID[id] || {}).name || '';
+    return { id:r.id, name:r.name, family:r.family, resultName:nm(r.result.itemId), resultQty:r.result.qty, ingredients:(r.ingredients || []).map(i => ({ name:nm(i.itemId), qty:i.qty })),
+      toolName:r.tool ? nm(r.tool) : '', station:r.station || '', skill:r.skill || '', time:r.time || '', noise:r.noise || '', risk:r.risk || '', resolution:r.resolution || '', wasteOnFail:!!r.wasteOnFail, notes:r.notes || '' };
+  }
+  async function seedRecipes(){
+    if(!isMaster()) return;
+    const defs = [
+      ['Tala improvisada','primeiros-socorros','Talas improvisadas (madeira + tecido)',[['Retalhos de tecido',1],['Tábua de madeira empenada',1]],''],
+      ['Filtro de água improvisado','sobrevivencia','Filtro de água de rio improvisado',[['Garrafa de água mineral',1],['Carvão',1],['Retalhos de tecido',1]],''],
+      ['Isqueiro de pederneira','reparo','Isqueiro de pederneira caseiro',[['Isqueiro sem gás',1]],''],
+      ['Botas improvisadas','reparo','Botas improvisadas com panos e fita',[['Retalhos de tecido',2],['Fita adesiva',1]],'']
+    ];
+    const path = scopedKey(KEY_RECIPES); let n = 0;
+    for(const d of defs){
+      const res = itemByName(d[2]); const ings = d[3].map(x => [itemByName(x[0]), x[1]]);
+      if(!res || ings.some(x => !x[0])) continue;
+      const id = DB.newId(path);
+      await DB.set(path + '/' + id, { id, name:d[0], family:d[1], result:{ itemId:res.id, qty:1 }, ingredients:ings.map(x => ({ itemId:x[0].id, qty:x[1] })),
+        tool:null, station:'', skill:'', time:'', noise:'', risk:'', resolution:'Resolver na mesa (rolagem ou decisão do mestre).', wasteOnFail:false, notes:'Exemplo editável.' });
+      n++;
+    }
+    toast(n ? `${n} receitas de exemplo adicionadas. Edite como quiser.` : 'Nenhum exemplo pôde ser montado com este catálogo.', !n);
+  }
+
+  // ---------- painel "Mesa de jogo" ----------
+  const esc = escapeHtml;
+  function hubTabs(){
+    const c = cfg().modules;
+    const t = [['dados','🎲 Dados'], ['ficha','📇 Ficha'], ['sessao','📖 Sessão'], ['campanhas','🗂 Campanhas']];
+    if(c.clock || c.explore) t.push(['mundo','🌍 Mundo']);
+    if(c.crafting) t.push(['oficio','🛠 Ofício']);
+    return t;
+  }
+  function openHub(tab){
+    closeDrawer(); closeNavDrawer(); closeInventory();
+    if(tab) hub.tab = tab;
+    if(!hubTabs().some(t => t[0] === hub.tab)) hub.tab = 'dados';
+    ensurePersonalSub();
+    renderHub();
+    hubDrawer.classList.add('open'); hubBackdrop.classList.add('open');
+  }
+  function closeHub(){ hubDrawer.classList.remove('open'); hubBackdrop.classList.remove('open'); }
+  function hubIsOpen(){ return hubDrawer.classList.contains('open'); }
+  function hubChanged(){
+    if(!invReady || !hubIsOpen()) return;
+    const ae = document.activeElement;
+    if(ae && hubBody.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)){ hubDirty = true; return; }
+    renderHub();
+  }
+  function opt(v, label, sel){ return `<option value="${esc(v)}" ${String(sel) === String(v) ? 'selected' : ''}>${esc(label)}</option>`; }
+  function holderSelect(bind, value, withNone){
+    const hl = holderList();
+    return `<select data-bind="${bind}" data-rerender>${withNone ? '<option value="">— sem personagem —</option>' : ''}${
+      hl.map(h => opt(h.id, (h.type === 'npc' ? '👤 ' : '') + h.name, value)).join('')}</select>`;
+  }
+  function renderHub(){
+    if(!hubBody) return;
+    const tabs = hubTabs();
+    if(!tabs.some(t => t[0] === hub.tab)) hub.tab = 'dados';
+    const ses = activeSession();
+    let html = `<div class="hub-context" role="status">📖 <b>${esc(campaignMeta ? campaignMeta.name : 'Campanha')}</b> · ${esc(ses ? ses.title : 'sem sessão')}${isMaster() ? ' · mestre' : ''}</div>`;
+    html += '<div class="hub-tabs" role="tablist">' + tabs.map(t => `<button type="button" role="tab" aria-selected="${hub.tab === t[0]}" class="inv-tab${hub.tab === t[0] ? ' active' : ''}" data-act="tab" data-tab="${t[0]}">${t[1]}</button>`).join('') + '</div>';
+    const fn = { dados:renderDados, ficha:renderFicha, sessao:renderSessao, campanhas:renderCampanhas, mundo:renderMundo, oficio:renderOficio }[hub.tab];
+    html += fn();
+    hubBody.innerHTML = html;
+    hubDirty = false;
+  }
+
+  // --- dados ---
+  function renderDados(){
+    const who = holderById(rollUI.who) ? rollUI.who : '';
+    rollUI.who = who;
+    const dice = DIE_SIDES.map(s => `<div class="die"><span>d${s}</span>
+      <button type="button" class="die-btn" data-act="die-" data-s="${s}" aria-label="Menos um d${s}">−</button>
+      <b>${rollUI.counts[s] || 0}</b>
+      <button type="button" class="die-btn" data-act="die+" data-s="${s}" aria-label="Mais um d${s}">+</button></div>`).join('');
+    const bon = rollUI.bonuses.map((b, i) => `<div class="bonus-row">
+      <input type="text" data-bind="rollUI.bonuses.${i}.label" value="${esc(b.label)}" placeholder="Rótulo (item, condição, efeito...)" aria-label="Rótulo do bônus">
+      <input type="number" data-bind="rollUI.bonuses.${i}.value" data-num value="${esc(b.value)}" aria-label="Valor do bônus">
+      <button type="button" class="inv-mini-btn danger" data-act="bonus-del" data-i="${i}" aria-label="Remover bônus">✕</button></div>`).join('');
+    const last = rollUI.last;
+    const lastHtml = last ? `<div class="roll-result" aria-live="polite">
+      <div class="roll-total">${last.total}</div>
+      <div class="roll-detail"><b>${esc(last.whoName || '')}</b>${last.skill ? ' — ' + esc(last.skill) : ''}<br>
+      ${esc(fmtGroups(last.groups))} = ${last.diceSum}${last.bonuses.length ? '<br>Bônus: ' + esc(fmtBonuses(last.bonuses)) + ' = ' + (last.bonusSum >= 0 ? '+' : '−') + Math.abs(last.bonusSum) : ''}
+      ${last.note ? '<br><i>' + esc(last.note) + '</i>' : ''}${last.physical ? '<br><small>dados físicos informados</small>' : ''}</div>
+      <button type="button" class="inv-mini-btn" data-act="roll-copy">Copiar</button></div>` : '';
+    const scs = allShortcuts().map(sc => `<div class="sc-row"><span class="sc-name">${esc(sc.name)} <small>${{ personal:'pessoal', character:'personagem', campaign:'campanha' }[sc.scope]}</small></span>
+      <button type="button" class="inv-mini-btn" data-act="sc-use" data-id="${esc(sc.id)}" data-scope="${sc.scope}">Usar</button>
+      <button type="button" class="inv-mini-btn primary" data-act="sc-roll" data-id="${esc(sc.id)}" data-scope="${sc.scope}">Rolar</button>
+      <button type="button" class="inv-mini-btn danger" data-act="sc-del" data-id="${esc(sc.id)}" data-scope="${sc.scope}" aria-label="Excluir atalho">✕</button></div>`).join('');
+    const hist = Object.keys(rolls).map(k => rolls[k]).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 30).map(r =>
+      `<div class="log-row"><div class="log-meta"><span>${esc(fmtTs(r.ts))}</span><span>por ${esc(r.actorName || '?')}</span></div><div>${esc(rollText(r))}</div></div>`).join('');
+    return `<div class="hub-sec">
+      <label class="hub-label">Personagem (opcional)</label>${holderSelect('rollUI.who', who, true)}
+      <div class="hub-label">Dados</div><div class="dice-grid">${dice}</div>
+      <div class="expr-row"><input type="text" data-bind="rollUI.expr" value="${esc(rollUI.expr)}" placeholder="Ou escreva: 2d6+1d8+3" aria-label="Expressão de dados">
+        <button type="button" class="inv-mini-btn" data-act="expr-apply">Aplicar</button></div>
+      <label class="hub-label">Perícia / ação (texto livre)</label>
+      <input type="text" data-bind="rollUI.skill" value="${esc(rollUI.skill)}" placeholder="Qualquer perícia, atributo ou ação" maxlength="60">
+      <div class="hub-label">Bônus</div>${bon}
+      <button type="button" class="inv-mini-btn" data-act="bonus-add">＋ Bônus</button>
+      <label class="check-row"><input type="checkbox" data-bind="rollUI.physical" data-rerender ${rollUI.physical ? 'checked' : ''}> Usei dados físicos (digitar resultados)</label>
+      ${rollUI.physical ? `<input type="text" data-bind="rollUI.phys" value="${esc(rollUI.phys)}" placeholder="Resultados na ordem dos dados, ex.: 14 3 5" aria-label="Resultados dos dados físicos">` : ''}
+      <input type="text" data-bind="rollUI.note" value="${esc(rollUI.note)}" placeholder="Observação (opcional)" maxlength="140">
+      <label class="check-row"><input type="checkbox" data-bind="rollUI.record" ${rollUI.record ? 'checked' : ''}> Registrar no histórico da campanha</label>
+      <button type="button" class="inv-mini-btn primary roll-go" data-act="roll">${rollUI.physical ? 'Registrar resultado' : 'Rolar'}</button>
+      <p class="hub-hint">O site só mostra dados, bônus e total. Sucesso, dificuldade e consequência ficam com a mesa.</p>
+      ${lastHtml}
+    </div>
+    <div class="hub-sec"><div class="hub-label">Atalhos</div>${scs || '<div class="inv-empty">Nenhum atalho ainda.</div>'}
+      <div class="sc-save"><input type="text" data-bind="rollUI.scName" value="${esc(rollUI.scName)}" placeholder="Nome do atalho" maxlength="40">
+        <select data-bind="rollUI.scScope"><option value="personal" ${rollUI.scScope === 'personal' ? 'selected' : ''}>Pessoal (só eu)</option><option value="character" ${rollUI.scScope === 'character' ? 'selected' : ''}>Personagem</option><option value="campaign" ${rollUI.scScope === 'campaign' ? 'selected' : ''}>Campanha</option></select>
+        <button type="button" class="inv-mini-btn primary" data-act="sc-save">Salvar atual</button></div></div>
+    <div class="hub-sec"><div class="hub-label">Histórico da campanha</div>${hist || '<div class="inv-empty">Nenhuma rolagem registrada.</div>'}</div>`;
+  }
+
+  // --- ficha ---
+  function renderFicha(){
+    const hl = holderList();
+    if(!hl.length) return '<div class="inv-empty">Crie um token ou NPC no mapa para ter uma ficha.</div>';
+    if(!hl.some(h => h.id === hub.charToken)) hub.charToken = (charSelect.value && hl.some(h => h.id === charSelect.value)) ? charSelect.value : hl[0].id;
+    const h = holderById(hub.charToken), card = ensureCard(hub.charToken);
+    const edit = canEditHolder(h), dis = edit ? '' : 'disabled';
+    const cm = cfg().cardModules, mods = cfg().modules;
+    let html = `<div class="hub-sec"><label class="hub-label">Ficha de</label>${holderSelect('hub.charToken', hub.charToken, false)}
+      ${edit ? '' : '<p class="hub-hint">Somente leitura: esta ficha pertence a outra pessoa.</p>'}`;
+    if(cm.identity){
+      html += `<div class="hub-label">Identidade</div>
+        <input type="text" data-bind="card.name" value="${esc(card.name)}" placeholder="Nome do personagem" ${dis}>
+        <input type="text" data-bind="card.player" value="${esc(card.player)}" placeholder="Jogador" ${dis}>
+        <div class="hub-label">Lembretes da mesa (PD, patente, o que o grupo quiser)</div>
+        ${(card.reminders || []).map((r, i) => `<div class="bonus-row"><input type="text" data-bind="card.reminders.${i}.label" value="${esc(r.label)}" placeholder="Campo" ${dis}>
+          <input type="text" data-bind="card.reminders.${i}.value" value="${esc(r.value)}" placeholder="Valor" ${dis}>
+          <button type="button" class="inv-mini-btn danger" data-act="rem-del" data-i="${i}" ${dis} aria-label="Remover lembrete">✕</button></div>`).join('')}
+        <button type="button" class="inv-mini-btn" data-act="rem-add" ${dis}>＋ Lembrete</button>`;
+    }
+    if(cm.skills){
+      html += `<div class="hub-label">Perícias e bônus salvos</div>
+        ${(card.skills || []).map((s, i) => `<div class="bonus-row"><input type="text" data-bind="card.skills.${i}.name" value="${esc(s.name)}" placeholder="Perícia" ${dis}>
+          <input type="number" data-bind="card.skills.${i}.bonus" data-num value="${esc(s.bonus)}" aria-label="Bônus" ${dis}>
+          <button type="button" class="inv-mini-btn primary" data-act="skill-use" data-i="${i}" aria-label="Levar para os dados">🎲</button>
+          <button type="button" class="inv-mini-btn danger" data-act="skill-del" data-i="${i}" ${dis} aria-label="Remover perícia">✕</button></div>`).join('')}
+        <button type="button" class="inv-mini-btn" data-act="skill-add" ${dis}>＋ Perícia</button>`;
+    }
+    if(cm.notes) html += `<div class="hub-label">Anotações</div><textarea data-bind="card.notes" rows="4" ${dis}>${esc(card.notes)}</textarea>`;
+    if(cm.equip) html += `<div class="hub-label">Equipamento</div><p class="hub-hint">${esc(capTxt(h.id))}</p><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(h.id)}">🎒 Abrir inventário</button>`;
+    if(mods.needs){
+      html += `<div class="hub-label">Necessidades (só registro; sem efeito automático)</div>` + NEED_LIST.map(n => {
+        const v = (card.needs && card.needs[n[0]]) || 0;
+        return `<div class="need-row"><span>${n[1]}</span><button type="button" class="die-btn" data-act="need" data-n="${n[0]}" data-d="-1" ${dis} aria-label="Reduzir ${n[1]}">−</button><b class="need-v">${NEED_LEVELS[v]}</b><button type="button" class="die-btn" data-act="need" data-n="${n[0]}" data-d="1" ${dis} aria-label="Aumentar ${n[1]}">+</button></div>`;
+      }).join('');
+    }
+    return html + '</div>';
+  }
+
+  // --- sessão ---
+  function renderSessao(){
+    const s = activeSession(), master = isMaster(), f = hub.sessionForm;
+    if(!f.date) f.date = todayStr();
+    const names = candidateNames();
+    const past = Object.keys(sessions).map(k => sessions[k]).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return `<div class="hub-sec"><div class="hub-label">Sessão ativa</div>${s ? `
+      <div class="inv-item"><div class="inv-item-name">${esc(s.title)}</div><div class="inv-item-util">${esc(s.date || '')} · ${s.closed ? 'encerrada' : 'em andamento'}<br>Presentes: ${esc((s.present || []).join(', ') || '—')}</div>
+      <textarea data-bind="hub.summary" rows="4" placeholder="Resumo e acontecimentos da noite" ${master ? '' : 'disabled'}>${esc(s.summary || '')}</textarea>
+      ${master ? `<div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="sess-summary">Salvar resumo</button>${s.closed ? '' : '<button type="button" class="inv-mini-btn" data-act="sess-close">Encerrar sessão</button>'}</div>` : ''}</div>`
+      : '<div class="inv-empty">Sem sessão ativa.</div>'}</div>
+    ${master ? `<div class="hub-sec"><div class="hub-label">Nova sessão (continua o mesmo mundo)</div>
+      <input type="text" data-bind="sf.title" value="${esc(f.title)}" placeholder="Título (opcional)" maxlength="60">
+      <input type="date" data-bind="sf.date" value="${esc(f.date)}">
+      <div class="hub-label">Quem está presente</div>
+      ${names.map(n => `<label class="check-row"><input type="checkbox" data-act="present" data-name="${esc(n)}" ${f.present.includes(n) ? 'checked' : ''}> ${esc(n)}</label>`).join('') || '<p class="hub-hint">Sem jogadores conhecidos ainda.</p>'}
+      <input type="text" data-bind="sf.extra" value="${esc(f.extra)}" placeholder="Outros (separe por vírgula)">
+      <button type="button" class="inv-mini-btn primary" data-act="sess-new">Abrir sessão</button></div>` : ''}
+    <div class="hub-sec"><div class="hub-label">Sessões anteriores</div>${past.map(p => `<div class="log-row"><div class="log-meta"><span>${esc(p.date || '')}</span><span>${p.id === (campaignMeta && campaignMeta.activeSessionId) ? 'ativa' : (p.closed ? 'encerrada' : '')}</span></div><b>${esc(p.title)}</b>${p.summary ? '<div class="log-note">' + esc(p.summary) + '</div>' : ''}</div>`).join('') || '<div class="inv-empty">Nenhuma.</div>'}</div>`;
+  }
+
+  // --- campanhas ---
+  function renderCampanhas(){
+    const list = visibleCampaigns(), master = isMaster();
+    const act = list.filter(m => !m.archived), arch = list.filter(m => m.archived);
+    const row = m => `<div class="inv-item"><div class="inv-item-name">${esc(m.name)}${m.id === activeCampaignId ? ' <span class="log-badge guardar">ativa</span>' : ''}</div>
+      <div class="inv-item-util">${esc(m.system || 'sem sistema definido')}${m.masterName ? ' · mestre: ' + esc(m.masterName) : ''}${isMasterOf(m) && m.joinCode ? '<br>Código de convite: <b>' + esc(m.joinCode) + '</b>' : ''}</div>
+      <div class="inv-item-actions">${m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn primary" data-act="camp-open" data-id="${esc(m.id)}">Abrir</button>` : ''}
+      ${isMasterOf(m) && m.id !== 'legacy' ? (m.archived ? `<button type="button" class="inv-mini-btn" data-act="camp-reopen" data-id="${esc(m.id)}">Reabrir</button>` : (m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn" data-act="camp-archive" data-id="${esc(m.id)}">Arquivar</button>` : '')) : ''}
+      ${isMasterOf(m) && m.id !== 'legacy' && m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn danger" data-act="camp-delete" data-id="${esc(m.id)}">Excluir</button>` : ''}</div></div>`;
+    const nc = hub.newCampaign;
+    if(!hub.cfgDraft){
+      const c = cfg();
+      hub.cfgDraft = { name:campaignMeta ? campaignMeta.name : '', system:campaignMeta ? campaignMeta.system || '' : '', invMode:c.invMode, invLimit:c.invLimit, decimals:c.decimals,
+        weights:Object.assign({}, c.weights), modules:Object.assign({}, c.modules), cardModules:Object.assign({}, c.cardModules) };
+    }
+    const d = hub.cfgDraft;
+    const cats = Array.from(new Set(ITEMS.map(i => i.category))).sort();
+    const modLabels = { card:'Ficha leve', clock:'Relógio da campanha', needs:'Necessidades (registro)', explore:'Exploração dos locais', crafting:'Ofício (crafting)' };
+    return `<div class="hub-sec"><div class="hub-label">Suas campanhas</div>${act.map(row).join('') || '<div class="inv-empty">Nenhuma.</div>'}
+      ${arch.length ? '<div class="hub-label">Arquivadas</div>' + arch.map(row).join('') : ''}
+      ${isUnclaimed() && firebaseReady ? '<button type="button" class="inv-mini-btn primary" data-act="claim">Assumir como mestre desta campanha</button>' : ''}
+      <div class="expr-row"><input type="text" data-bind="hub.joinCode" value="${esc(hub.joinCode)}" placeholder="Código de convite" maxlength="6"><button type="button" class="inv-mini-btn" data-act="camp-join">Entrar</button></div></div>
+    ${master ? `<div class="hub-sec"><div class="hub-label">Nova campanha (história independente)</div>
+      <input type="text" data-bind="nc.name" value="${esc(nc.name)}" placeholder="Nome da campanha" maxlength="60">
+      <input type="text" data-bind="nc.system" value="${esc(nc.system)}" placeholder="Sistema / perfil da mesa (opcional)" maxlength="80">
+      <select data-bind="nc.mode" data-rerender>${opt('vazia', 'Começar vazia', nc.mode)}${opt('modelo', 'Copiar mapa-modelo (pins, áreas e rotas)', nc.mode)}${opt('duplicar', 'Duplicar uma campanha como nova história', nc.mode)}</select>
+      ${nc.mode !== 'vazia' ? `<select data-bind="nc.source">${list.map(m => opt(m.id, m.name, nc.source)).join('')}</select>` : ''}
+      ${nc.mode === 'duplicar' ? ['copyTokens:Tokens','copyInv:Inventários','copyChars:Fichas','copyRecipes:Receitas','copyWeather:Clima'].map(x => { const [k, l] = x.split(':'); return `<label class="check-row"><input type="checkbox" data-bind="nc.${k}" ${nc[k] ? 'checked' : ''}> ${l}</label>`; }).join('') : ''}
+      <button type="button" class="inv-mini-btn primary" data-act="camp-create">Criar campanha</button>
+      <p class="hub-hint">Nada é copiado sem você escolher. A campanha atual não é alterada.</p></div>
+    <div class="hub-sec"><div class="hub-label">Configuração desta campanha</div>
+      <input type="text" data-bind="cd.name" value="${esc(d.name)}" placeholder="Nome" maxlength="60">
+      <input type="text" data-bind="cd.system" value="${esc(d.system)}" placeholder="Sistema / perfil" maxlength="80">
+      <div class="hub-label">Módulos</div>
+      ${Object.keys(modLabels).map(k => `<label class="check-row"><input type="checkbox" data-bind="cd.modules.${k}" ${d.modules[k] ? 'checked' : ''}> ${modLabels[k]}</label>`).join('')}
+      <div class="hub-label">Partes da ficha</div>
+      ${[['identity','Identidade'],['skills','Perícias e atalhos'],['notes','Anotações'],['equip','Equipamento']].map(x => `<label class="check-row"><input type="checkbox" data-bind="cd.cardModules.${x[0]}" ${d.cardModules[x[0]] ? 'checked' : ''}> ${x[1]}</label>`).join('')}
+      <div class="hub-label">Inventário</div>
+      <select data-bind="cd.invMode" data-rerender>${opt('slots', 'Limite de itens', d.invMode)}${opt('carga', 'Carga por peso (faixas)', d.invMode)}${opt('livre', 'Lista livre, sem limite', d.invMode)}</select>
+      ${d.invMode !== 'livre' ? `<label class="hub-label">${d.invMode === 'slots' ? 'Máximo de itens' : 'Capacidade de carga'}</label><input type="number" min="1" data-bind="cd.invLimit" value="${esc(d.invLimit)}">` : ''}
+      ${d.invMode === 'carga' ? '<div class="hub-label">Peso por categoria (padrão 1)</div>' + cats.map(c => `<div class="bonus-row"><span class="w-cat">${esc(c)}</span><input type="number" step="0.1" min="0" data-bind="cd.weights.${esc(catKey(c))}" value="${esc(d.weights[catKey(c)] != null ? d.weights[catKey(c)] : 1)}"></div>`).join('') : ''}
+      <label class="hub-label">Casas decimais das coordenadas do saque (0 a 6)</label><input type="number" min="0" max="6" data-bind="cd.decimals" value="${esc(d.decimals)}">
+      <button type="button" class="inv-mini-btn primary" data-act="cfg-save">Salvar configuração</button></div>` : '<p class="hub-hint">Só o mestre cria campanhas e altera a configuração.</p>'}`;
+  }
+
+  // --- mundo ---
+  function renderMundo(){
+    const mods = cfg().modules, master = isMaster();
+    let html = '';
+    if(mods.clock){
+      html += `<div class="hub-sec"><div class="hub-label">Relógio da campanha</div><div class="clock-big" aria-live="polite">${esc(clockText() || 'Dia 1 · 08:00 (não iniciado)')}</div>
+        ${master ? `<div class="inv-item-actions">${[[10, '+10 min'], [60, '+1 h'], [360, '+6 h'], [1440, '+1 dia'], [-60, '−1 h']].map(x => `<button type="button" class="inv-mini-btn" data-act="clock" data-m="${x[0]}">${x[1]}</button>`).join('')}</div>` : ''}
+        <p class="hub-hint">O relógio só registra o tempo; nenhuma regra é aplicada sozinha.</p></div>`;
+    }
+    if(mods.explore){
+      const ps = pins.filter(p => p.type !== 'npc');
+      html += `<div class="hub-sec"><div class="hub-label">Locais (pins)</div>${ps.map(p => {
+        const ex = pinExplore(p), dis = master ? '' : 'disabled';
+        return `<div class="inv-item"><div class="inv-item-name">${esc(p.title || 'Pin')}</div>
+          <select data-pin="${esc(p.id)}" data-field="status" ${dis}>${EXPLORE_STATES.map(s => opt(s[0], s[1], ex.status)).join('')}</select>
+          <input type="text" data-pin="${esc(p.id)}" data-field="clue" value="${esc(ex.clue)}" placeholder="Pista" ${dis}>
+          <input type="text" data-pin="${esc(p.id)}" data-field="risk" value="${esc(ex.risk)}" placeholder="Risco" ${dis}>
+          <input type="number" min="0" data-pin="${esc(p.id)}" data-field="reserve" value="${ex.reserve == null ? '' : ex.reserve}" placeholder="Reserva de saque (vazio = ilimitada)" ${dis}>
+          <div class="inv-item-util">Último saque: ${esc(ex.lastLoot || '—')}${ex.updatedBy ? ' · por ' + esc(ex.updatedBy) : ''}</div>
+          <button type="button" class="inv-mini-btn" data-act="pin-go" data-id="${esc(p.id)}">Ver no mapa</button></div>`;
+      }).join('') || '<div class="inv-empty">Nenhum pin no mapa.</div>'}</div>`;
+    }
+    return html || '<div class="inv-empty">Ative relógio ou exploração na configuração da campanha.</div>';
+  }
+
+  // --- ofício ---
+  function renderOficio(){
+    const master = isMaster(), hl = holderList().filter(h => h.type === 'token');
+    if(!hl.some(h => h.id === hub.craftHolder)) hub.craftHolder = hl[0] ? hl[0].id : null;
+    const list = Object.keys(recipes).map(k => recipes[k]).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const nm = id => (ITEMS_BY_ID[id] || {}).name || '?';
+    let html = '<datalist id="item-names">' + ITEMS.map(i => `<option value="${esc(i.name)}">`).join('') + '</datalist>';
+    html += `<div class="hub-sec"><label class="hub-label">Quem fabrica</label>${hl.length ? `<select data-bind="hub.craftHolder" data-rerender>${hl.map(h => opt(h.id, h.name, hub.craftHolder)).join('')}</select>` : '<div class="inv-empty">Crie um token no mapa.</div>'}
+      ${hub.craftMsg ? `<p class="hub-hint" role="status">${esc(hub.craftMsg)}</p>` : ''}</div>`;
+    CRAFT_FAMILIES.concat([['outro', 'Outras']]).forEach(([fk, fl]) => {
+      const rs = list.filter(r => (CRAFT_FAMILIES.some(f => f[0] === r.family) ? r.family : 'outro') === fk);
+      if(!rs.length) return;
+      html += `<div class="hub-sec"><div class="hub-label">${fl}</div>${rs.map(r => {
+        const chk = hub.craftHolder ? craftCheck(r, hub.craftHolder) : { missing:[], toolOk:false, canCraft:false };
+        const ing = (r.ingredients || []).map(i => { const miss = chk.missing.find(m => m.itemId === i.itemId); return `<li class="${miss ? 'bad' : 'good'}">${miss ? '✖' : '✔'} ${i.qty}× ${esc(nm(i.itemId))}${miss ? ` (tem ${miss.have})` : ''}</li>`; }).join('');
+        return `<div class="inv-item"><div class="inv-item-name">${esc(r.name)}</div>
+          <div class="inv-item-util">Resultado: ${r.result.qty}× ${esc(nm(r.result.itemId))}</div><ul class="craft-ing">${ing}${r.tool ? `<li class="${chk.toolOk ? 'good' : 'bad'}">${chk.toolOk ? '✔' : '✖'} Ferramenta: ${esc(nm(r.tool))}</li>` : ''}</ul>
+          <div class="inv-item-util">${[r.station && 'Estação: ' + r.station, r.skill && 'Perícia: ' + r.skill, r.time && 'Tempo: ' + r.time, r.noise && 'Ruído: ' + r.noise, r.risk && 'Risco: ' + r.risk].filter(Boolean).map(esc).join(' · ')}</div>
+          ${r.resolution ? `<div class="inv-item-util"><i>${esc(r.resolution)}</i></div>` : ''}
+          <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="craft" data-id="${esc(r.id)}" data-o="sucesso" ${chk.canCraft ? '' : 'disabled'}>Deu certo</button>
+          <button type="button" class="inv-mini-btn danger" data-act="craft" data-id="${esc(r.id)}" data-o="falha" ${chk.canCraft ? '' : 'disabled'}>Deu errado${r.wasteOnFail ? ' (perde materiais)' : ''}</button>
+          <button type="button" class="inv-mini-btn" data-act="craft-roll" data-id="${esc(r.id)}">🎲 Rolar</button>
+          ${master ? `<button type="button" class="inv-mini-btn" data-act="recipe-edit" data-id="${esc(r.id)}">Editar</button><button type="button" class="inv-mini-btn danger" data-act="recipe-del" data-id="${esc(r.id)}" aria-label="Excluir receita">✕</button>` : ''}</div></div>`;
+      }).join('')}</div>`;
+    });
+    if(!list.length) html += '<div class="inv-empty">Nenhuma receita configurada.</div>';
+    if(master){
+      const f = hub.recipeForm;
+      html += f ? `<div class="hub-sec"><div class="hub-label">${f.id ? 'Editar receita' : 'Nova receita'}</div>
+        <input type="text" data-bind="rf.name" value="${esc(f.name)}" placeholder="Nome da receita">
+        <select data-bind="rf.family">${CRAFT_FAMILIES.map(x => opt(x[0], x[1], f.family)).join('')}</select>
+        <input type="text" list="item-names" data-bind="rf.resultName" value="${esc(f.resultName)}" placeholder="Resultado (nome do item do catálogo)">
+        <input type="number" min="1" data-bind="rf.resultQty" value="${esc(f.resultQty)}" aria-label="Quantidade do resultado">
+        <div class="hub-label">Ingredientes</div>
+        ${f.ingredients.map((g, i) => `<div class="bonus-row"><input type="text" list="item-names" data-bind="rf.ingredients.${i}.name" value="${esc(g.name)}" placeholder="Item"><input type="number" min="1" data-bind="rf.ingredients.${i}.qty" value="${esc(g.qty)}"><button type="button" class="inv-mini-btn danger" data-act="ing-del" data-i="${i}" aria-label="Remover ingrediente">✕</button></div>`).join('')}
+        <button type="button" class="inv-mini-btn" data-act="ing-add">＋ Ingrediente</button>
+        <input type="text" list="item-names" data-bind="rf.toolName" value="${esc(f.toolName)}" placeholder="Ferramenta necessária (opcional)">
+        <input type="text" data-bind="rf.station" value="${esc(f.station)}" placeholder="Estação / local (opcional)">
+        <input type="text" data-bind="rf.skill" value="${esc(f.skill)}" placeholder="Perícia sugerida (opcional)">
+        <input type="text" data-bind="rf.time" value="${esc(f.time)}" placeholder="Tempo (texto livre)">
+        <input type="text" data-bind="rf.noise" value="${esc(f.noise)}" placeholder="Ruído">
+        <input type="text" data-bind="rf.risk" value="${esc(f.risk)}" placeholder="Risco">
+        <input type="text" data-bind="rf.resolution" value="${esc(f.resolution)}" placeholder="Como resolver (teste, custo em falha...)">
+        <label class="check-row"><input type="checkbox" data-bind="rf.wasteOnFail" ${f.wasteOnFail ? 'checked' : ''}> Falha consome os materiais</label>
+        <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="recipe-save">Salvar receita</button><button type="button" class="inv-mini-btn" data-act="recipe-cancel">Cancelar</button></div></div>`
+        : `<div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="recipe-new">＋ Nova receita</button><button type="button" class="inv-mini-btn" data-act="recipe-seed">Adicionar exemplos</button></div>`;
+    }
+    return html;
+  }
+
+  // ---------- eventos do painel ----------
+  function bindRoot(name){
+    return { rollUI, hub, sf:hub.sessionForm, nc:hub.newCampaign, cd:hub.cfgDraft, rf:hub.recipeForm, card:characters[hub.charToken] || null }[name] || null;
+  }
+  function bindSet(path, value){
+    const ps = path.split('.'), root = bindRoot(ps[0]);
+    if(!root) return null;
+    let o = root;
+    for(let i = 1; i < ps.length - 1; i++){ if(o[ps[i]] == null) o[ps[i]] = {}; o = o[ps[i]]; }
+    o[ps[ps.length - 1]] = value;
+    return ps[0];
+  }
+  function onBind(t){
+    const v = t.type === 'checkbox' ? t.checked : (t.hasAttribute('data-num') ? (t.value === '' ? '' : Number(t.value)) : t.value);
+    const root = bindSet(t.dataset.bind, v);
+    if(root === 'card') scheduleSaveCard();
+    if(t.hasAttribute('data-rerender')) renderHub();
+  }
+  hubBody.addEventListener('input', e => {
+    const t = e.target;
+    if(t.dataset && t.dataset.bind && t.type !== 'checkbox' && t.tagName !== 'SELECT') onBind(t);
+  });
+  hubBody.addEventListener('change', e => {
+    const t = e.target;
+    if(t.dataset && t.dataset.pin){
+      let v = t.value;
+      if(t.dataset.field === 'reserve') v = v === '' ? null : Math.max(0, parseInt(v, 10) || 0);
+      setPinExplore(t.dataset.pin, t.dataset.field, v);
+      return;
+    }
+    if(t.dataset && t.dataset.act === 'present'){
+      const arr = hub.sessionForm.present, n = t.dataset.name, i = arr.indexOf(n);
+      if(t.checked && i < 0) arr.push(n);
+      if(!t.checked && i >= 0) arr.splice(i, 1);
+      return;
+    }
+    if(t.dataset && t.dataset.bind && (t.type === 'checkbox' || t.tagName === 'SELECT')) onBind(t);
+  });
+  hubBody.addEventListener('focusout', () => { setTimeout(() => { if(hubDirty && !(document.activeElement && hubBody.contains(document.activeElement))) renderHub(); }, 50); });
+  hubBody.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if(!b || b.tagName === 'INPUT') return;
+    hubAction(b.dataset.act, b);
+  });
+  function findShortcut(el){ return allShortcuts().find(s => s.id === el.dataset.id && s.scope === el.dataset.scope); }
+  function hubAction(act, el){
+    const D = el.dataset;
+    switch(act){
+      case 'tab': hub.tab = D.tab; renderHub(); break;
+      case 'die+': rollUI.counts[D.s] = Math.min(50, (rollUI.counts[D.s] || 0) + 1); renderHub(); break;
+      case 'die-': rollUI.counts[D.s] = Math.max(0, (rollUI.counts[D.s] || 0) - 1); renderHub(); break;
+      case 'bonus-add': rollUI.bonuses.push({ label:'', value:0 }); renderHub(); break;
+      case 'bonus-del': rollUI.bonuses.splice(+D.i, 1); renderHub(); break;
+      case 'expr-apply': if(applyExpr()) renderHub(); break;
+      case 'roll': doRoll(); break;
+      case 'roll-copy': if(rollUI.last) copyText(rollText(rollUI.last)); break;
+      case 'sc-save': saveShortcut(); break;
+      case 'sc-use': { const sc = findShortcut(el); if(sc){ useShortcut(sc); renderHub(); } break; }
+      case 'sc-roll': { const sc = findShortcut(el); if(sc){ useShortcut(sc); doRoll(); } break; }
+      case 'sc-del': { const sc = findShortcut(el); if(sc){ DB.set(scPath(sc), null); } break; }
+      case 'rem-add': ensureCard(hub.charToken).reminders = (characters[hub.charToken].reminders || []).concat([{ label:'', value:'' }]); scheduleSaveCard(); renderHub(); break;
+      case 'rem-del': characters[hub.charToken].reminders.splice(+D.i, 1); scheduleSaveCard(); renderHub(); break;
+      case 'skill-add': ensureCard(hub.charToken).skills = (characters[hub.charToken].skills || []).concat([{ name:'', bonus:0 }]); scheduleSaveCard(); renderHub(); break;
+      case 'skill-del': characters[hub.charToken].skills.splice(+D.i, 1); scheduleSaveCard(); renderHub(); break;
+      case 'skill-use': { const s = characters[hub.charToken].skills[+D.i]; rollUI.skill = s.name; rollUI.bonuses = Number(s.bonus) ? [{ label:s.name, value:Number(s.bonus) }] : []; rollUI.who = hub.charToken; hub.tab = 'dados'; renderHub(); break; }
+      case 'need': { const c = ensureCard(hub.charToken); c.needs = c.needs || {}; c.needs[D.n] = Math.min(4, Math.max(0, (c.needs[D.n] || 0) + (+D.d))); scheduleSaveCard(); renderHub(); break; }
+      case 'open-inv': openInventory(D.id); break;
+      case 'sess-new': newSession(); break;
+      case 'sess-summary': { const ta = hubBody.querySelector('[data-bind="hub.summary"]'); saveSummary(ta ? ta.value : ''); break; }
+      case 'sess-close': closeSession(); break;
+      case 'camp-open': switchCampaign(D.id); break;
+      case 'camp-archive': setArchived(D.id, true); break;
+      case 'camp-reopen': setArchived(D.id, false); break;
+      case 'camp-delete': deleteCampaign(D.id); break;
+      case 'camp-create': createCampaign(hub.newCampaign); break;
+      case 'camp-join': joinCampaign(hub.joinCode); break;
+      case 'claim': claimMaster(); break;
+      case 'cfg-save': saveConfig(); break;
+      case 'clock': advanceClock(+D.m); break;
+      case 'pin-go': { const p = pins.find(x => x.id === D.id); if(p){ map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 15)); closeHub(); } break; }
+      case 'craft': { const r = recipes[D.id]; if(r) craftDo(r, hub.craftHolder, D.o); break; }
+      case 'craft-roll': { const r = recipes[D.id]; if(r){ rollUI.skill = r.skill || r.name; rollUI.who = hub.craftHolder || ''; hub.tab = 'dados'; renderHub(); } break; }
+      case 'recipe-new': hub.recipeForm = blankRecipe(); renderHub(); break;
+      case 'recipe-edit': hub.recipeForm = recipeToForm(recipes[D.id]); renderHub(); break;
+      case 'recipe-cancel': hub.recipeForm = null; renderHub(); break;
+      case 'recipe-save': saveRecipe(); break;
+      case 'recipe-del': if(window.confirm('Excluir esta receita?')) DB.set(scopedKey(KEY_RECIPES) + '/' + D.id, null); break;
+      case 'recipe-seed': seedRecipes(); break;
+      case 'ing-add': hub.recipeForm.ingredients.push({ name:'', qty:1 }); renderHub(); break;
+      case 'ing-del': hub.recipeForm.ingredients.splice(+D.i, 1); renderHub(); break;
+    }
+  }
+
+  document.getElementById('hub-drawer-close-btn').addEventListener('click', closeHub);
+  hubBackdrop.addEventListener('click', closeHub);
+  document.getElementById('hub-toggle-btn').addEventListener('click', () => { hubIsOpen() ? closeHub() : openHub('dados'); });
+  document.getElementById('roll-toggle-btn').addEventListener('click', () => { hubIsOpen() && hub.tab === 'dados' ? closeHub() : openHub('dados'); });
+  document.getElementById('campaign-chip').addEventListener('click', () => openHub('campanhas'));
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && hubIsOpen()) closeHub();
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if(/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if(e.key === 'd' || e.key === 'D') openHub('dados');
+    else if(e.key === 'c' || e.key === 'C') openHub('campanhas');
+  });
 
   renderLootResults();
   renderFishResults();
   refreshCharacterOptions();
-  renderInventoryAudit();
+  invReady = true;
+  refreshAddDest();
+  updateSaqueInvCount();
+  initInventorySync();
+  attachModuleSync();
+  startMetaSync();
+  applyConfig();
+  updateHud();
 
 })();
