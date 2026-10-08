@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Arma e munição recuperadas</title><desc id="desc">Um rifle de ferrolho gasto e cartuchos sobre uma bancada de metal.</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#172630"/><stop offset="1" stop-color="#0a1218"/></linearGradient>
+    <linearGradient id="wood" x2="0" y2="1"><stop stop-color="#ad8055"/><stop offset="1" stop-color="#5b4030"/></linearGradient>
+    <linearGradient id="iron" x2="0" y2="1"><stop stop-color="#c0cbd0"/><stop offset=".4" stop-color="#687a80"/><stop offset="1" stop-color="#283840"/></linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="30" fill="url(#bg)"/>
+  <path d="M20 205h216v27H20z" fill="#1c2c31" stroke="#54676b" stroke-opacity=".5" stroke-width="3"/>
+  <path d="M27 216h202m-184 9h39m21-9h62m17 9h38" stroke="#7c8d8d" stroke-opacity=".25" stroke-width="3"/>
+  <g transform="rotate(-22 132 118)">
+    <path d="M39 125h67l19-10 27 1 10 12-28 8-14-4-23 13H51q-12 0-12-10z" fill="url(#wood)" stroke="#d0a173" stroke-opacity=".4" stroke-width="3"/>
+    <path d="M108 119h102l23 6v9l-25 3H109z" fill="url(#iron)" stroke="#d0d8d8" stroke-opacity=".35" stroke-width="3"/>
+    <path d="M196 117h37v4h-37zm4 22h31v4h-31z" fill="#81959a"/>
+    <path d="M129 113v-12h27v13m-12-12v-13h20v13" fill="none" stroke="#96a7a8" stroke-width="5" stroke-linecap="round"/>
+    <path d="M147 135v21h18l-5-21" fill="#28373c" stroke="#819195" stroke-width="3"/>
+    <path d="M60 127h34m25-5h20" stroke="#d3a677" stroke-opacity=".42" stroke-width="3"/>
+    <circle cx="118" cy="132" r="3" fill="#d7c8a3"/><circle cx="205" cy="130" r="2.5" fill="#d7c8a3"/>
+  </g>
+  <g transform="rotate(17 70 183)">
+    <rect x="48" y="167" width="12" height="45" rx="4" fill="url(#iron)"/><path d="M48 177h12" stroke="#c99a61" stroke-width="5"/>
+    <rect x="69" y="169" width="12" height="45" rx="4" fill="url(#iron)"/><path d="M69 179h12" stroke="#c99a61" stroke-width="5"/>
+    <rect x="90" y="165" width="12" height="45" rx="4" fill="url(#iron)"/><path d="M90 175h12" stroke="#c99a61" stroke-width="5"/>
+  </g>
+  <path d="M33 232h190" stroke="#d8a45f" stroke-opacity=".26" stroke-width="2"/>
+</svg>

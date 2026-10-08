@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Fragmento anômalo</title><desc id="desc">Um cristal escuro rachado emite uma luz azulada no gelo.</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#172632"/><stop offset="1" stop-color="#09141c"/></linearGradient>
+    <linearGradient id="crystal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#8198a0"/><stop offset=".3" stop-color="#273942"/><stop offset=".66" stop-color="#111f28"/><stop offset="1" stop-color="#3f5b65"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="10"/></filter>
+  </defs>
+  <rect width="256" height="256" rx="30" fill="url(#bg)"/>
+  <circle cx="131" cy="124" r="65" fill="#46d5e6" opacity=".18" filter="url(#glow)"/>
+  <path d="m46 206 30-7 32 10 46-4 25 8 30-4 18 16H31z" fill="#9bb4bb" opacity=".32"/>
+  <path d="m69 166 8-57 37-50 52 22 24 53-12 56-48 25-45-15z" fill="url(#crystal)" stroke="#a9bec3" stroke-opacity=".62" stroke-width="4"/>
+  <path d="m114 59 9 44-31 18 25 15-15 54m42-109-11 40 32 13-29 15 12 40m-36-68 18 18 17-18" fill="none" stroke="#8ce5ee" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m121 102 11 25m-15 9 17-9m-30-6 12 6m28 3 11 4" fill="none" stroke="#e5fdff" stroke-opacity=".92" stroke-width="2"/>
+  <path d="m83 106 30-42 2 41-30 18zm48-37 34 12-33 31zM79 132l32 8-15 48-19-22zm63 24 31-19-7 46-22 16z" fill="#d9f5f6" opacity=".11"/>
+  <g fill="#c6f6f8" opacity=".72"><circle cx="54" cy="79" r="2"/><circle cx="205" cy="76" r="3"/><circle cx="194" cy="188" r="2"/><circle cx="61" cy="184" r="3"/><circle cx="154" cy="43" r="2"/></g>
+  <path d="M33 232h190" stroke="#55d5e2" stroke-opacity=".34" stroke-width="2"/>
+</svg>

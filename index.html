@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="assets/game-ui.css">
 </head>
 <body>
 
@@ -21,19 +22,14 @@
 
       <!-- Barra de sessão: identidade e conexão sempre visíveis; menu e busca seguem acessíveis. -->
       <div class="app-header" id="app-header">
-        <button class="header-btn" id="menu-toggle-btn" type="button" title="Menu da sessão" aria-label="Menu da sessão" aria-expanded="false">
+        <button class="header-btn" id="menu-toggle-btn" type="button" title="Menu da sessão" aria-label="Menu da sessão" aria-controls="menu-popover" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line></svg>
         </button>
         <div class="app-header-title">
-          <span class="app-header-eyebrow">Jogo cooperativo · Campo</span>
-          <span class="app-header-name">Tau <span>Volantis</span></span>
+          <h1 class="app-header-name">Tau <span>Volantis</span></h1>
         </div>
         <div class="sync-status" id="sync-status" role="status" aria-live="polite">Conectando...</div>
-        <button class="header-btn tabbar-item" id="search-toggle-btn" type="button" title="Buscar no mapa" aria-label="Buscar no mapa" aria-expanded="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <span class="tab-label">Buscar</span>
-        </button>
-        <button class="header-btn" id="account-toggle-btn" type="button" title="Conta do jogador" aria-label="Conta do jogador" aria-expanded="false">
+        <button class="header-btn" id="account-toggle-btn" type="button" title="Conta do jogador" aria-label="Conta do jogador" aria-controls="account-popover" aria-expanded="false">
           <span class="header-avatar-badge" id="header-avatar-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
           </span>
@@ -44,7 +40,7 @@
       <div class="app-popover-backdrop" id="search-backdrop"></div>
       <div class="app-popover hud-search" id="hud-search">
         <div class="vs-group-label">Buscar</div>
-        <input type="text" id="search-input" placeholder="Buscar cidade, local ou pin..." autocomplete="off">
+        <input type="text" id="search-input" aria-label="Buscar cidades, locais e pins" placeholder="Buscar cidade, local ou pin..." autocomplete="off">
         <div class="search-results" id="search-results"></div>
       </div>
 
@@ -64,9 +60,9 @@
         <div class="popover-section">
           <div class="vs-group-label">Mapa</div>
           <div class="toolbar-group">
-            <button class="tool-btn" id="nav-drawer-toggle-btn"><span class="dot" style="background:var(--ice-300)"></span>Lista do mapa</button>
+        <button class="tool-btn" id="nav-drawer-toggle-btn" type="button" aria-controls="nav-drawer" aria-expanded="false"><span class="dot" style="background:var(--ice-300)"></span>Lista do mapa</button>
             <button class="tool-btn" id="token-select-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Selecionar tokens</button>
-            <button class="tool-btn" id="fab-tools" type="button" title="Ferramentas do mapa" aria-label="Ferramentas do mapa" aria-expanded="false"><span class="dot" style="background:var(--hazard)"></span>Ferramentas do mapa</button>
+          <button class="tool-btn" id="fab-tools" type="button" title="Ferramentas do mapa" aria-label="Ferramentas do mapa" aria-controls="tools-popover" aria-expanded="false"><span class="dot" style="background:var(--hazard)"></span>Ferramentas do mapa</button>
           </div>
         </div>
 
@@ -82,7 +78,7 @@
               <button class="tool-btn" id="layer-sat" data-layer="sat">Satélite</button>
               <button class="reset-link" id="reset-btn">Reiniciar</button>
               <div class="toolbar-divider" style="width:auto;height:1px;margin:0.1rem 0;"></div>
-              <button class="tool-btn" id="view-settings-toggle" type="button">Visual</button>
+        <button class="tool-btn" id="view-settings-toggle" type="button" aria-controls="view-settings-popover" aria-expanded="false">Visual</button>
             </div>
           </div>
         </div>
@@ -133,7 +129,7 @@
     <div class="icon-popover" id="player-name-modal">
       <div class="vs-group-label">Nome de Jogador</div>
       <p>Esse é o nome que vai identificar o que você criar no mapa (pins, tokens, etc).</p>
-      <input type="text" id="player-name-input" placeholder="Como você quer ser chamado?" maxlength="24" autocomplete="off">
+      <input type="text" id="player-name-input" aria-label="Nome do jogador" placeholder="Como você quer ser chamado?" maxlength="24" autocomplete="off">
       <div class="popup-actions" style="margin-top:0.6rem;">
         <button class="save" id="player-name-save-btn" type="button">Salvar</button>
       </div>
@@ -148,21 +144,21 @@
       <div class="weather-meta-line" id="weather-meta-line"></div>
     </div>
 
-    <!-- Ações principais da partida: buscar, adicionar e suprimentos. -->
-    <div class="action-cluster" id="action-cluster">
-      <button class="action-fab tabbar-item" id="fab-add" type="button" title="Adicionar" aria-label="Adicionar ao mapa" aria-expanded="false">
+    <!-- Ações principais da partida; a mesma barra funciona como dock no celular. -->
+    <nav class="action-cluster" id="action-cluster" aria-label="Ações rápidas">
+      <button class="action-fab quick-action tabbar-item" id="search-toggle-btn" type="button" title="Buscar no mapa" aria-label="Buscar no mapa" aria-controls="hud-search" aria-expanded="false">
+        <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
+        <span class="tab-label">Buscar</span>
+      </button>
+      <button class="action-fab tabbar-item" id="fab-add" type="button" title="Adicionar" aria-label="Adicionar ao mapa" aria-controls="add-popover" aria-expanded="false">
         <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-7.6-7-12.4A7 7 0 0 1 12 1a7 7 0 0 1 7 7.6C19 13.4 12 21 12 21z"></path><circle cx="12" cy="8.5" r="2.4"></circle></svg></span>
         <span class="tab-label">Criar</span>
       </button>
-      <button class="action-fab tabbar-item" id="fab-loot" type="button" title="Abrir suprimentos" aria-label="Abrir suprimentos" aria-expanded="false">
+      <button class="action-fab tabbar-item" id="fab-loot" type="button" title="Abrir suprimentos" aria-label="Abrir suprimentos" aria-controls="saque-drawer" aria-expanded="false">
         <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l1 13H4L5 8Z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path><path d="M9 13h6"></path></svg></span>
         <span class="tab-label">Itens</span>
       </button>
-    </div>
-    <!-- fundo da barra de navegação inferior no celular (decorativo,
-         a posição de cada botão continua vindo dos ids acima) -->
-    <div class="mobile-tabbar-bg" id="mobile-tabbar-bg"></div>
-
+    </nav>
     <div class="app-popover-backdrop" id="add-backdrop"></div>
     <div class="app-popover" id="add-popover">
       <div class="vs-group-label">Adicionar ao mapa</div>
@@ -205,59 +201,63 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 
-  <div class="drawer-backdrop" id="drawer-backdrop"></div>
-  <div id="saque-drawer">
+  <div class="drawer-backdrop" id="drawer-backdrop" aria-hidden="true"></div>
+  <div id="saque-drawer" role="dialog" aria-modal="true" aria-labelledby="supplies-title" aria-hidden="true" inert tabindex="-1">
     <div class="drawer-header">
       <div class="eyebrow">Sessão · recursos</div>
-      <h2>Suprimentos
-        <button type="button" class="drawer-close" id="drawer-close-btn" title="Fechar">&times;</button>
+      <h2 id="supplies-title">Suprimentos
+        <button type="button" class="drawer-close" id="drawer-close-btn" title="Fechar" aria-label="Fechar suprimentos">&times;</button>
       </h2>
     </div>
     <div class="drawer-character">
       <label for="char-select">Personagem ativo</label>
       <select id="char-select"><option value="">Sobrevivente desconhecido</option></select>
     </div>
-    <nav class="drawer-tabs" aria-label="Suprimentos">
-      <button type="button" class="drawer-tab active" data-panel="loot">Saque</button>
-      <button type="button" class="drawer-tab" data-panel="inventory">Inventário</button>
-      <button type="button" class="drawer-tab" data-panel="audit">Auditoria</button>
+    <nav class="drawer-tabs" role="tablist" aria-label="Suprimentos">
+      <button id="loot-tab" type="button" class="drawer-tab active" role="tab" aria-selected="true" aria-controls="loot-panel" tabindex="0" data-panel="loot">Saque</button>
+      <button id="inventory-tab" type="button" class="drawer-tab" role="tab" aria-selected="false" aria-controls="inventory-panel" tabindex="-1" data-panel="inventory">Inventário</button>
+      <button id="audit-tab" type="button" class="drawer-tab" role="tab" aria-selected="false" aria-controls="audit-panel" tabindex="-1" data-panel="audit">Auditoria</button>
     </nav>
     <div class="drawer-body">
-      <section class="drawer-panel active" id="loot-panel">
+      <section class="drawer-panel active" id="loot-panel" role="tabpanel" aria-labelledby="loot-tab" aria-hidden="false" tabindex="0">
 
       <div class="discord-panel">
         <details class="optional-settings">
           <summary>Discord · opcional</summary>
-          <input type="text" id="webhook-input" placeholder="Webhook do Discord" value="">
+          <input type="text" id="webhook-input" aria-label="Webhook do Discord" placeholder="Webhook do Discord" value="">
           <label class="dp-toggle"><input type="checkbox" id="auto-send" checked> Enviar achados automaticamente</label>
           <div class="dp-note">O webhook fica salvo neste dispositivo.</div>
         </details>
       </div>
 
-      <p class="section-label">Locais urbanos e industriais</p>
+      <p class="section-label">Vasculhar um local</p>
       <div class="loc-grid" id="loc-grid"></div>
 
-      <p class="section-label">Áreas rurais e selvagens</p>
-      <div class="loc-grid rural" id="loc-grid-rural"></div>
+      <details class="loot-extra-section">
+        <summary>Áreas externas e selvagens <span>Exploração</span></summary>
+        <div class="loc-grid rural" id="loc-grid-rural"></div>
+      </details>
 
-      <p class="section-label">Pescaria</p>
-      <div class="fish-panel">
-        <h3>🎣 Rios, Igarapés e Margens</h3>
-        <p>Pesque com o personagem ativo. Algumas capturas são raras.</p>
-        <button class="fish-btn" id="fish-btn">Lançar a linha</button>
-        <div id="fish-result"><div class="fish-empty">Nenhuma tentativa de pesca ainda.</div></div>
-      </div>
-
-      <p class="section-label">Último achado</p>
+      <p class="section-label loot-results-heading">Achados recentes</p>
       <div id="result-zone">
-        <div class="empty-hint">Nenhum achado ainda.</div>
+        <div class="empty-hint">Escolha um local para procurar recursos.</div>
       </div>
+
+      <details class="loot-extra-section fishing-section">
+        <summary>Pescar <span>Rios e margens</span></summary>
+        <div class="fish-panel">
+          <h3>Rios, igarapés e margens</h3>
+          <p>Pesque com o personagem ativo. Algumas capturas são raras.</p>
+          <button class="fish-btn" id="fish-btn">Lançar a linha</button>
+          <div id="fish-result"><div class="fish-empty">Nenhuma tentativa de pesca ainda.</div></div>
+        </div>
+      </details>
 
       <div style="margin-top:1.6rem;">
-        <button class="browse-toggle" id="saque-browse-toggle">▸ Ver tabela completa de itens</button>
+        <button class="browse-toggle" id="saque-browse-toggle" type="button" aria-controls="saque-browse-panel" aria-expanded="false">▸ Ver tabela completa de itens</button>
         <div id="saque-browse-panel">
           <div class="filter-row">
-            <input type="text" id="item-search-input" placeholder="Buscar por nome do item...">
+            <input type="text" id="item-search-input" aria-label="Buscar itens no catálogo" placeholder="Buscar por nome do item...">
             <select id="item-filter-loc">
               <option value="">Todos os locais</option>
             </select>
@@ -274,19 +274,21 @@
       </div>
 
       </section>
-      <section class="drawer-panel" id="inventory-panel">
+      <section class="drawer-panel" id="inventory-panel" role="tabpanel" aria-labelledby="inventory-tab" aria-hidden="true" tabindex="0">
         <div class="inventory-summary" id="inventory-summary"></div>
         <p class="section-label">Itens carregados</p>
         <div id="inventory-items"></div>
-        <p class="section-label">Bancada de campo</p>
-        <p class="char-hint">Combine itens que você já carrega.</p>
-        <div id="inventory-crafting-recipes" class="crafting-recipes"></div>
+        <details class="inventory-crafting">
+          <summary><span>Bancada de campo</span><span class="crafting-summary-hint">Receitas</span></summary>
+          <p class="char-hint">Combine materiais do inventário.</p>
+          <div id="inventory-crafting-recipes" class="crafting-recipes"></div>
+        </details>
         <div class="inventory-trade-bar">
           <label for="inventory-trade-target">Transferir item para</label>
           <select id="inventory-trade-target"><option value="">Selecione outro personagem</option></select>
         </div>
       </section>
-      <section class="drawer-panel" id="audit-panel">
+      <section class="drawer-panel" id="audit-panel" role="tabpanel" aria-labelledby="audit-tab" aria-hidden="true" tabindex="0">
         <p class="section-label">Histórico de itens</p>
         <div id="inventory-audit-list"></div>
       </section>
@@ -294,16 +296,16 @@
     </div>
   </div>
 
-  <div class="drawer-backdrop" id="nav-drawer-backdrop"></div>
-  <div id="nav-drawer">
+  <div class="drawer-backdrop" id="nav-drawer-backdrop" aria-hidden="true"></div>
+  <div id="nav-drawer" role="dialog" aria-modal="true" aria-labelledby="map-list-title" aria-hidden="true" inert tabindex="-1">
     <div class="drawer-header">
       <div class="eyebrow">Tau Volantis // Navegação</div>
-      <h2>Itens do Mapa
-        <button type="button" class="drawer-close" id="nav-drawer-close-btn" title="Fechar">&times;</button>
+      <h2 id="map-list-title">Itens do Mapa
+        <button type="button" class="drawer-close" id="nav-drawer-close-btn" title="Fechar" aria-label="Fechar lista do mapa">&times;</button>
       </h2>
     </div>
     <div class="drawer-body">
-      <input type="text" id="nav-search-input" class="nav-search-input" placeholder="Buscar por nome...">
+      <input type="text" id="nav-search-input" class="nav-search-input" aria-label="Buscar itens no mapa" placeholder="Buscar por nome...">
       <p class="section-label">Pins</p>
       <div id="nav-list-pins" class="nav-list"></div>
       <p class="section-label">Tokens</p>

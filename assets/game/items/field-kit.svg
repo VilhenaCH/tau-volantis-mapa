@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Kit de sobrevivência</title><desc id="desc">Bolsa médica, rádio portátil e cantil recuperados no frio.</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#192932"/><stop offset="1" stop-color="#0c151b"/></linearGradient>
+    <linearGradient id="bag" x2=".8" y2="1"><stop stop-color="#718079"/><stop offset="1" stop-color="#35443f"/></linearGradient>
+    <linearGradient id="steel" x2="1" y2="1"><stop stop-color="#c0c9c3"/><stop offset=".5" stop-color="#5a6c70"/><stop offset="1" stop-color="#29373d"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="7"/></filter>
+  </defs>
+  <rect width="256" height="256" rx="30" fill="url(#bg)"/>
+  <circle cx="196" cy="54" r="35" fill="#dfaa62" opacity=".12" filter="url(#glow)"/>
+  <path d="M32 205h192l-13 18H43z" fill="#080f13" opacity=".55"/>
+  <g transform="rotate(-7 112 147)">
+    <rect x="36" y="81" width="115" height="116" rx="20" fill="url(#bag)" stroke="#a0afa5" stroke-opacity=".4" stroke-width="3"/>
+    <path d="M69 83V69q0-17 23-17h21q21 0 21 17v15" fill="none" stroke="#718079" stroke-width="11"/>
+    <path d="M46 115h94M50 171h88" stroke="#273733" stroke-width="7" opacity=".72"/>
+    <rect x="76" y="120" width="42" height="42" rx="8" fill="#d9e0d9"/>
+    <path d="M92 126h10v12h12v10h-12v12H92v-12H80v-10h12z" fill="#bb684c"/>
+    <path d="M49 95h14v12H49zm76 78h14v12h-14z" fill="#d4b275"/>
+  </g>
+  <g transform="rotate(8 182 112)">
+    <rect x="155" y="60" width="55" height="112" rx="12" fill="url(#steel)" stroke="#bbc5c4" stroke-opacity=".5" stroke-width="3"/>
+    <rect x="162" y="72" width="41" height="35" rx="5" fill="#132329"/>
+    <path d="M168 86h27m-27 7h19" stroke="#88c6c7" stroke-width="3" opacity=".8"/>
+    <path d="M182 60V42l10-12" fill="none" stroke="#84999a" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="182" cy="143" r="5" fill="#d5a65e"/><circle cx="196" cy="143" r="5" fill="#536b70"/>
+    <path d="M168 158h30" stroke="#1d2a2e" stroke-width="5"/>
+  </g>
+  <g transform="rotate(-18 202 194)">
+    <rect x="175" y="179" width="52" height="39" rx="12" fill="#7f9799" stroke="#c0ceca" stroke-opacity=".5" stroke-width="3"/>
+    <path d="M186 178v-9h24v9" fill="none" stroke="#aebfbd" stroke-width="6"/>
+    <path d="M181 195h40" stroke="#425b61" stroke-width="4"/>
+  </g>
+  <path d="M33 232h190" stroke="#8fd7e8" stroke-opacity=".22" stroke-width="2"/>
+</svg>

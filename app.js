@@ -367,7 +367,9 @@
   // Pins e personagens compartilham uma camada com agrupamento por proximidade.
   // No zoom máximo, pontos coincidentes podem ser abertos em leque.
   const mapEntitiesLayer = L.markerClusterGroup ? L.markerClusterGroup({
-    maxClusterRadius: zoom => zoom >= 16 ? 28 : 48,
+    // Aumenta o espaçamento dos grupos nos níveis próximos, onde os nomes
+    // começavam a se cruzar; no zoom máximo, o toque abre o grupo em leque.
+    maxClusterRadius: zoom => zoom >= 16 ? 56 : 72,
     spiderfyOnMaxZoom: true,
     zoomToBoundsOnClick: true,
     showCoverageOnHover: false,
@@ -560,10 +562,12 @@
   function openViewSettings(){
     viewSettingsPopover.classList.add('open');
     viewSettingsBackdrop.classList.add('open');
+    viewSettingsToggle.setAttribute('aria-expanded', 'true');
   }
   function closeViewSettings(){
     viewSettingsPopover.classList.remove('open');
     viewSettingsBackdrop.classList.remove('open');
+    viewSettingsToggle.setAttribute('aria-expanded', 'false');
   }
   viewSettingsToggle.addEventListener('click', (ev) => {
     ev.stopPropagation();
@@ -606,17 +610,18 @@
       trigger.classList.add('active');
       trigger.setAttribute('aria-expanded', 'true');
     }
-    function close(){
+    function close(restoreFocus = false){
       popover.classList.remove('open');
       backdrop.classList.remove('open');
       trigger.classList.remove('active');
       trigger.setAttribute('aria-expanded', 'false');
+      if(restoreFocus) trigger.focus();
     }
     trigger.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      popover.classList.contains('open') ? close() : open();
+      popover.classList.contains('open') ? close(true) : open();
     });
-    backdrop.addEventListener('click', close);
+    backdrop.addEventListener('click', () => close(true));
     return { open, close, popover, trigger };
   }
 
@@ -651,7 +656,7 @@
     const entry = appPopovers.find(p => p.popover.id === id);
     if(!entry) return;
     entry.popover.querySelectorAll('.tool-btn').forEach(btn => {
-      btn.addEventListener('click', () => setTimeout(entry.close, 120));
+      btn.addEventListener('click', () => setTimeout(() => entry.close(true), 120));
     });
   });
 
@@ -1655,24 +1660,50 @@
   const navDrawer = document.getElementById('nav-drawer');
   const navDrawerBackdrop = document.getElementById('nav-drawer-backdrop');
   const navSearchInput = document.getElementById('nav-search-input');
+  let navDrawerReturnFocus = null;
+  function setDrawerVisibility(drawer, backdrop, isOpen){
+    drawer.classList.toggle('open', isOpen);
+    drawer.setAttribute('aria-hidden', String(!isOpen));
+    drawer.toggleAttribute('inert', !isOpen);
+    backdrop.classList.toggle('open', isOpen);
+    backdrop.setAttribute('aria-hidden', String(!isOpen));
+  }
+  function restoreDrawerFocus(target, fallbackId){
+    if(target && target.isConnected && target.tabIndex >= 0 && !target.closest('[inert]') && target.getClientRects().length){
+      target.focus();
+      return;
+    }
+    document.getElementById(fallbackId)?.focus();
+  }
+  function containDrawerTabFocus(drawer, event){
+    if(event.key !== 'Tab') return;
+    const focusable = Array.from(drawer.querySelectorAll(
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
+    )).filter(element => element.getClientRects().length > 0);
+    if(!focusable.length){ event.preventDefault(); drawer.focus(); return; }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if(event.shiftKey && (document.activeElement === first || document.activeElement === drawer)){
+      event.preventDefault(); last.focus();
+    }else if(!event.shiftKey && (document.activeElement === last || document.activeElement === drawer)){
+      event.preventDefault(); first.focus();
+    }
+  }
   function openNavDrawer(){
-    closeDrawerIfOpen();
+    navDrawerReturnFocus = document.activeElement;
+    closeDrawer({restoreFocus:false});
     renderNavList();
-    navDrawer.classList.add('open');
-    navDrawerBackdrop.classList.add('open');
+    setDrawerVisibility(navDrawer, navDrawerBackdrop, true);
+    document.getElementById('nav-drawer-toggle-btn')?.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => navDrawer.focus());
   }
-  function closeNavDrawer(){
-    navDrawer.classList.remove('open');
-    navDrawerBackdrop.classList.remove('open');
-  }
-  // closes the saque drawer if it's open, so only one drawer is ever open at once
-  function closeDrawerIfOpen(){
-    const sd = document.getElementById('saque-drawer');
-    const sb = document.getElementById('drawer-backdrop');
-    if(sd && sd.classList.contains('open')){
-      sd.classList.remove('open');
-      if(sb) sb.classList.remove('open');
-      syncDrawerActionButtons();
+  function closeNavDrawer(restoreFocus = true){
+    setDrawerVisibility(navDrawer, navDrawerBackdrop, false);
+    document.getElementById('nav-drawer-toggle-btn')?.setAttribute('aria-expanded', 'false');
+    const target = navDrawerReturnFocus;
+    navDrawerReturnFocus = null;
+    if(restoreFocus !== false){
+      restoreDrawerFocus(target, 'menu-toggle-btn');
     }
   }
   document.getElementById('nav-drawer-toggle-btn').addEventListener('click', () => {
@@ -1682,6 +1713,7 @@
   document.getElementById('nav-drawer-close-btn').addEventListener('click', closeNavDrawer);
   navDrawerBackdrop.addEventListener('click', closeNavDrawer);
   navSearchInput.addEventListener('input', renderNavList);
+  navDrawer.addEventListener('keydown', event => containDrawerTabFocus(navDrawer, event));
 
   document.getElementById('token-select-toggle-btn').addEventListener('click', () => {
     setTokenSelectMode(!tokenSelectMode);
@@ -1964,9 +1996,21 @@
   });
   map.on(L.Draw.Event.DRAWSTOP, hideDrawHint);
 
-  // ESC cancels any active drawing/measuring mode
+  // ESC fecha a superfície ativa ou cancela o modo de desenho/medição.
   document.addEventListener('keydown', (e) => {
-    if(e.key === 'Escape' && (circleModeOn || routeModeOn)) clearModes();
+    if(e.key !== 'Escape') return;
+    if(circleModeOn || routeModeOn){ clearModes(); return; }
+    if(navDrawer.classList.contains('open')){ closeNavDrawer(); return; }
+    if(saqueDrawer.classList.contains('open')){ closeDrawer(); return; }
+    if(viewSettingsPopover.classList.contains('open')){
+      closeViewSettings();
+      viewSettingsToggle.focus();
+      return;
+    }
+    const openPopover = appPopovers.find(entry => entry.popover.classList.contains('open'));
+    if(openPopover){
+      openPopover.close(true);
+    }
   });
 
   // ---------- search: local pins/áreas/rotas + place search via Nominatim (OSM) ----------
@@ -2410,6 +2454,12 @@
     if (w <= 3) return {label:"Incomum", cls:"rarity-incomum"};
     return {label:"Comum", cls:"rarity-comum"};
   }
+  function lootArtKey(item){
+    const category = (item && item.category || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if(category.includes('anomalo')) return 'anomaly';
+    if(category.includes('armas') || category.includes('municao')) return 'weapon';
+    return 'field-kit';
+  }
   function weightedPick(pool, locKey){
     const weights = pool.map(it => getWeight(it, locKey));
     const total = weights.reduce((a,b)=>a+b,0);
@@ -2438,7 +2488,7 @@
 
   function renderLootResults(){
     if(lootHistory.length === 0){
-      resultZone.innerHTML = '<div class="empty-hint">Nenhuma busca realizada ainda. Clique em um local acima para vasculhar.</div>';
+      resultZone.innerHTML = '<div class="empty-hint">Sem achados nesta sessão. Escolha um local para vasculhar.</div>';
       return;
     }
     resultZone.innerHTML = '';
@@ -2452,21 +2502,18 @@
       const rarity = rarityInfo(item, locKey);
       const card = document.createElement('div');
       card.className = 'result-card' + (item.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '');
+      card.dataset.art = lootArtKey(item);
       card.dataset.uid = entry.uid;
       card.innerHTML = `
         <div class="result-top">
           <div class="result-loc">Buscado em: ${LOC_NAMES[locKey]}</div>
-          <div class="found-by">Encontrado por: ${escapeHtml(foundBy)}</div>
+          <div class="found-by">${escapeHtml(foundBy)}</div>
         </div>
-        <div class="result-name">${escapeHtml(item.name)}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span></div>
+        <div class="result-title-row">
+          <div class="result-name">${escapeHtml(item.name)}</div>
+          <span class="rarity-tag ${rarity.cls}">${rarity.label}</span>
+        </div>
         <span class="result-cat">${escapeHtml(item.category)}</span>
-        <div class="result-utility"><b>Utilidade:</b> ${escapeHtml(item.utility)}</div>
-        ${compatLine(item)}
-        ${coord ? `<div class="result-coord">📍 ${coord}</div>` : ''}
-        <div class="send-row">
-          <button class="send-btn" data-action="send">Enviar ao Discord</button>
-          <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
-        </div>
         <div class="inventory-choice-row">
           ${entry.inventoryDecision ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage || '')}</span>` : `
             ${entry.inventoryMessage ? `<span class="inventory-decision">${escapeHtml(entry.inventoryMessage)}</span>` : ''}
@@ -2474,6 +2521,16 @@
             <button type="button" class="inventory-action-btn leave" data-action="leave">Deixar no local</button>
           `}
         </div>
+        <details class="result-details">
+          <summary>Ficha do item e envio</summary>
+          <div class="result-utility"><b>Utilidade:</b> ${escapeHtml(item.utility)}</div>
+          ${compatLine(item)}
+          ${coord ? `<div class="result-coord">${coord}</div>` : ''}
+          <div class="send-row">
+            <button class="send-btn" data-action="send">Enviar ao Discord</button>
+            <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
+          </div>
+        </details>
       `;
       card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
       const keepBtn = card.querySelector('[data-action="keep"]');
@@ -2659,7 +2716,9 @@
   const saqueBrowsePanel = document.getElementById('saque-browse-panel');
   saqueBrowseToggle.addEventListener('click', () => {
     saqueBrowsePanel.classList.toggle('open');
-    saqueBrowseToggle.textContent = (saqueBrowsePanel.classList.contains('open') ? '▾' : '▸') + ` Ver tabela completa de ${ITEMS.length} itens`;
+    const isOpen = saqueBrowsePanel.classList.contains('open');
+    saqueBrowseToggle.setAttribute('aria-expanded', String(isOpen));
+    saqueBrowseToggle.textContent = (isOpen ? '▾' : '▸') + ` Ver tabela completa de ${ITEMS.length} itens`;
     if(saqueBrowsePanel.classList.contains('open') && !saqueBrowsePanel.dataset.built){
       buildItemTable();
       saqueBrowsePanel.dataset.built = '1';
@@ -2838,7 +2897,7 @@
       return;
     }
     itemsEl.innerHTML = inventory.map(item => `
-      <article class="inventory-item-card" data-instance="${escapeHtml(item.instanceId || '')}">
+      <article class="inventory-item-card" data-art="${lootArtKey(item)}" data-instance="${escapeHtml(item.instanceId || '')}">
         <div class="inventory-item-copy"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.category || 'Item')}</span></div>
         <div class="inventory-item-actions">
           <button type="button" class="inventory-action-btn" data-action="use">Usar</button>
@@ -2925,26 +2984,53 @@
   // ---------- abrir/fechar a gaveta ----------
   const saqueDrawer = document.getElementById('saque-drawer');
   const drawerBackdrop = document.getElementById('drawer-backdrop');
+  let suppliesDrawerReturnFocus = null;
   function setDrawerTab(tab){
-    document.querySelectorAll('.drawer-tab').forEach(button => button.classList.toggle('active', button.dataset.panel === tab));
-    document.querySelectorAll('.drawer-panel').forEach(panel => panel.classList.toggle('active', panel.id === `${tab}-panel`));
+    document.querySelectorAll('.drawer-tab').forEach(button => {
+      const active = button.dataset.panel === tab;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    document.querySelectorAll('.drawer-panel').forEach(panel => {
+      const active = panel.id === `${tab}-panel`;
+      panel.classList.toggle('active', active);
+      panel.setAttribute('aria-hidden', String(!active));
+    });
     if(tab === 'inventory') renderInventoryPanel();
     if(tab === 'audit') renderInventoryAudit();
     syncDrawerActionButtons();
   }
   document.querySelectorAll('.drawer-tab').forEach(button => button.addEventListener('click', () => setDrawerTab(button.dataset.panel)));
+  document.querySelector('.drawer-tabs').addEventListener('keydown', event => {
+    const tabs = Array.from(document.querySelectorAll('.drawer-tab'));
+    const currentIndex = tabs.indexOf(document.activeElement);
+    let nextIndex = currentIndex;
+    if(event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+    else if(event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    else if(event.key === 'Home') nextIndex = 0;
+    else if(event.key === 'End') nextIndex = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    tabs[nextIndex].focus();
+    tabs[nextIndex].click();
+  });
   function openDrawer(tab){
+    if(!saqueDrawer.classList.contains('open')) suppliesDrawerReturnFocus = document.activeElement;
     refreshCharacterOptions();
-    if(typeof closeNavDrawer === 'function') closeNavDrawer();
+    if(typeof closeNavDrawer === 'function') closeNavDrawer(false);
     setDrawerTab(tab || 'loot');
-    saqueDrawer.classList.add('open');
-    drawerBackdrop.classList.add('open');
+    setDrawerVisibility(saqueDrawer, drawerBackdrop, true);
     syncDrawerActionButtons();
+    requestAnimationFrame(() => saqueDrawer.focus());
   }
-  function closeDrawer(){
-    saqueDrawer.classList.remove('open');
-    drawerBackdrop.classList.remove('open');
+  function closeDrawer(options = {}){
+    const shouldRestoreFocus = options.restoreFocus !== false;
+    setDrawerVisibility(saqueDrawer, drawerBackdrop, false);
     syncDrawerActionButtons();
+    const target = suppliesDrawerReturnFocus;
+    suppliesDrawerReturnFocus = null;
+    if(shouldRestoreFocus) restoreDrawerFocus(target, 'fab-loot');
   }
   function syncDrawerActionButtons(){
     const isOpen = Boolean(saqueDrawer && saqueDrawer.classList.contains('open'));
@@ -2964,6 +3050,7 @@
   document.getElementById('fab-loot').addEventListener('click', () => openDrawerFromShortcut('loot'));
   document.getElementById('drawer-close-btn').addEventListener('click', closeDrawer);
   drawerBackdrop.addEventListener('click', closeDrawer);
+  saqueDrawer.addEventListener('keydown', event => containDrawerTabFocus(saqueDrawer, event));
 
   charSelect.addEventListener('change', renderInventoryPanel);
   function initInventoryAuditSync(){
