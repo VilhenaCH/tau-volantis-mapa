@@ -243,9 +243,14 @@
           <select id="loot-pin-select"></select>
         </div>
         <div class="dp-title" style="margin-top:0.3rem;">Webhook do Discord</div>
-        <input type="text" id="webhook-input" placeholder="https://discord.com/api/webhooks/..." value="">
+        <select id="webhook-mode" aria-label="Qual webhook usar">
+          <option value="fixed">Webhook fixo da mesa</option>
+          <option value="custom">Outro webhook (colar o link)</option>
+          <option value="none">Não enviar ao Discord</option>
+        </select>
+        <input type="text" id="webhook-input" placeholder="https://discord.com/api/webhooks/..." value="" style="display:none;" autocomplete="off">
         <label class="dp-toggle"><input type="checkbox" id="auto-send" checked> Enviar automaticamente a cada busca</label>
-        <div class="dp-note">O link do webhook fica salvo apenas nesta aba/dispositivo.</div>
+        <div class="dp-note">A escolha e o link próprio ficam salvos só neste dispositivo. O webhook fixo é o da mesa. Vale para saque, clima e rolagens.</div>
       </div>
 
       <p class="section-label">Locais urbanos e industriais</p>
@@ -276,14 +281,14 @@
           </div>
           <div class="filter-row">
             <input type="text" id="item-search-input" placeholder="Buscar por nome do item...">
-            <select id="item-filter-loc">
-              <option value="">Todos os locais</option>
+            <select id="item-filter-cat" aria-label="Filtrar por tipo de item">
+              <option value="">Todos os tipos</option>
             </select>
           </div>
           <div style="max-height:420px; overflow:auto; border:1px solid var(--line);">
             <table>
               <thead>
-                <tr><th style="width:23%">Item</th><th style="width:14%">Categoria</th><th style="width:15%">Locais</th><th>Utilidade</th><th style="width:13%"></th></tr>
+                <tr><th style="width:34%">Item</th><th>Utilidade</th><th style="width:16%"></th></tr>
               </thead>
               <tbody id="item-table-body"></tbody>
             </table>

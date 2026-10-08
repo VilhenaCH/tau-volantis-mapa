@@ -1261,7 +1261,7 @@
   }
 
   async function sendWeatherNarrationToDiscord(prevState, newState){
-    const url = (typeof webhookInput !== 'undefined' && webhookInput) ? webhookInput.value.trim() : '';
+    const url = (typeof currentWebhookUrl === 'function') ? currentWebhookUrl() : '';
     if(!url) return;
     const cfg = WEATHER_STATES[newState];
     const payload = {
@@ -2297,6 +2297,28 @@
 
   const resultZone = document.getElementById('result-zone');
   const webhookInput = document.getElementById('webhook-input');
+  const webhookMode = document.getElementById('webhook-mode');
+  // Webhook fixo da mesa: trocar aqui se um dia ele for renovado no Discord.
+  // Atenção: este arquivo é público, então quem abrir o site consegue ler este link.
+  const FIXED_WEBHOOK_URL = 'https://discord.com/api/webhooks/1529516260893655162/DEa2KT9Z-PiN4ClFrGc_XuaiXYj1-XLgLpvlYxqujMETdpTeoFEvyDiKRQazfFSCxpxm';
+  try{
+    webhookMode.value = localStorage.getItem('tv-map:webhook-mode') || 'fixed';
+    webhookInput.value = localStorage.getItem('tv-map:webhook-custom') || '';
+  }catch(e){}
+  if(!webhookMode.value) webhookMode.value = 'fixed';
+  function syncWebhookUi(){
+    webhookInput.style.display = webhookMode.value === 'custom' ? '' : 'none';
+    try{ localStorage.setItem('tv-map:webhook-mode', webhookMode.value); }catch(e){}
+  }
+  webhookMode.addEventListener('change', syncWebhookUi);
+  webhookInput.addEventListener('input', () => { try{ localStorage.setItem('tv-map:webhook-custom', webhookInput.value.trim()); }catch(e){} });
+  syncWebhookUi();
+  // link realmente usado nos envios (saque, clima e dados)
+  function currentWebhookUrl(){
+    if(webhookMode.value === 'fixed') return FIXED_WEBHOOK_URL;
+    if(webhookMode.value === 'custom') return webhookInput.value.trim();
+    return '';
+  }
   const autoSendBox = document.getElementById('auto-send');
   const charSelect = document.getElementById('char-select');
   let lootHistory = [];
@@ -2422,7 +2444,7 @@
   }
 
   async function sendLootToDiscord(entry){
-    const url = webhookInput.value.trim();
+    const url = currentWebhookUrl();
     const zone = entry.kind === 'fish' ? fishResultEl : resultZone;
     if (!url) {
       entry.sendState = 'fail';
@@ -2567,45 +2589,73 @@
     }
   });
 
-  const itemFilterLoc = document.getElementById('item-filter-loc');
-  LOC_ORDER.forEach(key => {
-    const opt = document.createElement('option');
-    opt.value = key;
-    opt.textContent = LOC_NAMES[key];
-    itemFilterLoc.appendChild(opt);
-  });
+  // lista organizada por TIPO de item (categoria), não por local de encontro
+  const CATEGORY_ORDER = ['Comida','Bebidas','Itens Médicos','Armas de Fogo','Armas Brancas e Improvisadas','Munição','Ferramentas','Ferramentas Agrícolas',
+    'Roupas e Proteção contra Frio','Mochilas e Contêineres','Componentes e Materiais de Crafting','Peças de Veículos','Eletrônicos e Comunicação',
+    'Combustível e Aquecimento','Iluminação','Acampamento e Utilidades','Abrigo Rural e Construção','Floresta e Caça','Pesca e Rio',
+    'Animais e Produtos de Fazenda','Plantas, Ervas e Cultivos','Documentos e Itens de Lore','Itens Anômalos e Paranormais'];
+  const itemFilterCat = document.getElementById('item-filter-cat');
+  const collapsedCats = new Set();
+  (function(){
+    const cats = Array.from(new Set(ITEMS.map(i => i.category)));
+    cats.sort((a, b) => {
+      const ia = CATEGORY_ORDER.indexOf(a), ib = CATEGORY_ORDER.indexOf(b);
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
+    });
+    cats.forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = cat;
+      opt.textContent = `${cat} (${ITEMS.filter(i => i.category === cat).length})`;
+      itemFilterCat.appendChild(opt);
+    });
+  })();
 
   const itemTbody = document.getElementById('item-table-body');
   function buildItemTable(){
     renderItemTable(ITEMS);
   }
   function renderItemTable(list){
-    itemTbody.innerHTML = list.map(item => {
-      const worstLoc = item.locations.includes('bases') && (item.category === "Armas de Fogo" || item.category === "Munição") ? 'bases' : item.locations[0];
-      const rarity = rarityInfo(item, worstLoc);
-      return `
-      <tr>
+    const groups = {};
+    list.forEach(i => { (groups[i.category] = groups[i.category] || []).push(i); });
+    const cats = Object.keys(groups).sort((a, b) => {
+      const ia = CATEGORY_ORDER.indexOf(a), ib = CATEGORY_ORDER.indexOf(b);
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
+    });
+    const searching = itemSearchInput.value.trim() !== '' || itemFilterCat.value !== '';
+    itemTbody.innerHTML = cats.map(cat => {
+      const closed = !searching && collapsedCats.has(cat);
+      const rows = groups[cat].slice().sort((a, b) => a.name.localeCompare(b.name)).map(item => {
+        const worstLoc = item.locations.includes('bases') && (item.category === "Armas de Fogo" || item.category === "Munição") ? 'bases' : item.locations[0];
+        const rarity = rarityInfo(item, worstLoc);
+        return `
+      <tr class="item-row" data-cat="${escapeHtml(cat)}" ${closed ? 'hidden' : ''}>
         <td>${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
-        <td>${item.category}</td>
-        <td>${item.locations.map(l => `<span class="mini-tag">${LOC_NAMES[l].split(' ')[0]}</span>`).join('')}</td>
         <td>${item.utility}</td>
         <td><button type="button" class="inv-add-btn" data-id="${item.id}">＋ Inventário</button></td>
-      </tr>
-    `;
-    }).join('');
+      </tr>`;
+      }).join('');
+      return `<tr class="cat-row" data-cat="${escapeHtml(cat)}" tabindex="0" role="button" aria-expanded="${!closed}"><td colspan="3">${closed ? '▸' : '▾'} ${escapeHtml(cat)} <span class="cat-count">${groups[cat].length}</span></td></tr>${rows}`;
+    }).join('') || '<tr><td colspan="3" class="inv-empty">Nenhum item encontrado.</td></tr>';
   }
+  function toggleCat(row){
+    const cat = row.dataset.cat;
+    if(collapsedCats.has(cat)) collapsedCats.delete(cat); else collapsedCats.add(cat);
+    applyItemFilters();
+  }
+  itemTbody.addEventListener('click', e => { const r = e.target.closest('.cat-row'); if(r) toggleCat(r); });
+  itemTbody.addEventListener('keydown', e => { const r = e.target.closest && e.target.closest('.cat-row'); if(r && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); toggleCat(r); } });
 
   const itemSearchInput = document.getElementById('item-search-input');
   function applyItemFilters(){
     const q = itemSearchInput.value.trim().toLowerCase();
-    const loc = itemFilterLoc.value;
+    const cat = itemFilterCat.value;
     let list = ITEMS;
-    if(loc) list = list.filter(i => i.locations.includes(loc));
+    if(cat) list = list.filter(i => i.category === cat);
     if(q) list = list.filter(i => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
     renderItemTable(list);
   }
   itemSearchInput.addEventListener('input', applyItemFilters);
-  itemFilterLoc.addEventListener('change', applyItemFilters);
+  itemFilterCat.addEventListener('change', applyItemFilters);
 
   // ---------- abrir/fechar a gaveta ----------
   const saqueDrawer = document.getElementById('saque-drawer');
@@ -3238,7 +3288,7 @@
     sessionForm:{ title:'', date:'', present:[], extra:'' },
     cfgDraft:null, recipeForm:null, joinCode:'', craftMsg:''
   };
-  const rollUI = { counts:{ 20:1 }, expr:'', skill:'', bonuses:[], who:'', physical:false, phys:'', note:'', record:true, last:null, scName:'', scScope:'personal' };
+  const rollUI = { counts:{ 20:1 }, expr:'', skill:'', bonuses:[], who:'', physical:false, phys:'', note:'', record:true, discord:false, last:null, scName:'', scScope:'personal' };
   let hubDirty = false;
 
   // ---------- configuração da campanha ativa ----------
@@ -3577,7 +3627,34 @@
       const id = DB.newId(path);
       await DB.set(path + '/' + id, Object.assign({ id, ts:DB.ts() }, JSON.parse(JSON.stringify(rec))));
     }
+    if(rollUI.discord) sendRollToDiscord(rollUI.last);
     renderHub();
+  }
+  // envia a rolagem ao webhook escolhido (só quando a caixa está marcada)
+  async function sendRollToDiscord(r){
+    const url = currentWebhookUrl();
+    if(!url){ toast('Escolha um webhook (ou cole o seu) no painel de Saque para enviar ao Discord.', true); return; }
+    const ses = activeSession();
+    const fields = [];
+    if(r.skill) fields.push({ name:'Perícia / ação', value:r.skill.slice(0, 200), inline:true });
+    fields.push({ name:'Dados', value:fmtGroups(r.groups).slice(0, 500) + ' = ' + r.diceSum, inline:false });
+    if(r.bonuses.length) fields.push({ name:'Bônus', value:(fmtBonuses(r.bonuses) + ' = ' + (r.bonusSum >= 0 ? '+' : '−') + Math.abs(r.bonusSum)).slice(0, 500), inline:true });
+    if(r.note) fields.push({ name:'Observação', value:r.note.slice(0, 300), inline:false });
+    const payload = {
+      username:'Tau Volantis — Dados',
+      allowed_mentions:{ parse:[] },
+      embeds:[{
+        title:`🎲 ${r.whoName || 'Rolagem'}: ${r.total}`,
+        description:r.physical ? 'Dados físicos informados pelo jogador.' : undefined,
+        color:0x3f8fd1, fields,
+        footer:{ text:`${campaignMeta ? campaignMeta.name : 'Tau Volantis'}${ses ? ' · ' + ses.title : ''}` },
+        timestamp:new Date().toISOString()
+      }]
+    };
+    try{
+      const res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(payload) });
+      toast(res.ok ? 'Rolagem enviada ao Discord.' : 'O Discord recusou o envio. Confira o webhook.', !res.ok);
+    }catch(e){ toast('Não foi possível enviar ao Discord.', true); }
   }
   function rollText(r){
     return `${r.whoName || ''}${r.skill ? ' — ' + r.skill : ''}: ${fmtGroups(r.groups || [])}${r.bonuses && r.bonuses.length ? ' ' + fmtBonuses(r.bonuses) : ''} = ${r.total}${r.note ? ' (' + r.note + ')' : ''}${r.physical ? ' [dados físicos]' : ''}`;
@@ -3893,6 +3970,7 @@
       ${rollUI.physical ? `<input type="text" data-bind="rollUI.phys" value="${esc(rollUI.phys)}" placeholder="Resultados na ordem dos dados, ex.: 14 3 5" aria-label="Resultados dos dados físicos">` : ''}
       <input type="text" data-bind="rollUI.note" value="${esc(rollUI.note)}" placeholder="Observação (opcional)" maxlength="140">
       <label class="check-row"><input type="checkbox" data-bind="rollUI.record" ${rollUI.record ? 'checked' : ''}> Registrar no histórico da campanha</label>
+      <label class="check-row"><input type="checkbox" data-bind="rollUI.discord" ${rollUI.discord ? 'checked' : ''}> Enviar esta rolagem ao Discord (webhook do painel de Saque)</label>
       <button type="button" class="inv-mini-btn primary roll-go" data-act="roll">${rollUI.physical ? 'Registrar resultado' : 'Rolar'}</button>
       <p class="hub-hint">O site só mostra dados, bônus e total. Sucesso, dificuldade e consequência ficam com a mesa.</p>
       ${lastHtml}

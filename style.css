@@ -1397,3 +1397,8 @@ img, svg{ shape-rendering: geometricPrecision; }
     .inv-mini-btn, .die-btn, .inv-tab, .coord-btn, .inv-add-btn, .inv-open-btn, .check-row{ min-height:44px; }
     .die-btn{ min-width:44px; }
   }
+
+  /* lista de itens agrupada por tipo */
+  #item-table-body .cat-row td{ background:var(--bg-2); color:var(--frost); font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:0.08em; font-size:0.8rem; cursor:pointer; position:sticky; top:0; z-index:1; border-top:1px solid var(--line); }
+  #item-table-body .cat-row:focus-visible td{ outline:2px solid var(--frost); outline-offset:-2px; }
+  #item-table-body .cat-count{ color:var(--ink-dim); font-family:'Space Mono',monospace; font-size:0.62rem; margin-left:0.4rem; }
