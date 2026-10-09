@@ -180,11 +180,15 @@
 
   const SP_CENTER = [-23.5505, -46.6333];
   const SHAPE_STYLE = { color: 'var(--hazard)', weight: 2, fillColor: 'var(--hazard)', fillOpacity: 0.1, dashArray: '6 4' };
+  // estilo de cada área no mapa (todas usam o padrão). Esta função havia se perdido
+  // entre commits: sem ela nenhuma área era desenhada, embora continuassem na lista.
+  function shapeStyleFor(shape){ return Object.assign({}, SHAPE_STYLE); }
 
   let pins = [];
   let tokens = [];
   let shapes = [];
   let routes = [];
+  const renderedShapeIds = new Set(); // áreas que realmente foram desenhadas no mapa
   let inventories = {}; // donoId -> { itemUid: item }
   let lootLog = [];     // registro de transações (somente acréscimo)
   var invReady = false; // var de propósito: lido antes do módulo de inventário existir
@@ -604,87 +608,12 @@
     hideDrawHint();
   }
 
-  // ---------- view settings: toolbar position + compact (mobile) mode ----------
-  const VIEW_PREFS_KEY = 'tv-map:view-prefs';
-  function loadViewPrefs(){
-    try{
-      const raw = localStorage.getItem(VIEW_PREFS_KEY);
-      return raw ? JSON.parse(raw) : { position:'bottom', compact:false };
-    }catch(e){ return { position:'bottom', compact:false }; }
-  }
-  function saveViewPrefs(prefs){
-    try{ localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify(prefs)); }catch(e){}
-  }
-  let viewPrefs = loadViewPrefs();
-
-  // Keeps the side toolbar from ever overlapping the layer/visual panel above it:
-  // instead of a hardcoded "top" offset, measure the real bottom edge of
-  // #hud-layer (which changes size depending on content/compact mode/screen
-  // width) and push the side toolbar below it, with a small gap.
-  function syncToolbarSideOffset(){
-    const layer = document.getElementById('hud-layer');
-    if(!layer) return;
-    const gap = 16; // px, ~1rem
-    const bottom = layer.getBoundingClientRect().bottom;
-    document.documentElement.style.setProperty('--toolbar-side-top', `${Math.round(bottom + gap)}px`);
-  }
-
-  function applyViewPrefs(){
-    document.body.classList.toggle('toolbar-side', viewPrefs.position === 'side');
-    document.body.classList.toggle('compact-mode', !!viewPrefs.compact);
-    document.querySelectorAll('.vs-btn[data-pos]').forEach(b => b.classList.toggle('active', b.dataset.pos === viewPrefs.position));
-    document.querySelectorAll('.vs-btn[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === (viewPrefs.compact ? 'compact' : 'normal')));
-    // compact-mode / position changes affect the layer panel's height, so
-    // recompute the offset after the browser applies the new classes.
-    requestAnimationFrame(syncToolbarSideOffset);
-  }
-  applyViewPrefs();
-  syncToolbarSideOffset();
-  window.addEventListener('resize', syncToolbarSideOffset);
-  window.addEventListener('load', syncToolbarSideOffset);
-  if('ResizeObserver' in window){
-    new ResizeObserver(syncToolbarSideOffset).observe(document.getElementById('hud-layer'));
-  }
-
-  const viewSettingsToggle = document.getElementById('view-settings-toggle');
-  const viewSettingsPopover = document.getElementById('view-settings-popover');
-  const viewSettingsBackdrop = document.getElementById('view-settings-backdrop');
-  function openViewSettings(){
-    viewSettingsPopover.classList.add('open');
-    viewSettingsBackdrop.classList.add('open');
-  }
-  function closeViewSettings(){
-    viewSettingsPopover.classList.remove('open');
-    viewSettingsBackdrop.classList.remove('open');
-  }
-  viewSettingsToggle.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    viewSettingsPopover.classList.contains('open') ? closeViewSettings() : openViewSettings();
-  });
-  viewSettingsBackdrop.addEventListener('click', closeViewSettings);
-  document.addEventListener('click', (e) => {
-    if(viewSettingsPopover.classList.contains('open') && !viewSettingsPopover.contains(e.target) && e.target !== viewSettingsToggle){
-      closeViewSettings();
-    }
-  });
-  viewSettingsPopover.querySelectorAll('.vs-btn[data-pos]').forEach(b => {
-    b.addEventListener('click', () => {
-      viewPrefs.position = b.dataset.pos;
-      saveViewPrefs(viewPrefs);
-      applyViewPrefs();
-    });
-  });
-  viewSettingsPopover.querySelectorAll('.vs-btn[data-mode]').forEach(b => {
-    b.addEventListener('click', () => {
-      viewPrefs.compact = b.dataset.mode === 'compact';
-      saveViewPrefs(viewPrefs);
-      applyViewPrefs();
-    });
-  });
+  // preferência antiga do botão "Visual" (removido): limpa o que ficou salvo
+  try{ localStorage.removeItem('tv-map:view-prefs'); }catch(e){}
 
   // ---------- redesign: popovers sob demanda (menu, busca, conta, ações) ----------
   // Registra um par botão-gatilho + popover + backdrop, seguindo o mesmo
-  // padrão já usado pelo view-settings-popover. Fechar um popover destes
+  // padrão dos popovers do app. Fechar um popover destes
   // fecha só ele mesmo (não mexe nos outros), e clicar fora ou no backdrop
   // também fecha.
   function registerAppPopover(triggerId, popoverId, backdropId){
@@ -1003,27 +932,7 @@
       map.closePopup();
       saveKey(KEY_PINS, pins); // salva em segundo plano — a UI já reagiu na hora
     });
-    container.querySelector('.del').addEventListener('click', () => {
-      if(isNpc && invCount(pin.id) > 0 &&
-         !window.confirm(`Este NPC tem ${invCount(pin.id)} item(ns) no inventário. Excluir apaga o inventário (a perda fica no registro). Continuar?`)) return;
-      if(isNpc) removeHolderInventory(pin.id, 'NPC excluído');
-      // libera quem estava "dentro" desse veículo/abrigo antes de excluir o pin
-      let releasedTokens = false;
-      tokens.forEach(t => {
-        if(t.containerId === pin.id){ t.containerId = null; t.lat = pin.lat; t.lng = pin.lng; releasedTokens = true; }
-      });
-      pins.forEach(p => {
-        if(p.id !== pin.id && p.type === 'npc' && p.containerId === pin.id){ p.containerId = null; p.lat = pin.lat; p.lng = pin.lng; }
-      });
-      pins = pins.filter(p => p.id !== pin.id);
-      renderPins();
-      renderTokens();
-      map.closePopup();
-      // salva em segundo plano: a exclusão já aconteceu na tela, não precisa
-      // esperar a rede pra sumir o pin (isso que causava a sensação de lag)
-      saveKey(KEY_PINS, pins);
-      if(releasedTokens) saveKey(KEY_TOKENS, tokens);
-    });
+    container.querySelector('.del').addEventListener('click', () => { deletePinById(pin.id); });
     return container;
   }
 
@@ -1136,15 +1045,7 @@
       map.closePopup();
       saveKey(KEY_TOKENS, tokens);
     });
-    container.querySelector('.del').addEventListener('click', () => {
-      if(invCount(token.id) > 0 &&
-         !window.confirm(`Este token tem ${invCount(token.id)} item(ns) no inventário. Remover apaga o inventário (a perda fica no registro). Continuar?`)) return;
-      removeHolderInventory(token.id, 'token removido');
-      tokens = tokens.filter(t => t.id !== token.id);
-      renderTokens();
-      map.closePopup();
-      saveKey(KEY_TOKENS, tokens);
-    });
+    container.querySelector('.del').addEventListener('click', () => { deleteTokenById(token.id); });
     return container;
   }
 
@@ -1166,12 +1067,7 @@
       renderShapes();
       saveKey(KEY_SHAPES, shapes);
     });
-    container.querySelector('.del').addEventListener('click', () => {
-      shapes = shapes.filter(s => s.id !== shape.id);
-      renderShapes();
-      map.closePopup();
-      saveKey(KEY_SHAPES, shapes);
-    });
+    container.querySelector('.del').addEventListener('click', () => { deleteShapeById(shape.id); });
     return container;
   }
 
@@ -1201,12 +1097,7 @@
       renderRoutes();
       saveKey(KEY_ROUTES, routes);
     });
-    container.querySelector('.del').addEventListener('click', () => {
-      routes = routes.filter(r => r.id !== route.id);
-      renderRoutes();
-      map.closePopup();
-      saveKey(KEY_ROUTES, routes);
-    });
+    container.querySelector('.del').addEventListener('click', () => { deleteRouteById(route.id); });
     return container;
   }
 
@@ -1357,6 +1248,71 @@
     document.getElementById('stat-pins').textContent = pins.length;
     if(typeof renderNavList === 'function') renderNavList();
   }
+  // ---------- exclusões (usadas pelos popups e pela lista de navegação) ----------
+  function deletePinById(id){
+    const pin = pins.find(p => p.id === id);
+    if(!pin) return false;
+    const isNpc = pin.type === 'npc';
+    if(isNpc && invCount(pin.id) > 0 &&
+       !window.confirm(`Este NPC tem ${invCount(pin.id)} item(ns) no inventário. Excluir apaga o inventário (a perda fica no registro). Continuar?`)) return false;
+    if(isNpc) removeHolderInventory(pin.id, 'NPC excluído');
+    // libera quem estava "dentro" desse veículo/abrigo antes de excluir o pin
+    let releasedTokens = false;
+    tokens.forEach(t => {
+      if(t.containerId === pin.id){ t.containerId = null; t.lat = pin.lat; t.lng = pin.lng; releasedTokens = true; }
+    });
+    pins.forEach(p => {
+      if(p.id !== pin.id && p.type === 'npc' && p.containerId === pin.id){ p.containerId = null; p.lat = pin.lat; p.lng = pin.lng; }
+    });
+    pins = pins.filter(p => p.id !== pin.id);
+    renderPins();
+    renderTokens();
+    map.closePopup();
+    // salva em segundo plano: a exclusão já aconteceu na tela
+    saveKey(KEY_PINS, pins);
+    if(releasedTokens) saveKey(KEY_TOKENS, tokens);
+    return true;
+  }
+  function deleteTokenById(id){
+    const token = tokens.find(t => t.id === id);
+    if(!token) return false;
+    if(invCount(token.id) > 0 &&
+       !window.confirm(`Este token tem ${invCount(token.id)} item(ns) no inventário. Remover apaga o inventário (a perda fica no registro). Continuar?`)) return false;
+    removeHolderInventory(token.id, 'token removido');
+    tokens = tokens.filter(t => t.id !== token.id);
+    renderTokens();
+    map.closePopup();
+    saveKey(KEY_TOKENS, tokens);
+    return true;
+  }
+  function deleteShapeById(id){
+    shapes = shapes.filter(s => s.id !== id);
+    renderShapes();
+    map.closePopup();
+    saveKey(KEY_SHAPES, shapes);
+  }
+  function deleteRouteById(id){
+    routes = routes.filter(r => r.id !== id);
+    renderRoutes();
+    map.closePopup();
+    saveKey(KEY_ROUTES, routes);
+  }
+  // por que uma área não aparece no mapa (null = está tudo bem)
+  function shapeProblem(shape){
+    if(!renderedShapeIds.has(shape.id)) return 'não pôde ser desenhada';
+    if(shape.type === 'circle' && !(shape.radius >= 3)) return 'raio zero ou minúsculo';
+    return null;
+  }
+  function deleteBrokenShapes(){
+    const bad = shapes.filter(s => shapeProblem(s));
+    if(!bad.length) return;
+    if(!window.confirm(`Excluir ${bad.length} área(s) que não aparecem no mapa? Áreas visíveis não são tocadas.`)) return;
+    const ids = new Set(bad.map(s => s.id));
+    shapes = shapes.filter(s => !ids.has(s.id));
+    renderShapes();
+    saveKey(KEY_SHAPES, shapes);
+  }
+
   function openPinPopupById(id){
     const marker = pinMarkers[id];
     if(marker && marker.openPopup) marker.openPopup();
@@ -1667,20 +1623,36 @@
 
   function renderShapes(){
     shapesLayer.clearLayers();
+    renderedShapeIds.clear();
+    // cada forma é desenhada isoladamente: uma forma com dado quebrado não
+    // pode mais impedir o desenho das outras
     shapes.forEach(shape => {
-      let layer;
-      const style = shapeStyleFor(shape);
-      if(shape.type === 'circle' && shape.center && typeof shape.radius === 'number'){
-        layer = L.circle(shape.center, Object.assign({ radius: shape.radius }, style));
-      } else {
-        layer = L.geoJSON(shape.geojson, { style: style });
+      try{
+        let layer;
+        const style = shapeStyleFor(shape);
+        if(shape.type === 'circle' && shape.center && typeof shape.radius === 'number'){
+          layer = L.circle(shape.center, Object.assign({ radius: shape.radius }, style));
+        } else {
+          layer = L.geoJSON(shape.geojson, { style: style });
+        }
+        if(layer instanceof L.Circle){
+          // getBounds() de círculo exige estar no mapa: valida centro e raio direto
+          const c = shape.center;
+          if(!Array.isArray(c) || !isFinite(c[0]) || !isFinite(c[1]) || !isFinite(shape.radius) || shape.radius <= 0) throw new Error('círculo inválido');
+        } else {
+          const bounds = layer.getBounds ? layer.getBounds() : null;
+          if(bounds && !bounds.isValid()) throw new Error('forma sem geometria');
+        }
+        layer._shapeId = shape.id;
+        if(shape.label){
+          layer.bindTooltip(shape.label, { permanent:true, direction:'center', className:'shape-label' });
+        }
+        layer.bindPopup(() => buildShapePopupContent(shape));
+        layer.addTo(shapesLayer);
+        renderedShapeIds.add(shape.id);
+      }catch(err){
+        console.warn('Área não pôde ser desenhada:', shape && shape.id, err && err.message);
       }
-      layer._shapeId = shape.id;
-      if(shape.label){
-        layer.bindTooltip(shape.label, { permanent:true, direction:'center', className:'shape-label' });
-      }
-      layer.bindPopup(() => buildShapePopupContent(shape));
-      layer.addTo(shapesLayer);
     });
     if(typeof renderNavList === 'function') renderNavList();
   }
@@ -1759,79 +1731,125 @@
 
     const q = (navSearchInput.value || '').trim().toLowerCase();
 
-    function fill(container, items, emptyMsg){
+    function fill(container, items, emptyMsg, headerHtml){
       const filtered = q ? items.filter(it => it.name.toLowerCase().includes(q)) : items;
       container.innerHTML = '';
+      if(headerHtml){
+        const hd = document.createElement('div');
+        hd.innerHTML = headerHtml;
+        container.appendChild(hd.firstElementChild);
+      }
       if(filtered.length === 0){
-        container.innerHTML = `<div class="nav-empty">${emptyMsg}</div>`;
+        container.insertAdjacentHTML('beforeend', `<div class="nav-empty">${emptyMsg}</div>`);
         return;
       }
       filtered.forEach(it => {
+        const row = document.createElement('div');
+        row.className = 'nav-row' + (it.bad ? ' nav-row-bad' : '');
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'nav-item';
         btn.innerHTML = `<span class="nav-item-dot" style="background:${it.color}"></span><span class="nav-item-name">${escapeHtml(it.name)}</span><span class="nav-item-type">${it.typeLabel}</span>`;
-        btn.addEventListener('click', it.go);
-        container.appendChild(btn);
+        if(it.go) btn.addEventListener('click', it.go); else btn.disabled = true;
+        row.appendChild(btn);
+        if(it.remove){
+          const del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'nav-del';
+          del.textContent = '🗑';
+          del.title = 'Excluir';
+          del.setAttribute('aria-label', 'Excluir ' + it.name);
+          del.addEventListener('click', (ev) => { ev.stopPropagation(); it.remove(); });
+          row.appendChild(del);
+        }
+        container.appendChild(row);
       });
     }
 
-    const pinItems = pins.map(p => ({
-      name: p.title || (PIN_TYPES.find(t=>t.id===p.type)||{}).label || 'Pin',
-      color: (PIN_TYPES.find(t=>t.id===p.type)||{}).color || 'var(--ice-100)',
-      typeLabel: p.locked ? 'Pin 🔒' : 'Pin',
-      go: () => {
-        closeNavDrawer();
-        map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 16));
-        setTimeout(() => openPinPopupById(p.id), 400);
-      }
-    }));
+    const pinItems = pins.map(p => {
+      const name = p.title || (PIN_TYPES.find(t=>t.id===p.type)||{}).label || 'Pin';
+      return {
+        name,
+        color: (PIN_TYPES.find(t=>t.id===p.type)||{}).color || 'var(--ice-100)',
+        typeLabel: p.locked ? 'Pin 🔒' : 'Pin',
+        go: () => {
+          closeNavDrawer();
+          map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 16));
+          setTimeout(() => openPinPopupById(p.id), 400);
+        },
+        remove: () => {
+          // NPC com itens já tem a própria confirmação (que avisa do inventário)
+          if(!(p.type === 'npc' && invCount(p.id) > 0) && !window.confirm(`Excluir o pin "${name}"?`)) return;
+          deletePinById(p.id);
+        }
+      };
+    });
     fill(listPins, pinItems, 'Nenhum pin no mapa ainda.');
 
-    const tokenItems = tokens.map(t => ({
-      name: t.label || 'Token',
-      color: t.color || '#8fd7e8',
-      typeLabel: 'Token',
-      go: () => {
-        closeNavDrawer();
-        map.flyTo([t.lat, t.lng], Math.max(map.getZoom(), 16));
-        setTimeout(() => openTokenPopupById(t.id), 400);
-      }
-    }));
+    const tokenItems = tokens.map(t => {
+      const name = t.label || 'Token';
+      return {
+        name,
+        color: t.color || '#8fd7e8',
+        typeLabel: 'Token',
+        go: () => {
+          closeNavDrawer();
+          map.flyTo([t.lat, t.lng], Math.max(map.getZoom(), 16));
+          setTimeout(() => openTokenPopupById(t.id), 400);
+        },
+        remove: () => {
+          if(invCount(t.id) === 0 && !window.confirm(`Remover o token "${name}"?`)) return;
+          deleteTokenById(t.id);
+        }
+      };
+    });
     fill(listTokens, tokenItems, 'Nenhum token no mapa ainda.');
 
+    // áreas: as que não aparecem no mapa continuam na lista, marcadas, para
+    // poderem ser excluídas (antes elas ficavam "invisíveis" e sem como apagar)
     const shapeItems = [];
+    let brokenShapes = 0;
     shapes.forEach(s => {
       let center = null;
       if(s.type === 'circle' && s.center) center = s.center;
       else if(s.geojson){ try{ center = L.geoJSON(s.geojson).getBounds().getCenter(); }catch(e){} }
-      if(!center) return;
+      const problem = shapeProblem(s);
+      if(problem) brokenShapes++;
+      const name = s.label || 'Área sem nome';
       shapeItems.push({
-        name: s.label || 'Área sem nome',
+        name,
         color: 'var(--hazard)',
-        typeLabel: 'Área',
-        go: () => {
+        typeLabel: problem ? '⚠ sem forma' : 'Área',
+        bad: !!problem,
+        go: (center && !problem) ? () => {
           closeNavDrawer();
           map.flyTo(center, Math.max(map.getZoom(), 15));
           setTimeout(() => openShapePopupById(s.id), 400);
-        }
+        } : null,
+        remove: () => { if(window.confirm(`Excluir a área "${name}"?`)) deleteShapeById(s.id); }
       });
     });
-    fill(listShapes, shapeItems, 'Nenhuma área marcada ainda.');
+    fill(listShapes, shapeItems, 'Nenhuma área marcada ainda.', brokenShapes
+      ? `<div class="nav-warning">⚠ ${brokenShapes} área(s) não aparecem no mapa. <button type="button" class="nav-bulk">Excluir essas ${brokenShapes}</button></div>` : '');
+    const bulk = listShapes.querySelector('.nav-bulk');
+    if(bulk) bulk.addEventListener('click', deleteBrokenShapes);
 
     const routeItems = [];
     routes.forEach(r => {
-      if(!r.points || !r.points.length) return;
-      const mid = r.points[Math.floor(r.points.length/2)];
+      const hasPts = r.points && r.points.length;
+      const mid = hasPts ? r.points[Math.floor(r.points.length/2)] : null;
+      const name = r.label || 'Rota sem nome';
       routeItems.push({
-        name: r.label || 'Rota sem nome',
+        name,
         color: 'var(--frost)',
-        typeLabel: 'Rota',
-        go: () => {
+        typeLabel: hasPts ? 'Rota' : '⚠ sem pontos',
+        bad: !hasPts,
+        go: hasPts ? () => {
           closeNavDrawer();
           map.flyTo(mid, Math.max(map.getZoom(), 15));
           setTimeout(() => openRoutePopupById(r.id), 400);
-        }
+        } : null,
+        remove: () => { if(window.confirm(`Excluir a rota "${name}"?`)) deleteRouteById(r.id); }
       });
     });
     fill(listRoutes, routeItems, 'Nenhuma rota traçada ainda.');
@@ -3288,7 +3306,7 @@
     sessionForm:{ title:'', date:'', present:[], extra:'' },
     cfgDraft:null, recipeForm:null, joinCode:'', craftMsg:''
   };
-  const rollUI = { counts:{ 20:1 }, expr:'', skill:'', bonuses:[], who:'', physical:false, phys:'', note:'', record:true, discord:false, last:null, scName:'', scScope:'personal' };
+  const rollUI = { terms:[{ sign:1, n:1, sides:20 }], modTerm:0, modType:'kh', modVal:1, expr:'', skill:'', bonuses:[], who:'', physical:false, phys:'', note:'', record:true, discord:false, last:null, scName:'', scScope:'character' };
   let hubDirty = false;
 
   // ---------- configuração da campanha ativa ----------
@@ -3559,6 +3577,24 @@
   }
 
   // ---------- roller ----------
+  const PAD_DICE = [4, 6, 8, 10, 12, 20, 100, 'F'];
+  const OK_SIDES = [2, 3, 4, 6, 8, 10, 12, 20, 100];
+  const DIE_SHAPES = {
+    4:'<polygon points="24,5 44,41 4,41"/>',
+    6:'<rect x="7" y="7" width="34" height="34" rx="7"/>',
+    8:'<polygon points="24,3 44,24 24,45 4,24"/>',
+    10:'<polygon points="24,3 43,19 24,45 5,19"/>',
+    12:'<polygon points="24,3 44,18 37,43 11,43 4,18"/>',
+    20:'<polygon points="24,3 43,14 43,34 24,45 5,34 5,14"/>',
+    100:'<circle cx="24" cy="24" r="20"/>',
+    F:'<rect x="7" y="7" width="34" height="34" rx="15"/>'
+  };
+  // forma visual do dado (d4 triângulo, d6 quadrado, d8 losango, d10 pipa, d12 pentágono, d20 hexágono, d100 círculo)
+  function dieSvg(sides, text, cls, label){
+    const shape = DIE_SHAPES[sides] || DIE_SHAPES[100];
+    const len = String(text).length;
+    return `<svg class="dshape${len >= 3 ? ' t3' : ''}${cls ? ' ' + cls : ''}" viewBox="0 0 48 48" role="img" aria-label="${esc(label || text)}">${shape}<text x="24" y="29" text-anchor="middle">${esc(text)}</text></svg>`;
+  }
   function rollDie(sides){
     const c = (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) ? window.crypto : null;
     if(!c) return 1 + Math.floor(Math.random() * sides);
@@ -3567,57 +3603,150 @@
     do{ c.getRandomValues(a); }while(a[0] >= lim);
     return 1 + (a[0] % sides);
   }
+  function cmpOp(op, v, x){
+    switch(op){ case '>=': return v >= x; case '<=': return v <= x; case '>': return v > x; case '<': return v < x; default: return v === x; }
+  }
+  function hasMods(t){ return t.kh != null || t.kl != null || t.dh != null || t.dl != null || !!t.ex || !!t.rr || !!t.sc; }
+  function termDefLabel(t){
+    let l = (t.sign < 0 ? '−' : '') + t.n + 'd' + t.sides;
+    if(t.kh != null) l += 'kh' + t.kh;
+    if(t.kl != null) l += 'kl' + t.kl;
+    if(t.dh != null) l += 'dh' + t.dh;
+    if(t.dl != null) l += 'dl' + t.dl;
+    if(t.ex) l += (t.ex.op === '=' && t.ex.val === t.sides) ? '!' : '!' + t.ex.op + t.ex.val;
+    if(t.rr) l += 'r' + (t.rr.op === '=' ? '' : t.rr.op) + t.rr.val;
+    if(t.sc) l += t.sc.op + t.sc.val;
+    return l;
+  }
+  // Lê expressões como: 2d6+1d8+3 · 4d6kh3 · 2d20kl1 · 4d6dl1 · 3d6! · 5d10!>=9 · 4d6r1 · 10d10>=8 · adv · dis · dF · d%
   function parseExpr(str){
-    const s = String(str || '').replace(/\s+/g, '').toLowerCase();
-    if(!s) return { error:'Escreva uma expressão, ex.: 2d6+1d8+3.' };
-    const re = /([+-]?)(\d*)d(\d+)|([+-]?\d+)/y;
-    const counts = {}; let bonus = 0, i = 0;
+    let s = String(str || '').toLowerCase().replace(/\s+/g, '');
+    if(!s) return { error:'Escreva uma expressão, ex.: 4d6kh3+2.' };
+    s = s.replace(/desv(antagem)?|dis/g, '2d20kl1').replace(/vant(agem)?|adv/g, '2d20kh1').replace(/d%/g, 'd100');
+    const HEAD = /([+-]?)(?:(\d*)d(\d+|f)|(\d+))/y;
+    const MOD = /(kh|kl|dh|dl|k)(\d*)|!(>=|<=|>|<|=)?(\d*)|ro?(>=|<=|>|<|=)?(\d+)|(>=|<=|>|<|=)(\d+)/y;
+    const terms = []; let bonus = 0, i = 0, total = 0;
     while(i < s.length){
-      re.lastIndex = i;
-      const m = re.exec(s);
-      if(!m || m.index !== i) return { error:'Não entendi a expressão. Exemplo: 2d6+1d8+3.' };
-      if(m[3]){
-        if(m[1] === '-') return { error:'Dados negativos não são aceitos; use um bônus negativo.' };
-        const n = m[2] === '' ? 1 : +m[2], sd = +m[3];
-        if(!DIE_SIDES.includes(sd)) return { error:'Dados aceitos: ' + DIE_SIDES.map(d => 'd' + d).join(', ') + '.' };
-        if(n < 1 || n > 50) return { error:'Use de 1 a 50 dados de cada tipo.' };
-        counts[sd] = (counts[sd] || 0) + n;
-      } else bonus += +m[4];
-      i = re.lastIndex;
+      HEAD.lastIndex = i;
+      const m = HEAD.exec(s);
+      if(!m || m.index !== i) return { error:'Não entendi a expressão. Exemplos: 2d6+1d8+3 · 4d6kh3 · 3d6! · 10d10>=8 · adv.' };
+      i = HEAD.lastIndex;
+      const sign = m[1] === '-' ? -1 : 1;
+      if(m[4] !== undefined){ bonus += sign * Number(m[4]); continue; }
+      const n = m[2] === '' ? 1 : Number(m[2]);
+      const sides = m[3] === 'f' ? 'F' : Number(m[3]);
+      if(n < 1 || n > 50) return { error:'Use de 1 a 50 dados de cada vez.' };
+      if(sides !== 'F' && !OK_SIDES.includes(sides)) return { error:`d${sides} não é suportado. Use ${OK_SIDES.map(d => 'd' + d).join(', ')} ou dF.` };
+      const t = { sign, n, sides };
+      for(;;){
+        MOD.lastIndex = i;
+        const mm = MOD.exec(s);
+        if(!mm || mm.index !== i || mm[0] === '') break;
+        i = MOD.lastIndex;
+        if(mm[1]){
+          const N = mm[2] === '' ? 1 : Number(mm[2]);
+          if(N < 1) return { error:'Manter/descartar precisa de pelo menos 1.' };
+          t[{ kh:'kh', k:'kh', kl:'kl', dh:'dh', dl:'dl' }[mm[1]]] = N;
+        } else if(mm[0][0] === '!'){
+          const v = mm[4] === '' ? null : Number(mm[4]);
+          if(v === null && mm[3]) return { error:'Depois de ! com comparação, informe o número (ex.: !>=5).' };
+          t.ex = v === null ? { op:'=', val:sides } : { op:mm[3] || '=', val:v };
+        } else if(mm[0][0] === 'r'){
+          t.rr = { op:mm[5] || '=', val:Number(mm[6]) };
+        } else {
+          t.sc = { op:mm[7], val:Number(mm[8]) };
+        }
+      }
+      if(sides === 'F' && hasMods(t)) return { error:'dF não aceita modificadores.' };
+      total += n;
+      terms.push(t);
     }
-    return { counts, bonus };
+    if(total > 100) return { error:'No máximo 100 dados por rolagem.' };
+    return { terms, bonus };
   }
   function applyExpr(){
     const r = parseExpr(rollUI.expr);
     if(r.error){ toast(r.error, true); return false; }
-    rollUI.counts = r.counts;
+    rollUI.terms = r.terms;
     rollUI.bonuses = rollUI.bonuses.filter(b => b.label !== 'expressão');
     if(r.bonus) rollUI.bonuses.push({ label:'expressão', value:r.bonus });
     return true;
   }
-  function poolOf(counts){ return DIE_SIDES.filter(s => (counts[s] || 0) > 0).map(s => ({ sides:s, n:counts[s] })); }
+  function countsToTerms(counts){
+    return Object.keys(counts || {}).filter(k => counts[k] > 0).map(k => ({ sign:1, n:counts[k], sides:Number(k) }));
+  }
+  // fonte dos dados: aleatória, ou a fila de resultados digitados (dados físicos)
+  function makeSource(queue){
+    if(!queue){ return sides => sides === 'F' ? rollDie(3) - 2 : rollDie(sides); }
+    let i = 0;
+    const f = sides => {
+      if(i >= queue.length) throw new Error('NEED_MORE');
+      const v = queue[i++];
+      if(sides === 'F' ? (v < -1 || v > 1) : (v < 1 || v > sides)) throw new Error('RANGE');
+      return v;
+    };
+    f.used = () => i;
+    return f;
+  }
+  function rollTerm(t, src){
+    const dice = [];
+    for(let k = 0; k < t.n; k++){
+      let v = src(t.sides);
+      const die = { v };
+      if(t.rr && cmpOp(t.rr.op, v, t.rr.val)){ die.was = v; v = src(t.sides); die.v = v; }
+      dice.push(die);
+      if(t.ex){
+        let cur = die.v, guard = 0;
+        while(cmpOp(t.ex.op, cur, t.ex.val) && guard++ < 20 && dice.length < 200){ cur = src(t.sides); dice.push({ v:cur, x:true }); }
+      }
+    }
+    const live = () => dice.map((d, i) => i).filter(i => !dice[i].drop);
+    const byVal = (asc) => live().sort((a, b) => (asc ? dice[a].v - dice[b].v : dice[b].v - dice[a].v) || a - b);
+    if(t.kh != null) byVal(false).slice(t.kh).forEach(i => { dice[i].drop = true; });
+    if(t.kl != null) byVal(true).slice(t.kl).forEach(i => { dice[i].drop = true; });
+    if(t.dh != null) byVal(false).slice(0, t.dh).forEach(i => { dice[i].drop = true; });
+    if(t.dl != null) byVal(true).slice(0, t.dl).forEach(i => { dice[i].drop = true; });
+    let value = 0;
+    if(t.sc){
+      live().forEach(i => { if(cmpOp(t.sc.op, dice[i].v, t.sc.val)){ dice[i].s = true; value++; } });
+    } else {
+      live().forEach(i => { value += dice[i].v; });
+    }
+    return { sign:t.sign, n:t.n, sides:t.sides, label:termDefLabel(t), dice, value:t.sign * value, succ:!!t.sc };
+  }
+  function fmtDie(d){
+    let t = String(d.v);
+    if(d.x) t += '!';
+    if(d.was != null) t = d.was + '→' + t;
+    return d.drop ? '(' + t + ')' : t;
+  }
+  function fmtTerms(terms){
+    return terms.map(t => `${t.label} [${t.dice.map(fmtDie).join(', ')}] = ${t.value}${t.succ ? ' suc.' : ''}`).join(' + ');
+  }
   function fmtGroups(groups){ return groups.map(g => `${g.values.length > 1 ? g.values.length : ''}d${g.sides} [${g.values.join(', ')}]`).join(' + '); }
+  function fmtRoll(r){ return r.terms ? fmtTerms(r.terms) : fmtGroups(r.groups || []); }
   function fmtBonuses(bs){ return (bs || []).map(b => `${b.value >= 0 ? '+' : '−'}${Math.abs(b.value)}${b.label ? ' (' + b.label + ')' : ''}`).join(' '); }
   async function doRoll(){
-    const pool = poolOf(rollUI.counts);
-    if(!pool.length){ toast('Adicione ao menos um dado.', true); return; }
-    let groups;
-    if(rollUI.physical){
-      const nums = (String(rollUI.phys).match(/-?\d+/g) || []).map(Number);
-      const need = pool.reduce((a, p) => a + p.n, 0);
-      if(nums.length !== need){ toast(`Informe ${need} resultado(s) dos dados físicos, na ordem dos dados.`, true); return; }
-      let i = 0;
-      groups = pool.map(p => ({ sides:p.sides, values:nums.slice(i, i += p.n) }));
-      if(groups.some(g => g.values.some(v => v < 1 || v > g.sides))){ toast('Algum resultado está fora do alcance do dado.', true); return; }
-    } else {
-      groups = pool.map(p => ({ sides:p.sides, values:Array.from({ length:p.n }, () => rollDie(p.sides)) }));
+    if(!rollUI.terms.length){ toast('Adicione ao menos um dado.', true); return; }
+    let queue = null;
+    if(rollUI.physical) queue = (String(rollUI.phys).match(/-?\d+/g) || []).map(Number);
+    const src = makeSource(queue);
+    let results;
+    try{
+      results = rollUI.terms.map(t => rollTerm(t, src));
+    }catch(err){
+      if(err.message === 'NEED_MORE') toast('Faltam resultados dos dados físicos (explosões e rerrolagens pedem dados a mais, na ordem em que acontecem).', true);
+      else if(err.message === 'RANGE') toast('Algum resultado está fora do alcance do dado.', true);
+      else throw err;
+      return;
     }
+    if(queue && src.used() < queue.length){ toast('Sobraram resultados: confira quantos dados foram rolados.', true); return; }
     const bonuses = rollUI.bonuses.map(b => ({ label:(b.label || '').trim(), value:Number(b.value) })).filter(b => !isNaN(b.value) && b.value !== 0);
-    const diceSum = groups.reduce((a, g) => a + g.values.reduce((x, y) => x + y, 0), 0);
+    const diceSum = results.reduce((a, t) => a + t.value, 0);
     const bonusSum = bonuses.reduce((a, b) => a + b.value, 0);
     const holder = holderById(rollUI.who);
     const a = actorFields();
-    const rec = { skill:(rollUI.skill || '').trim(), groups, diceSum, bonuses, bonusSum, total:diceSum + bonusSum,
+    const rec = { skill:(rollUI.skill || '').trim(), terms:results, diceSum, bonuses, bonusSum, total:diceSum + bonusSum,
       note:(rollUI.note || '').trim(), physical:!!rollUI.physical, tokenId:holder ? holder.id : null,
       whoName:holder ? holder.name : a.actorName, actorId:a.actorId, actorName:a.actorName,
       sessionId:(campaignMeta && campaignMeta.activeSessionId) || null };
@@ -3637,7 +3766,7 @@
     const ses = activeSession();
     const fields = [];
     if(r.skill) fields.push({ name:'Perícia / ação', value:r.skill.slice(0, 200), inline:true });
-    fields.push({ name:'Dados', value:fmtGroups(r.groups).slice(0, 500) + ' = ' + r.diceSum, inline:false });
+    fields.push({ name:'Dados', value:(fmtRoll(r) + ' = ' + r.diceSum).slice(0, 900), inline:false });
     if(r.bonuses.length) fields.push({ name:'Bônus', value:(fmtBonuses(r.bonuses) + ' = ' + (r.bonusSum >= 0 ? '+' : '−') + Math.abs(r.bonusSum)).slice(0, 500), inline:true });
     if(r.note) fields.push({ name:'Observação', value:r.note.slice(0, 300), inline:false });
     const payload = {
@@ -3657,11 +3786,37 @@
     }catch(e){ toast('Não foi possível enviar ao Discord.', true); }
   }
   function rollText(r){
-    return `${r.whoName || ''}${r.skill ? ' — ' + r.skill : ''}: ${fmtGroups(r.groups || [])}${r.bonuses && r.bonuses.length ? ' ' + fmtBonuses(r.bonuses) : ''} = ${r.total}${r.note ? ' (' + r.note + ')' : ''}${r.physical ? ' [dados físicos]' : ''}`;
+    return `${r.whoName || ''}${r.skill ? ' — ' + r.skill : ''}: ${fmtRoll(r)}${r.bonuses && r.bonuses.length ? ' ' + fmtBonuses(r.bonuses) : ''} = ${r.total}${r.note ? ' (' + r.note + ')' : ''}${r.physical ? ' [dados físicos]' : ''}`;
   }
   function copyText(t){
     try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t); toast('Copiado.'); return; } }catch(e){}
     toast('Não foi possível copiar neste navegador.', true);
+  }
+  function padCount(s){ return rollUI.terms.filter(t => t.sides === s && t.sign === 1 && !hasMods(t)).reduce((a, t) => a + t.n, 0); }
+  function padAdd(s, d){
+    const t = rollUI.terms.find(x => x.sides === s && x.sign === 1 && !hasMods(x));
+    if(d > 0){ if(t) t.n = Math.min(50, t.n + 1); else rollUI.terms.push({ sign:1, n:1, sides:s }); }
+    else if(t){ t.n -= 1; if(t.n <= 0) rollUI.terms.splice(rollUI.terms.indexOf(t), 1); }
+  }
+  function addModifier(){
+    const t = rollUI.terms[rollUI.modTerm | 0];
+    if(!t){ toast('Escolha primeiro os dados.', true); return; }
+    if(t.sides === 'F'){ toast('dF não aceita modificadores.', true); return; }
+    const raw = rollUI.modVal;
+    const v = (raw === '' || raw == null) ? null : Number(raw);
+    const ty = rollUI.modType;
+    if(['kh', 'kl', 'dh', 'dl'].includes(ty)){
+      if(v != null && v < 1){ toast('Use um número de 1 em diante.', true); return; }
+      t[ty] = v || 1;
+    } else if(ty === 'ex'){
+      t.ex = v == null ? { op:'=', val:t.sides } : { op:'>=', val:v };
+    } else if(ty === 'rr'){
+      if(v == null){ toast('Informe até qual valor rerrolar (ex.: 2 rerrola 1 e 2).', true); return; }
+      t.rr = { op:'<=', val:v };
+    } else if(ty === 'sc'){
+      if(v == null){ toast('Informe o valor mínimo de sucesso (ex.: 8).', true); return; }
+      t.sc = { op:'>=', val:v };
+    }
   }
   function ensurePersonalSub(){
     const uid = currentUser ? currentUser.uid : 'local';
@@ -3670,12 +3825,15 @@
     if(personalOff) personalOff();
     personalOff = DB.on('user-shortcuts/' + uid, v => { personalShortcuts = v || {}; hubChanged(); });
   }
+  // Atalhos pertencem a um personagem (aparecem só quando ele está selecionado)
+  // ou à campanha toda (só o mestre cria). Os "pessoais" são de uma versão
+  // anterior: continuam listados à parte, para poderem ser movidos ou apagados.
   function allShortcuts(){
     const out = [];
-    Object.keys(personalShortcuts).forEach(k => out.push(Object.assign({ scope:'personal' }, personalShortcuts[k])));
     const card = rollUI.who ? characters[rollUI.who] : null;
     if(card && card.shortcuts) Object.keys(card.shortcuts).forEach(k => out.push(Object.assign({ scope:'character' }, card.shortcuts[k])));
     Object.keys(campShortcuts).forEach(k => out.push(Object.assign({ scope:'campaign' }, campShortcuts[k])));
+    Object.keys(personalShortcuts).forEach(k => out.push(Object.assign({ scope:'personal' }, personalShortcuts[k])));
     return out;
   }
   function scPath(sc){
@@ -3684,34 +3842,52 @@
     return `${scopedKey(KEY_SHORTCUTS)}/${sc.id}`;
   }
   async function saveShortcut(){
-    const pool = poolOf(rollUI.counts);
     const name = (rollUI.scName || '').trim();
     if(!name){ toast('Dê um nome ao atalho.', true); return; }
-    if(!pool.length){ toast('Adicione ao menos um dado.', true); return; }
-    const scope = rollUI.scScope;
-    if(scope === 'character' && !rollUI.who){ toast('Escolha um personagem para salvar na ficha.', true); return; }
-    if(scope === 'character' && !canEditHolder(holderById(rollUI.who))){ toast('Você não pode editar essa ficha.', true); return; }
-    if(scope === 'campaign' && !isMaster()){ toast('Só o mestre salva atalhos da campanha.', true); return; }
-    const sc = { id:DB.newId('user-shortcuts'), name, counts:rollUI.counts, skill:rollUI.skill || '', bonuses:rollUI.bonuses.map(b => ({ label:b.label || '', value:Number(b.value) || 0 })), scope };
-    delete sc.scope;
-    await DB.set(scPath(Object.assign({ scope }, sc)), sc);
+    if(!rollUI.terms.length){ toast('Adicione ao menos um dado.', true); return; }
+    const scope = (rollUI.scScope === 'campaign' && isMaster()) ? 'campaign' : 'character';
+    if(scope === 'character'){
+      if(!rollUI.who){
+        toast('Selecione primeiro o personagem: o atalho fica salvo só nele.', true);
+        const sel = hubBody.querySelector('[data-bind="rollUI.who"]'); if(sel) sel.focus();
+        return;
+      }
+      if(!canEditHolder(holderById(rollUI.who))){ toast('Você não pode editar a ficha desse personagem.', true); return; }
+    }
+    const sc = { id:DB.newId('user-shortcuts'), name, terms:JSON.parse(JSON.stringify(rollUI.terms)), skill:rollUI.skill || '',
+      bonuses:rollUI.bonuses.map(b => ({ label:b.label || '', value:Number(b.value) || 0 })) };
+    await DB.set(scPath({ scope, id:sc.id }), sc);
     rollUI.scName = '';
-    toast('Atalho salvo.');
+    toast(scope === 'character' ? `Atalho salvo em ${(holderById(rollUI.who) || {}).name}.` : 'Atalho da campanha salvo.');
+    renderHub();
   }
   function useShortcut(sc){
-    rollUI.counts = Object.assign({}, sc.counts || {});
+    rollUI.terms = sc.terms ? JSON.parse(JSON.stringify(sc.terms)) : countsToTerms(sc.counts);
     rollUI.skill = sc.skill || '';
     rollUI.bonuses = (sc.bonuses || []).map(b => ({ label:b.label, value:b.value }));
     rollUI.physical = false;
+    rollUI.modTerm = 0;
+  }
+  async function moveShortcut(sc){
+    if(!rollUI.who){ toast('Selecione um personagem para receber o atalho.', true); return; }
+    const copy = Object.assign({}, sc); delete copy.scope;
+    await DB.set(scPath({ scope:'character', id:sc.id }), copy);
+    await DB.set(scPath(sc), null);
+    toast('Atalho movido para ' + (holderById(rollUI.who) || {}).name + '.');
   }
 
   // ---------- ficha leve ----------
   function ensureCard(tokenId){
-    if(characters[tokenId]) return characters[tokenId];
     const h = holderById(tokenId);
     const t = tokens.find(x => x.id === tokenId);
-    const card = { tokenId, name:h ? h.name : '', player:(t && t.ownerName) || '', notes:'', reminders:[], skills:[], needs:{} };
-    characters[tokenId] = card;
+    const card = characters[tokenId] || (characters[tokenId] = {});
+    if(card.tokenId == null) card.tokenId = tokenId;
+    if(card.name == null) card.name = h ? h.name : '';
+    if(card.player == null) card.player = (t && t.ownerName) || '';
+    if(card.notes == null) card.notes = '';
+    if(!card.reminders) card.reminders = [];
+    if(!card.skills) card.skills = [];
+    if(!card.needs) card.needs = {};
     return card;
   }
   let cardTimer = null;
@@ -3928,57 +4104,118 @@
     html += '<div class="hub-tabs" role="tablist">' + tabs.map(t => `<button type="button" role="tab" aria-selected="${hub.tab === t[0]}" class="inv-tab${hub.tab === t[0] ? ' active' : ''}" data-act="tab" data-tab="${t[0]}">${t[1]}</button>`).join('') + '</div>';
     const fn = { dados:renderDados, ficha:renderFicha, sessao:renderSessao, campanhas:renderCampanhas, mundo:renderMundo, oficio:renderOficio }[hub.tab];
     html += fn();
+    // se a tela for redesenhada com um campo em foco, devolve o foco e o cursor
+    // à mesma posição (senão o texto digitado passa a entrar no começo do campo)
+    const ae = document.activeElement;
+    const keep = (ae && hubBody.contains(ae) && ae.dataset && ae.dataset.bind) ? { bind:ae.dataset.bind, s:ae.selectionStart, e:ae.selectionEnd } : null;
     hubBody.innerHTML = html;
+    if(keep){
+      const el = Array.from(hubBody.querySelectorAll('[data-bind]')).find(x => x.dataset.bind === keep.bind);
+      if(el){ el.focus(); try{ if(keep.s != null) el.setSelectionRange(keep.s, keep.e); }catch(e){} }
+    }
     hubDirty = false;
   }
 
   // --- dados ---
+  function modChips(t, i){
+    const chips = [];
+    if(t.kh != null) chips.push(['kh', `manter ${t.kh} maior${t.kh > 1 ? 'es' : ''}`]);
+    if(t.kl != null) chips.push(['kl', `manter ${t.kl} menor${t.kl > 1 ? 'es' : ''}`]);
+    if(t.dh != null) chips.push(['dh', `descartar ${t.dh} maior${t.dh > 1 ? 'es' : ''}`]);
+    if(t.dl != null) chips.push(['dl', `descartar ${t.dl} menor${t.dl > 1 ? 'es' : ''}`]);
+    if(t.ex) chips.push(['ex', (t.ex.op === '=' && t.ex.val === t.sides) ? 'explode no máximo' : `explode ${t.ex.op} ${t.ex.val}`]);
+    if(t.rr) chips.push(['rr', `rerrola 1× ${t.rr.op} ${t.rr.val}`]);
+    if(t.sc) chips.push(['sc', `conta sucessos ${t.sc.op} ${t.sc.val}`]);
+    return chips.map(c => `<button type="button" class="mod-chip" data-act="mod-del" data-i="${i}" data-k="${c[0]}" aria-label="Remover: ${esc(c[1])}">${esc(c[1])} ✕</button>`).join('');
+  }
+  function trayHtml(){
+    if(!rollUI.terms.length) return '<div class="inv-empty">Toque nos dados acima (ou escreva uma expressão) para montar a rolagem.</div>';
+    return rollUI.terms.map((t, i) => {
+      const max = 12, shown = Math.min(t.n, max), name = t.sides === 'F' ? 'dF' : 'd' + t.sides;
+      return `<div class="tray-term"><div class="tray-dice">${Array.from({ length:shown }, () => dieSvg(t.sides, name, '', name)).join('')}${t.n > max ? `<span class="tray-more">+${t.n - max}</span>` : ''}</div>
+        <div class="tray-meta"><b>${esc(termDefLabel(t))}</b>${modChips(t, i)}
+        <button type="button" class="mod-chip" data-act="term-del" data-i="${i}" aria-label="Remover ${esc(termDefLabel(t))}">remover ✕</button></div></div>`;
+    }).join('');
+  }
+  function resultHtml(r){
+    if(!r) return '';
+    const body = r.terms ? r.terms.map(t => `<div class="res-term"><div class="res-label">${esc(t.label)}</div>
+      <div class="res-dice">${t.dice.map(d => {
+        const txt = t.sides === 'F' ? (d.v > 0 ? '+' : d.v < 0 ? '−' : '0') : String(d.v);
+        const cls = [d.drop ? 'dropped' : '', d.x ? 'exploded' : '', d.was != null ? 'rerolled' : '', d.s ? 'succ' : ''].filter(Boolean).join(' ');
+        const lbl = `${t.sides === 'F' ? 'dF' : 'd' + t.sides}: ${d.v}${d.drop ? ' (descartado)' : ''}${d.x ? ' (explosão)' : ''}${d.was != null ? ' (rerrolado de ' + d.was + ')' : ''}${d.s ? ' (sucesso)' : ''}`;
+        return dieSvg(t.sides, txt, cls, lbl);
+      }).join('')}</div><div class="res-sub">${t.succ ? t.value + ' sucesso(s)' : '= ' + t.value}</div></div>`).join('') : `<div class="res-sub">${esc(fmtRoll(r))}</div>`;
+    return `<div class="roll-result" aria-live="polite">
+      <div class="roll-total">${r.total}</div>
+      <div class="roll-detail"><b>${esc(r.whoName || '')}</b>${r.skill ? ' — ' + esc(r.skill) : ''}
+        <div class="res-terms">${body}</div>
+        ${r.bonuses.length ? '<div class="res-sub">Bônus: ' + esc(fmtBonuses(r.bonuses)) + ' = ' + (r.bonusSum >= 0 ? '+' : '−') + Math.abs(r.bonusSum) + '</div>' : ''}
+        ${r.note ? '<div class="res-sub"><i>' + esc(r.note) + '</i></div>' : ''}${r.physical ? '<div class="res-sub"><small>dados físicos informados</small></div>' : ''}</div>
+      <button type="button" class="inv-mini-btn" data-act="roll-copy">Copiar</button></div>`;
+  }
+  function scRow(sc){
+    return `<div class="sc-row"><span class="sc-name" dir="ltr">${esc(sc.name)}</span>
+      <button type="button" class="inv-mini-btn" data-act="sc-use" data-id="${esc(sc.id)}" data-scope="${sc.scope}">Usar</button>
+      <button type="button" class="inv-mini-btn primary" data-act="sc-roll" data-id="${esc(sc.id)}" data-scope="${sc.scope}">Rolar</button>
+      ${sc.scope === 'personal' && rollUI.who ? `<button type="button" class="inv-mini-btn" data-act="sc-move" data-id="${esc(sc.id)}" data-scope="personal">Mover p/ personagem</button>` : ''}
+      <button type="button" class="inv-mini-btn danger" data-act="sc-del" data-id="${esc(sc.id)}" data-scope="${sc.scope}" aria-label="Excluir atalho ${esc(sc.name)}">✕</button></div>`;
+  }
   function renderDados(){
     const who = holderById(rollUI.who) ? rollUI.who : '';
     rollUI.who = who;
-    const dice = DIE_SIDES.map(s => `<div class="die"><span>d${s}</span>
-      <button type="button" class="die-btn" data-act="die-" data-s="${s}" aria-label="Menos um d${s}">−</button>
-      <b>${rollUI.counts[s] || 0}</b>
-      <button type="button" class="die-btn" data-act="die+" data-s="${s}" aria-label="Mais um d${s}">+</button></div>`).join('');
+    const whoName = who ? holderById(who).name : '';
+    if((rollUI.modTerm | 0) >= rollUI.terms.length) rollUI.modTerm = 0;
+    const pad = PAD_DICE.map(s => {
+      const n = padCount(s), name = s === 'F' ? 'dF' : 'd' + s;
+      return `<div class="pad-cell"><button type="button" class="pad-die${n ? ' has-count' : ''}" data-act="die+" data-s="${s}" aria-label="Adicionar um ${name} (agora ${n})">${dieSvg(s, name, '', name)}${n ? `<span class="pad-count">${n}</span>` : ''}</button>
+        <button type="button" class="die-btn" data-act="die-" data-s="${s}" aria-label="Remover um ${name}" ${n ? '' : 'disabled'}>−</button></div>`;
+    }).join('');
     const bon = rollUI.bonuses.map((b, i) => `<div class="bonus-row">
       <input type="text" data-bind="rollUI.bonuses.${i}.label" value="${esc(b.label)}" placeholder="Rótulo (item, condição, efeito...)" aria-label="Rótulo do bônus">
       <input type="number" data-bind="rollUI.bonuses.${i}.value" data-num value="${esc(b.value)}" aria-label="Valor do bônus">
       <button type="button" class="inv-mini-btn danger" data-act="bonus-del" data-i="${i}" aria-label="Remover bônus">✕</button></div>`).join('');
-    const last = rollUI.last;
-    const lastHtml = last ? `<div class="roll-result" aria-live="polite">
-      <div class="roll-total">${last.total}</div>
-      <div class="roll-detail"><b>${esc(last.whoName || '')}</b>${last.skill ? ' — ' + esc(last.skill) : ''}<br>
-      ${esc(fmtGroups(last.groups))} = ${last.diceSum}${last.bonuses.length ? '<br>Bônus: ' + esc(fmtBonuses(last.bonuses)) + ' = ' + (last.bonusSum >= 0 ? '+' : '−') + Math.abs(last.bonusSum) : ''}
-      ${last.note ? '<br><i>' + esc(last.note) + '</i>' : ''}${last.physical ? '<br><small>dados físicos informados</small>' : ''}</div>
-      <button type="button" class="inv-mini-btn" data-act="roll-copy">Copiar</button></div>` : '';
-    const scs = allShortcuts().map(sc => `<div class="sc-row"><span class="sc-name">${esc(sc.name)} <small>${{ personal:'pessoal', character:'personagem', campaign:'campanha' }[sc.scope]}</small></span>
-      <button type="button" class="inv-mini-btn" data-act="sc-use" data-id="${esc(sc.id)}" data-scope="${sc.scope}">Usar</button>
-      <button type="button" class="inv-mini-btn primary" data-act="sc-roll" data-id="${esc(sc.id)}" data-scope="${sc.scope}">Rolar</button>
-      <button type="button" class="inv-mini-btn danger" data-act="sc-del" data-id="${esc(sc.id)}" data-scope="${sc.scope}" aria-label="Excluir atalho">✕</button></div>`).join('');
+    const mine = allShortcuts();
+    const grp = (title, arr) => arr.length ? `<div class="hub-label">${title}</div>${arr.map(scRow).join('')}` : '';
+    const scs = grp(whoName ? 'De ' + esc(whoName) : '', mine.filter(s => s.scope === 'character'))
+      + grp('Da campanha', mine.filter(s => s.scope === 'campaign'))
+      + grp('Antigos (sem personagem)', mine.filter(s => s.scope === 'personal'));
     const hist = Object.keys(rolls).map(k => rolls[k]).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 30).map(r =>
       `<div class="log-row"><div class="log-meta"><span>${esc(fmtTs(r.ts))}</span><span>por ${esc(r.actorName || '?')}</span></div><div>${esc(rollText(r))}</div></div>`).join('');
+    const modOpts = [['kh', 'Manter os maiores (kh)'], ['kl', 'Manter os menores (kl)'], ['dh', 'Descartar os maiores (dh)'], ['dl', 'Descartar os menores (dl)'], ['ex', 'Explodir (!)'], ['rr', 'Rerrolar 1× até N (r)'], ['sc', 'Contar sucessos ≥ N']];
     return `<div class="hub-sec">
-      <label class="hub-label">Personagem (opcional)</label>${holderSelect('rollUI.who', who, true)}
-      <div class="hub-label">Dados</div><div class="dice-grid">${dice}</div>
-      <div class="expr-row"><input type="text" data-bind="rollUI.expr" value="${esc(rollUI.expr)}" placeholder="Ou escreva: 2d6+1d8+3" aria-label="Expressão de dados">
+      <label class="hub-label">Personagem</label>${holderSelect('rollUI.who', who, true)}
+      <div class="hub-label">Dados (toque para adicionar)</div><div class="dice-pad">${pad}</div>
+      <div class="hub-label">Na mesa</div><div class="tray">${trayHtml()}</div>
+      ${rollUI.terms.length ? `<div class="mod-row">
+        <select data-bind="rollUI.modTerm" data-num aria-label="Grupo de dados">${rollUI.terms.map((t, i) => opt(i, termDefLabel(t), rollUI.modTerm)).join('')}</select>
+        <select data-bind="rollUI.modType" aria-label="Modificador">${modOpts.map(m => opt(m[0], m[1], rollUI.modType)).join('')}</select>
+        <input type="number" min="1" data-bind="rollUI.modVal" data-num value="${esc(rollUI.modVal)}" placeholder="N" aria-label="Valor N do modificador">
+        <button type="button" class="inv-mini-btn" data-act="mod-add">Aplicar</button></div>` : ''}
+      <div class="expr-row"><input type="text" data-bind="rollUI.expr" dir="ltr" autocomplete="off" spellcheck="false" value="${esc(rollUI.expr)}" placeholder="Ou escreva: 4d6kh3+2" aria-label="Expressão de dados">
         <button type="button" class="inv-mini-btn" data-act="expr-apply">Aplicar</button></div>
+      <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="preset-adv">Vantagem</button><button type="button" class="inv-mini-btn" data-act="preset-dis">Desvantagem</button><button type="button" class="inv-mini-btn" data-act="roll-clear">Limpar</button></div>
+      <p class="hub-hint">Aceito: <b>kh</b>/<b>kl</b> manter maiores/menores · <b>dh</b>/<b>dl</b> descartar · <b>!</b> explode (<b>!&gt;=5</b>) · <b>r1</b> rerrola 1× · <b>&gt;=8</b> conta sucessos · <b>adv</b>/<b>dis</b> · <b>dF</b> · <b>d%</b>. Ex.: 4d6dl1, 5d10!&gt;=9, 10d10&gt;=8.</p>
       <label class="hub-label">Perícia / ação (texto livre)</label>
       <input type="text" data-bind="rollUI.skill" value="${esc(rollUI.skill)}" placeholder="Qualquer perícia, atributo ou ação" maxlength="60">
       <div class="hub-label">Bônus</div>${bon}
       <button type="button" class="inv-mini-btn" data-act="bonus-add">＋ Bônus</button>
       <label class="check-row"><input type="checkbox" data-bind="rollUI.physical" data-rerender ${rollUI.physical ? 'checked' : ''}> Usei dados físicos (digitar resultados)</label>
-      ${rollUI.physical ? `<input type="text" data-bind="rollUI.phys" value="${esc(rollUI.phys)}" placeholder="Resultados na ordem dos dados, ex.: 14 3 5" aria-label="Resultados dos dados físicos">` : ''}
+      ${rollUI.physical ? `<input type="text" data-bind="rollUI.phys" value="${esc(rollUI.phys)}" placeholder="Resultados na ordem, ex.: 14 3 5 (explosões vêm logo depois do dado)" aria-label="Resultados dos dados físicos">` : ''}
       <input type="text" data-bind="rollUI.note" value="${esc(rollUI.note)}" placeholder="Observação (opcional)" maxlength="140">
       <label class="check-row"><input type="checkbox" data-bind="rollUI.record" ${rollUI.record ? 'checked' : ''}> Registrar no histórico da campanha</label>
       <label class="check-row"><input type="checkbox" data-bind="rollUI.discord" ${rollUI.discord ? 'checked' : ''}> Enviar esta rolagem ao Discord (webhook do painel de Saque)</label>
       <button type="button" class="inv-mini-btn primary roll-go" data-act="roll">${rollUI.physical ? 'Registrar resultado' : 'Rolar'}</button>
       <p class="hub-hint">O site só mostra dados, bônus e total. Sucesso, dificuldade e consequência ficam com a mesa.</p>
-      ${lastHtml}
+      ${resultHtml(rollUI.last)}
     </div>
-    <div class="hub-sec"><div class="hub-label">Atalhos</div>${scs || '<div class="inv-empty">Nenhum atalho ainda.</div>'}
-      <div class="sc-save"><input type="text" data-bind="rollUI.scName" value="${esc(rollUI.scName)}" placeholder="Nome do atalho" maxlength="40">
-        <select data-bind="rollUI.scScope"><option value="personal" ${rollUI.scScope === 'personal' ? 'selected' : ''}>Pessoal (só eu)</option><option value="character" ${rollUI.scScope === 'character' ? 'selected' : ''}>Personagem</option><option value="campaign" ${rollUI.scScope === 'campaign' ? 'selected' : ''}>Campanha</option></select>
-        <button type="button" class="inv-mini-btn primary" data-act="sc-save">Salvar atual</button></div></div>
+    <div class="hub-sec"><div class="hub-label">Atalhos</div>${scs || '<div class="inv-empty">Nenhum atalho' + (whoName ? ' de ' + esc(whoName) : '') + ' ainda.</div>'}
+      <div class="sc-save">
+        <input type="text" class="sc-name-input" dir="ltr" autocomplete="off" autocapitalize="sentences" spellcheck="false" maxlength="40" data-bind="rollUI.scName" value="${esc(rollUI.scName)}" placeholder="Nome do atalho (ex.: Furtividade +3)" aria-label="Nome do atalho">
+        ${isMaster() ? `<select data-bind="rollUI.scScope" aria-label="Onde salvar">${opt('character', 'Salvar neste personagem', rollUI.scScope)}${opt('campaign', 'Salvar para a campanha toda', rollUI.scScope)}</select>` : ''}
+        <button type="button" class="inv-mini-btn primary" data-act="sc-save">Salvar atual</button>
+      </div>
+      <p class="hub-hint">${who && rollUI.scScope !== 'campaign' ? `O atalho fica salvo só em <b>${esc(whoName)}</b> e só aparece quando ele está selecionado.` : (rollUI.scScope === 'campaign' && isMaster() ? 'Atalhos da campanha aparecem para todos.' : 'Escolha um personagem acima: o atalho fica salvo só nele.')}</p></div>
     <div class="hub-sec"><div class="hub-label">Histórico da campanha</div>${hist || '<div class="inv-empty">Nenhuma rolagem registrada.</div>'}</div>`;
   }
 
@@ -4211,8 +4448,14 @@
     const D = el.dataset;
     switch(act){
       case 'tab': hub.tab = D.tab; renderHub(); break;
-      case 'die+': rollUI.counts[D.s] = Math.min(50, (rollUI.counts[D.s] || 0) + 1); renderHub(); break;
-      case 'die-': rollUI.counts[D.s] = Math.max(0, (rollUI.counts[D.s] || 0) - 1); renderHub(); break;
+      case 'die+': padAdd(D.s === 'F' ? 'F' : Number(D.s), 1); renderHub(); break;
+      case 'die-': padAdd(D.s === 'F' ? 'F' : Number(D.s), -1); renderHub(); break;
+      case 'term-del': rollUI.terms.splice(+D.i, 1); renderHub(); break;
+      case 'mod-add': addModifier(); renderHub(); break;
+      case 'mod-del': { const t = rollUI.terms[+D.i]; if(t){ delete t[D.k]; } renderHub(); break; }
+      case 'preset-adv': rollUI.terms = [{ sign:1, n:2, sides:20, kh:1 }]; rollUI.modTerm = 0; renderHub(); break;
+      case 'preset-dis': rollUI.terms = [{ sign:1, n:2, sides:20, kl:1 }]; rollUI.modTerm = 0; renderHub(); break;
+      case 'roll-clear': rollUI.terms = []; rollUI.bonuses = []; rollUI.expr = ''; rollUI.modTerm = 0; renderHub(); break;
       case 'bonus-add': rollUI.bonuses.push({ label:'', value:0 }); renderHub(); break;
       case 'bonus-del': rollUI.bonuses.splice(+D.i, 1); renderHub(); break;
       case 'expr-apply': if(applyExpr()) renderHub(); break;
@@ -4221,6 +4464,7 @@
       case 'sc-save': saveShortcut(); break;
       case 'sc-use': { const sc = findShortcut(el); if(sc){ useShortcut(sc); renderHub(); } break; }
       case 'sc-roll': { const sc = findShortcut(el); if(sc){ useShortcut(sc); doRoll(); } break; }
+      case 'sc-move': { const sc = findShortcut(el); if(sc) moveShortcut(sc); break; }
       case 'sc-del': { const sc = findShortcut(el); if(sc){ DB.set(scPath(sc), null); } break; }
       case 'rem-add': ensureCard(hub.charToken).reminders = (characters[hub.charToken].reminders || []).concat([{ label:'', value:'' }]); scheduleSaveCard(); renderHub(); break;
       case 'rem-del': characters[hub.charToken].reminders.splice(+D.i, 1); scheduleSaveCard(); renderHub(); break;
