@@ -2277,6 +2277,59 @@
     }
   });
 
+  // ---------- ícones dos itens ----------
+  // Cada categoria tem um ícone; itens com nome reconhecível ganham um ícone específico.
+  // Nem todo item tem ícone próprio: os demais usam o da categoria.
+  const CAT_ICONS = {
+    'Comida':'🥫', 'Bebidas':'💧', 'Itens Médicos':'🩹', 'Armas de Fogo':'🔫', 'Armas Brancas e Improvisadas':'🔪', 'Munição':'🔸',
+    'Ferramentas':'🔧', 'Ferramentas Agrícolas':'🌾', 'Roupas e Proteção contra Frio':'🧥', 'Mochilas e Contêineres':'🎒',
+    'Componentes e Materiais de Crafting':'⚙️', 'Peças de Veículos':'🚗', 'Eletrônicos e Comunicação':'📻', 'Combustível e Aquecimento':'⛽',
+    'Iluminação':'🔦', 'Acampamento e Utilidades':'⛺', 'Abrigo Rural e Construção':'🧱', 'Floresta e Caça':'🌲', 'Pesca e Rio':'🎣',
+    'Animais e Produtos de Fazenda':'🐔', 'Plantas, Ervas e Cultivos':'🌿', 'Documentos e Itens de Lore':'📜', 'Itens Anômalos e Paranormais':'🔮'
+  };
+  const ICON_RULES = [
+    [/municao|cartucho|projetil/, '🔸'],
+    [/notebook|laptop|computador|tablet/, '💻'], [/camarao|lagostim|caranguejo/, '🦐'],
+    [/furadeira|parafusadeira|esmerilhadeira|lixadeira|rocadeira|motosserra|serra eletrica/, '🔧'],
+    [/pistola|revolver|rifle|espingarda|carabina|fuzil|escopeta|submetralhadora|calibre/, '🔫'],
+    [/machado|machadinha/, '🪓'], [/martelo|marreta/, '🔨'], [/serra/, '🪚'], [/faca|facao|machete|canivete|adaga|lamina|estilete/, '🔪'],
+    [/arco|flecha|besta/, '🏹'], [/chave de fenda|chave inglesa|chave de roda|alicate|torquimetro/, '🔧'], [/chave/, '🔑'],
+    [/prego|parafuso|porca|arruela/, '🔩'], [/corda|barbante|cordao|cabo de aco/, '🪢'], [/fita adesiva|fita isolante/, '🩹'],
+    [/fosforo|isqueiro|maçarico/, '🔥'], [/lanterna|farol/, '🔦'], [/vela|lampiao|lamparina/, '🕯️'], [/pilha|bateria/, '🔋'],
+    [/radio|walkie|transmissor/, '📻'], [/celular|telefone/, '📱'], [/mapa|croqui/, '🗺️'], [/bussola/, '🧭'], [/relogio/, '⌚'],
+    [/binoculo|luneta/, '🔭'], [/oculos/, '👓'], [/mascara|respirador/, '😷'], [/capacete/, '⛑️'],
+    [/bota|sapato|tenis|calcado|chinelo|sandalia/, '🥾'], [/luva/, '🧤'], [/gorro|touca|chapeu|bone/, '🧢'], [/cachecol/, '🧣'],
+    [/jaqueta|casaco|blusa|moletom|camisa|camiseta|colete|poncho/, '🧥'], [/calca|bermuda|short/, '👖'], [/meia/, '🧦'],
+    [/mochila|bolsa|sacola|maleta/, '🎒'], [/cobertor|manta|saco de dormir|edredom/, '🛏️'], [/barraca|lona/, '⛺'],
+    [/bandagem|curativo|atadura|gaze|esparadrapo/, '🩹'], [/seringa|injecao|insulina|ampola/, '💉'],
+    [/comprimido|analgesico|antibiotico|paracetamol|dipirona|pilula|remedio|medicamento|xarope|vitamina/, '💊'],
+    [/kit de primeiros|kit medico|maleta medica/, '🧰'], [/alcool|antisseptico|iodo|agua oxigenada/, '🧴'],
+    [/cerveja|cachaca|pinga|vodka|whisky|rum |licor|conhaque/, '🍺'], [/vinho/, '🍷'], [/cafe/, '☕'], [/leite/, '🥛'],
+    [/refrigerante|suco|energetico|isotonico/, '🥤'], [/agua/, '💧'], [/garrafa|cantil|garrafao/, '🍶'],
+    [/pao|biscoito|bolacha|bolo/, '🍞'], [/ovo/, '🥚'], [/queijo/, '🧀'], [/mel\b/, '🍯'], [/chocolate|doce|barra de cereal/, '🍫'],
+    [/carne|presunto|linguica|salsicha|bacon|charque|bife|frango/, '🥩'], [/peixe|sardinha|atum|tilapia|traira|bagre|tambaqui|pirarucu|piranha|tucunare/, '🐟'],
+    [/maca|banana|laranja|manga|limao|goiaba|abacaxi|fruta|acai|cupuacu/, '🍎'], [/batata|cenoura|tomate|cebola|alface|mandioca|aipim|verdura|milho|abobora/, '🥔'],
+    [/feijao|arroz|lata|conserva|macarrao|farinha|sal\b|acucar|oleo/, '🥫'],
+    [/gasolina|combustivel|diesel|galao|querosene|etanol/, '⛽'], [/pneu|estepe/, '🛞'], [/macaco|triangulo/, '🚗'],
+    [/cadeado|corrente/, '🔒'], [/livro|diario|caderno|carta|bilhete|jornal|documento|fotografia|foto\b/, '📜'],
+    [/anzol|vara de pesca|molinete|isca/, '🎣'], [/rede\b|tarrafa/, '🕸️'], [/galinha|pinto|pato|porco|vaca|cavalo|ovelha|cabra/, '🐔'],
+    [/semente|muda\b/, '🌱'], [/erva|folha|raiz|cogumelo|cipo/, '🌿'], [/osso|cranio|dente|garra|pena/, '🦴'], [/pele|couro/, '🟫'],
+    [/amuleto|talisma|relicario|idolo|totem|runa|simbolo/, '🔮']
+  ];
+  const ICON_CACHE = {};
+  function normName(s){ return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+  function itemIcon(item){
+    if(!item) return '❔';
+    const key = item.id != null ? 'i' + item.id : 'n' + item.name;
+    if(ICON_CACHE[key]) return ICON_CACHE[key];
+    // "sem bateria", "sem combustível"...: o que falta não define o item
+    const n = normName(item.name).replace(/\bsem [a-z]+/g, '');
+    let ic = null;
+    for(const r of ICON_RULES){ if(r[0].test(n)){ ic = r[1]; break; } }
+    return (ICON_CACHE[key] = ic || CAT_ICONS[item.category] || '📦');
+  }
+  function iconHtml(item){ return `<span class="item-icon" aria-hidden="true">${itemIcon(item)}</span>`; }
+
   function compatLine(item){
     if (!item.calibre) return '';
     if (item.category === "Munição") {
@@ -2391,23 +2444,131 @@
     return pool[pool.length - 1];
   }
 
+  // ---------- animação de busca: roleta de itens e revelação um a um ----------
+  const lootStage = document.getElementById('loot-stage');
+  const fishStage = document.getElementById('fish-stage');
+  const animBox = document.getElementById('search-anim');
+  try{ animBox.checked = localStorage.getItem('tv-map:search-anim') !== 'off'; }catch(e){}
+  animBox.addEventListener('change', () => { try{ localStorage.setItem('tv-map:search-anim', animBox.checked ? 'on' : 'off'); }catch(e){} });
+  let searching = false;
+  function animEnabled(){
+    if(!animBox.checked) return false;
+    // quem pediu menos movimento no aparelho vê o resultado direto
+    try{ if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false; }catch(e){}
+    return true;
+  }
+  function setSearchBusy(on){
+    searching = on;
+    document.querySelectorAll('#loc-grid .loc-card, #loc-grid-rural .loc-card, #fish-btn').forEach(b => { b.disabled = on; });
+  }
+  // O resultado já foi sorteado e registrado antes de a animação começar:
+  // ela é só visual (fechar a página no meio não muda nada).
+  function playSearch(opts){
+    const stage = opts.stage, pool = opts.pool, found = opts.found;
+    return new Promise(resolve => {
+      let skipped = false, finished = false;
+      const timers = [];
+      const wait = ms => new Promise(r => { timers.push(setTimeout(r, ms)); });
+      stage.hidden = false;
+      stage.innerHTML = `
+        <div class="ss-head"><span class="ss-title"></span><button type="button" class="ss-skip">Pular</button></div>
+        <div class="ss-reel" aria-hidden="true"><div class="ss-row ss-prev"></div><div class="ss-row ss-cur"></div><div class="ss-row ss-next"></div></div>
+        <div class="ss-found"></div>`;
+      const titleEl = stage.querySelector('.ss-title'), reel = stage.querySelector('.ss-reel');
+      const rPrev = stage.querySelector('.ss-prev'), rCur = stage.querySelector('.ss-cur'), rNext = stage.querySelector('.ss-next');
+      const foundBox = stage.querySelector('.ss-found');
+      titleEl.textContent = opts.title;
+      const rowHtml = it => `<span class="item-icon" aria-hidden="true">${it._icon || itemIcon(it)}</span><span class="ss-name">${escapeHtml(it.name)}</span>`;
+      const rand = prev => {
+        let it, g = 0;
+        do{ it = pool[Math.floor(Math.random() * pool.length)]; }while(it === prev && pool.length > 1 && g++ < 6);
+        return it;
+      };
+      const paint = (a, b, c2, landed) => {
+        rPrev.innerHTML = rowHtml(a); rCur.innerHTML = rowHtml(b); rNext.innerHTML = rowHtml(c2);
+        rCur.classList.toggle('ss-landed', !!landed);
+      };
+      const finish = () => {
+        if(finished) return;
+        finished = true;
+        timers.forEach(clearTimeout);
+        stage.hidden = true; stage.innerHTML = '';
+        resolve();
+      };
+      stage.querySelector('.ss-skip').addEventListener('click', () => { skipped = true; finish(); });
+      async function spinTo(target, steps, endDelay){
+        let cur = rand(null), nxt = rand(cur), prv = rand(cur);
+        for(let i = 0; i < steps && !skipped; i++){
+          const t = steps > 1 ? i / (steps - 1) : 1;
+          prv = cur; cur = nxt; nxt = rand(cur);
+          paint(prv, cur, nxt, false);
+          reel.classList.remove('ss-tick'); void reel.offsetWidth; reel.classList.add('ss-tick');
+          await wait(55 + (endDelay - 55) * t * t);   // desacelera até parar
+        }
+        if(skipped) return;
+        paint(rand(target._icon ? null : target), target, rand(target._icon ? null : target), true);
+      }
+      (async () => {
+        for(let k = 0; k < found.length && !skipped; k++){
+          titleEl.textContent = found.length > 1 ? `${opts.title} (${k + 1}/${found.length})` : opts.title;
+          await spinTo(found[k], k === 0 ? 14 : 9, k === 0 ? 220 : 180);
+          if(skipped) return;
+          const it = found[k], rar = opts.rarity ? opts.rarity(it) : null;
+          const chip = document.createElement('div');
+          chip.className = 'ss-chip' + (it.category === 'Itens Anômalos e Paranormais' ? ' ss-anom' : '');
+          chip.innerHTML = `${iconHtml(it)}<span class="ss-chip-name">${escapeHtml(it.name)}</span>${rar ? `<span class="rarity-tag ${rar.cls}">${rar.label}</span>` : ''}`;
+          foundBox.appendChild(chip);
+          await wait(380);
+        }
+        if(!found.length && !skipped){
+          await spinTo({ name: opts.emptyText || 'Nada de útil aqui', _icon: '🕳️', category: '' }, 14, 220);
+          if(skipped) return;
+          await wait(380);
+        }
+        if(skipped) return;
+        await wait(450);
+        finish();
+      })();
+    });
+  }
+
+  // quantos itens uma busca rende (configurável por campanha: mínimo e máximo)
+  function lootCount(){
+    const c = cfg();
+    return c.lootMin + Math.floor(Math.random() * (c.lootMax - c.lootMin + 1));
+  }
   function rollLoot(locKey){
-    const pool = byLoc[locKey];
-    const item = weightedPick(pool, locKey);
+    if(searching) return;
+    const pool = byLoc[locKey].slice();
     const tok = selectedToken();
     const lf = locFields(tok);
     if(!exploreGate(lf)) return;
-    const entry = Object.assign({kind:'loot', item, locKey, uid: ++lootUid, sendState: 'idle', foundBy: playerName(), holderId: tok ? tok.id : null, decision: 'pending'}, lf);
+    let count = lootCount();
+    // local com reserva: não dá para achar mais do que ainda resta
+    const pin = lf.pinId ? pins.find(p => p.id === lf.pinId) : null;
+    if(pin && pin.explore && typeof pin.explore.reserve === 'number') count = Math.min(count, pin.explore.reserve);
+    count = Math.min(count, pool.length);
+    const items = [];
+    for(let i = 0; i < count; i++){
+      const it = weightedPick(pool, locKey);
+      items.push({ item: it, decision: 'pending' });
+      pool.splice(pool.indexOf(it), 1); // sem repetir item na mesma busca
+    }
+    const entry = Object.assign({kind:'loot', items, locKey, uid: ++lootUid, searchId: newUid('sr'), sendState: 'idle', foundBy: playerName(), holderId: tok ? tok.id : null}, lf);
     explorePostRoll(entry);
-    lootHistory.unshift(entry);
     logFound(entry);
-    renderLootResults();
     if (autoSendBox.checked) sendLootToDiscord(entry);
+    const show = () => { lootHistory.unshift(entry); renderLootResults(); };
+    if(!animEnabled()){ show(); return; }
+    setSearchBusy(true);
+    playSearch({ stage:lootStage, title:`Vasculhando ${LOC_NAMES[locKey]}…`, pool:byLoc[locKey], found:items.map(x => x.item),
+      rarity:it => rarityInfo(it, locKey), emptyText:'Nada de útil aqui' }).then(() => { setSearchBusy(false); show(); });
   }
 
   function renderLootResults(){
     if(lootHistory.length === 0){
-      resultZone.innerHTML = '<div class="empty-hint">Nenhuma busca realizada ainda. Clique em um local acima para vasculhar.</div>';
+      const c = cfg();
+      resultZone.innerHTML = `<div class="empty-hint">Nenhuma busca realizada ainda. Clique em um local acima para vasculhar. Cada busca rende de ${c.lootMin} a ${c.lootMax} item(ns) e você escolhe o que levar.</div>`;
       return;
     }
     resultZone.innerHTML = '';
@@ -2417,28 +2578,42 @@
     clearBtn.addEventListener('click', () => { flushPending(lootHistory); lootHistory = []; renderLootResults(); });
 
     lootHistory.slice(0, 25).forEach((entry) => {
-      const {item, locKey, foundBy, coord} = entry;
-      const rarity = rarityInfo(item, locKey);
+      const {locKey, foundBy} = entry;
+      const its = entry.items || [];
+      const anomalo = its.some(x => x.item.category === 'Itens Anômalos e Paranormais');
       const card = document.createElement('div');
-      card.className = 'result-card' + (item.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '');
+      card.className = 'result-card' + (anomalo ? ' anomalo' : '');
       card.dataset.uid = entry.uid;
       card.innerHTML = `
         <div class="result-top">
           <div class="result-loc">Buscado em: ${LOC_NAMES[locKey]}</div>
           <div class="found-by">Encontrado por: ${escapeHtml(foundBy)}</div>
         </div>
-        <div class="result-name">${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span></div>
-        <span class="result-cat">${item.category}</span>
-        <div class="result-utility"><b>Utilidade:</b> ${item.utility}</div>
-        ${compatLine(item)}
+        ${its.length ? `<div class="loot-count">${its.length} item(ns) encontrado(s)</div>` : '<div class="result-name">Nada de útil aqui</div><div class="result-utility">A busca não rendeu nada desta vez.</div>'}
+        <div class="loot-items"></div>
         ${coordHtml(entry)}
         <div class="send-row">
           <button class="send-btn" data-action="send">Enviar ao Discord</button>
           <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
         </div>
       `;
+      const box = card.querySelector('.loot-items');
+      const bulk = buildBulkBar(entry);
+      if(bulk) box.appendChild(bulk);
+      its.forEach((it, i) => {
+        const item = it.item;
+        const rarity = rarityInfo(item, locKey);
+        const row = document.createElement('div');
+        row.className = 'loot-item' + (item.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '') + (it.decision === 'declined' ? ' declined' : '');
+        row.innerHTML = `
+          <div class="result-name">${iconHtml(item)}${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span></div>
+          <span class="result-cat">${item.category}</span>
+          <div class="result-utility"><b>Utilidade:</b> ${item.utility}</div>
+          ${compatLine(item)}`;
+        row.appendChild(buildItemDecision(entry, i, its.length === 1));
+        box.appendChild(row);
+      });
       card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
-      attachDecision(card, entry);
       resultZone.appendChild(card);
     });
     resultZone.appendChild(clearBtn);
@@ -2493,27 +2668,35 @@
         }]
       };
     } else {
-      const {item, locKey, foundBy, coord} = entry;
-      const rarity = rarityInfo(item, locKey);
-      const isAnomalo = item.category === 'Itens Anômalos e Paranormais';
-      const fields = [
+      const {locKey, foundBy, coord} = entry;
+      const its = (entry.items || []).map(x => x.item);
+      const base = [
         { name: "Local", value: LOC_NAMES[locKey], inline: true },
-        { name: "Categoria", value: item.category, inline: true },
-        { name: "Raridade", value: rarity.label, inline: true },
         { name: "Encontrado por", value: foundBy, inline: true }
       ];
-      if(coord) fields.push({ name: "Local aproximado (lat, lng)", value: coord, inline: true });
-      payload = {
-        username: "Tau Volantis — Registro de Saque",
-        embeds: [{
-          title: item.name,
-          description: item.utility,
-          color: isAnomalo ? 0xd3572a : 0x3d6c8a,
-          fields,
-          footer: { text: "Tau Volantis: Ano 0" },
-          timestamp: new Date().toISOString()
-        }]
-      };
+      if(coord) base.push({ name: "Local aproximado (lat, lng)", value: coord, inline: true });
+      const anyAnom = its.some(i => i.category === 'Itens Anômalos e Paranormais');
+      if(its.length === 0){
+        payload = { username: "Tau Volantis — Registro de Saque", embeds: [{ title: "Nada de útil encontrado",
+          description: "A busca não rendeu nada desta vez.", color: 0x26333d, fields: base,
+          footer: { text: "Tau Volantis: Ano 0" }, timestamp: new Date().toISOString() }] };
+      } else if(its.length === 1){
+        const item = its[0], rarity = rarityInfo(item, locKey);
+        payload = { username: "Tau Volantis — Registro de Saque", embeds: [{ title: item.name, description: item.utility,
+          color: anyAnom ? 0xd3572a : 0x3d6c8a,
+          fields: [base[0], { name: "Categoria", value: item.category, inline: true }, { name: "Raridade", value: rarity.label, inline: true }].concat(base.slice(1)),
+          footer: { text: "Tau Volantis: Ano 0" }, timestamp: new Date().toISOString() }] };
+      } else {
+        payload = { username: "Tau Volantis — Registro de Saque", embeds: [{
+          title: `Saque: ${its.length} itens`,
+          description: `Buscado em ${LOC_NAMES[locKey]}`,
+          color: anyAnom ? 0xd3572a : 0x3d6c8a,
+          fields: base.concat(its.map(item => ({
+            name: item.name.slice(0, 256),
+            value: `${item.category} · ${rarityInfo(item, locKey).label}\n${item.utility}`.slice(0, 1024)
+          }))).slice(0, 25),
+          footer: { text: "Tau Volantis: Ano 0" }, timestamp: new Date().toISOString() }] };
+      }
     }
 
     try {
@@ -2538,6 +2721,7 @@
   let fishUid = 0;
 
   function rollFish(){
+    if(searching) return;
     const totalFishWeight = FISH_POOL.reduce((a,b)=>a+b.fish,0);
     const totalWeight = totalFishWeight + NOTHING_WEIGHT;
     let r = Math.random() * totalWeight;
@@ -2551,11 +2735,14 @@
       if (!caught) caught = FISH_POOL[FISH_POOL.length - 1];
     }
     const tok = selectedToken();
-    const entry = Object.assign({kind:'fish', item: caught, uid: ++fishUid, sendState:'idle', foundBy: playerName(), holderId: tok ? tok.id : null, decision: 'pending'}, locFields(tok));
-    fishHistory.unshift(entry);
+    const entry = Object.assign({kind:'fish', item: caught, items: caught ? [{ item: caught, decision: 'pending' }] : [], searchId: newUid('sr'), uid: ++fishUid, sendState:'idle', foundBy: playerName(), holderId: tok ? tok.id : null}, locFields(tok));
     logFound(entry);
-    renderFishResults();
     if (autoSendBox.checked) sendLootToDiscord(entry);
+    const showFish = () => { fishHistory.unshift(entry); renderFishResults(); };
+    if(!animEnabled()){ showFish(); return; }
+    setSearchBusy(true);
+    playSearch({ stage:fishStage, title:'Lançando a linha…', pool:FISH_POOL, found:caught ? [caught] : [],
+      rarity:null, emptyText:'Nada fisgou' }).then(() => { setSearchBusy(false); showFish(); });
   }
   fishBtn.addEventListener('click', rollFish);
 
@@ -2580,7 +2767,7 @@
           <div class="result-loc">Rios, Igarapés e Margens</div>
           <div class="found-by">Pescado por: ${escapeHtml(entry.foundBy)}</div>
         </div>
-        <div class="fish-name">${isNothing ? 'Nada fisgou a isca desta vez' : entry.item.name}</div>
+        <div class="fish-name">${isNothing ? '🕳️ Nada fisgou a isca desta vez' : iconHtml(entry.item) + entry.item.name}</div>
         <div class="fish-desc">${isNothing ? 'A linha voltou vazia. Vale tentar de novo em outro ponto do rio.' : entry.item.utility}</div>
         ${coordHtml(entry)}
         <div class="send-row">
@@ -2589,7 +2776,7 @@
         </div>
       `;
       card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
-      attachDecision(card, entry);
+      if(entry.items.length) card.insertBefore(buildItemDecision(entry, 0, true), card.querySelector('.send-row'));
       fishResultEl.appendChild(card);
     });
     fishResultEl.appendChild(clearFishBtn);
@@ -2623,7 +2810,7 @@
     cats.forEach(cat => {
       const opt = document.createElement('option');
       opt.value = cat;
-      opt.textContent = `${cat} (${ITEMS.filter(i => i.category === cat).length})`;
+      opt.textContent = `${CAT_ICONS[cat] || ''} ${cat} (${ITEMS.filter(i => i.category === cat).length})`;
       itemFilterCat.appendChild(opt);
     });
   })();
@@ -2647,12 +2834,12 @@
         const rarity = rarityInfo(item, worstLoc);
         return `
       <tr class="item-row" data-cat="${escapeHtml(cat)}" ${closed ? 'hidden' : ''}>
-        <td>${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
+        <td>${iconHtml(item)}${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
         <td>${item.utility}</td>
         <td><button type="button" class="inv-add-btn" data-id="${item.id}">＋ Inventário</button></td>
       </tr>`;
       }).join('');
-      return `<tr class="cat-row" data-cat="${escapeHtml(cat)}" tabindex="0" role="button" aria-expanded="${!closed}"><td colspan="3">${closed ? '▸' : '▾'} ${escapeHtml(cat)} <span class="cat-count">${groups[cat].length}</span></td></tr>${rows}`;
+      return `<tr class="cat-row" data-cat="${escapeHtml(cat)}" tabindex="0" role="button" aria-expanded="${!closed}"><td colspan="3">${closed ? '▸' : '▾'} ${CAT_ICONS[cat] || ''} ${escapeHtml(cat)} <span class="cat-count">${groups[cat].length}</span></td></tr>${rows}`;
     }).join('') || '<tr><td colspan="3" class="inv-empty">Nenhum item encontrado.</td></tr>';
   }
   function toggleCat(row){
@@ -2770,6 +2957,91 @@
     }, actorFields(), extra || {});
   }
 
+  // ---------- auditoria no Discord ----------
+  // Toda transação registrada (saque, guardar, descartar, usar, trocar, fabricar...)
+  // também vai para o webhook FIXO da mesa, sempre: não depende da caixa de envio
+  // nem do webhook que cada jogador escolheu. Fica numa fila com nova tentativa
+  // (limite de taxa do Discord, falha de rede) e sobrevive a recarregar a página.
+  const AUDIT_QUEUE_KEY = 'tv-map:audit-queue';
+  const AUDIT_STYLE = {
+    saque:['🔎 Saque', 0x3d6c8a], guardar:['🎒 Guardou', 0x4f9a63], recusar:['🗑 Não manteve', 0x8a5a4a],
+    adicionar:['➕ Adicionou pela tabela', 0x4f9a63], usar:['🧪 Usou', 0xd9a441], descartar:['🗑 Descartou', 0xb04a32],
+    troca:['⇄ Troca', 0x7a64c8], craft:['🛠 Fabricação', 0xc9923a], inv_removido:['⚠ Inventário removido', 0xb04a32]
+  };
+  let auditQueue = [];
+  let auditBusy = false;
+  try{ auditQueue = JSON.parse(localStorage.getItem(AUDIT_QUEUE_KEY) || '[]') || []; }catch(e){ auditQueue = []; }
+  const auditSleep = ms => new Promise(r => setTimeout(r, ms));
+  function persistAudit(){ try{ localStorage.setItem(AUDIT_QUEUE_KEY, JSON.stringify(auditQueue)); }catch(e){} }
+  function md(s){ return String(s == null ? '' : s).replace(/([\\*_~`|>])/g, '\\$1').replace(/@/g, '@\u200b'); }
+  function qnames(a){ return (a || []).map(i => '"' + md(i.name) + '"').join(', ') || 'nada'; }
+  function auditLine(e){
+    const who = '**' + md(e.holderName || 'Sobrevivente desconhecido') + '**';
+    const it = e.item ? '"' + md(e.item.name) + '"' : '';
+    const cap = e.invAfter != null ? ' · inventário ' + fmtCount(e.invAfter) : '';
+    switch(e.action){
+      case 'saque': return `${who} encontrou ${it}${e.total > 1 ? ' (item ' + e.n + ' de ' + e.total + ')' : ''}${e.locName ? ' em ' + md(e.locName) : ''}${e.coord ? ' · 📍 ' + md(e.coord) : ''}`;
+      case 'guardar': return `${who} **guardou** ${it} no inventário${cap}`;
+      case 'recusar': return `${who} **não manteve** ${it}${e.reason ? ' (' + md(e.reason) + ')' : ''}`;
+      case 'adicionar': return `${who} recebeu ${it} direto da tabela de itens${cap}`;
+      case 'usar': return `${who} usou ${it} · ${e.consumed ? 'consumido' : 'mantido no inventário'}${e.note ? ' — ' + md(e.note) : ''}`;
+      case 'descartar': return `${who} **descartou** ${it}${e.note ? ' — ' + md(e.note) : ''}`;
+      case 'troca': return `${who} ⇄ **${md(e.counterpartName || '?')}**: entregou ${qnames(e.gave)} · recebeu ${qnames(e.got)}${e.note ? ' — ' + md(e.note) : ''}`;
+      case 'craft': return `${who} ${e.outcome === 'sucesso' ? 'fabricou' : 'tentou fabricar'} "${md(e.recipe || '?')}"${e.outcome === 'sucesso' ? '' : ' e falhou'} · usou: ${qnames(e.used)}${e.made && e.made.length ? ' · obteve: ' + qnames(e.made) : ''}`;
+      case 'inv_removido': return `Inventário de ${who} removido${e.reason ? ' (' + md(e.reason) + ')' : ''}: ${qnames(e.items)}`;
+      default: return who;
+    }
+  }
+  function queueAudit(entries){
+    if(typeof fetch !== 'function' || !entries || !entries.length) return;
+    const ses = (campaignMeta && campaignMeta.activeSessionId && sessions[campaignMeta.activeSessionId]) || null;
+    for(let i = 0; i < entries.length; i += 15){
+      const chunk = entries.slice(i, i + 15);
+      const same = chunk.every(e => e.action === chunk[0].action);
+      const st = AUDIT_STYLE[chunk[0].action] || ['Registro', 0x3d6c8a];
+      auditQueue.push({ tries:0, payload:{
+        username:'Tau Volantis — Auditoria',
+        allowed_mentions:{ parse:[] },
+        embeds:[{
+          title: same ? st[0] + (chunk.length > 1 ? ' ×' + chunk.length : '') : 'Registro de transações',
+          description: chunk.map(auditLine).join('\n').slice(0, 4000),
+          color: same ? st[1] : 0x3d6c8a,
+          footer:{ text:`${campaignMeta ? campaignMeta.name : 'Tau Volantis'}${ses ? ' · ' + ses.title : ''} · por ${chunk[0].actorName || '?'}` },
+          timestamp:new Date().toISOString()
+        }]
+      }});
+    }
+    persistAudit();
+    pumpAudit();
+  }
+  async function pumpAudit(){
+    if(auditBusy || typeof fetch !== 'function') return;
+    auditBusy = true;
+    let warned = false;
+    while(auditQueue.length){
+      const job = auditQueue[0];
+      let wait = 0;
+      try{
+        const res = await fetch(FIXED_WEBHOOK_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(job.payload) });
+        if(res.ok || res.status === 204){ auditQueue.shift(); persistAudit(); await auditSleep(350); continue; }
+        if(res.status === 429){
+          let ra = 1500;
+          try{ const j = await res.json(); ra = Math.ceil((j.retry_after || 1.5) * 1000); }catch(e){}
+          wait = ra;
+        } else { wait = 1500 * (job.tries + 1); }
+      }catch(e){ wait = 2000 * (job.tries + 1); }
+      job.tries++;
+      if(job.tries >= 8){
+        auditQueue.shift(); persistAudit();
+        if(!warned){ warned = true; toast('Não foi possível enviar um registro de auditoria ao Discord.', true); }
+        continue;
+      }
+      persistAudit();
+      await auditSleep(wait || 1000);
+    }
+    auditBusy = false;
+  }
+
   // Grava alterações de inventário + entradas de registro de uma vez só.
   // invOps: { 'donoId/itemUid': objeto | null, 'donoId': null }
   async function commitInv(invOps, logEntries){
@@ -2783,6 +3055,7 @@
       entries.forEach(e => { upd[scopedKey(KEY_LOG) + '/' + e.id] = JSON.parse(JSON.stringify(e)); });
       try{
         await firebaseDb.ref('tau-volantis').update(upd);
+        queueAudit(entries);
         return true;
       }catch(err){
         console.error('Falha ao gravar inventário/registro', err);
@@ -2802,6 +3075,7 @@
     });
     lootLog = lootLog.concat(entries);
     await Promise.all([saveKey(KEY_INV, inventories), saveKey(KEY_LOG, lootLog)]);
+    queueAudit(entries);
     onInvChanged();
     return true;
   }
@@ -2822,73 +3096,124 @@
   }
 
   function lootSource(entry){ return entry.kind === 'fish' ? 'pesca' : 'saque'; }
+  function rerenderLoot(){ renderLootResults(); renderFishResults(); }
+  // cada item achado vira uma linha "saque" no registro, ligadas pelo mesmo searchId
   function logFound(entry){
-    if(!entry.item) return;
-    commitInv({}, [mkLog('saque', holderById(entry.holderId), {
-      item:itemRef(entry.item), source:lootSource(entry),
+    const its = entry.items || [];
+    if(!its.length) return;
+    const holder = holderById(entry.holderId);
+    commitInv({}, its.map((it, i) => mkLog('saque', holder, {
+      item:itemRef(it.item), source:lootSource(entry), searchId:entry.searchId, n:i + 1, total:its.length,
       locName: entry.kind === 'fish' ? LOC_NAMES['rios'] : LOC_NAMES[entry.locKey],
       coord: entry.coord || null, lat: entry.lat != null ? entry.lat : null, lng: entry.lng != null ? entry.lng : null,
       pinId: entry.pinId || null, pinTitle: entry.pinTitle || null
-    })]);
+    })));
   }
-  async function keepLoot(entry){
-    if(entry.decision !== 'pending') return;
-    entry.decision = 'working';
-    renderLootResults(); renderFishResults();
-    const ok = await addItemTo(entry.holderId, entry.item, lootSource(entry), 'guardar', entry.lat != null ? { lat:entry.lat, lng:entry.lng } : null, entry.lat != null ? { foundAt:entry.coord } : null);
-    entry.decision = ok ? 'kept' : 'pending';
-    renderLootResults(); renderFishResults();
+  function pendingIdx(entry){ return (entry.items || []).map((it, i) => i).filter(i => entry.items[i].decision === 'pending'); }
+  // guarda um ou vários itens da mesma busca numa única operação atômica
+  async function keepLootItems(entry, idxs){
+    const holder = holderById(entry.holderId);
+    if(!holder){ toast('Selecione um personagem (token) antes de saquear para poder guardar.', true); return; }
+    idxs = idxs.filter(i => entry.items[i] && entry.items[i].decision === 'pending');
+    const room = MAX_INV === Infinity ? idxs.length : Math.max(0, MAX_INV - invCount(holder.id));
+    const take = idxs.slice(0, room);
+    if(!take.length){ toast(`Inventário de ${holder.name} cheio (${fmtCount(MAX_INV)}). Libere espaço ou descarte.`, true); return; }
+    take.forEach(i => { entry.items[i].decision = 'working'; });
+    rerenderLoot();
+    const ops = {}, logs = [];
+    const insts = take.map((i, k) => {
+      const item = entry.items[i].item;
+      const inst = { uid:newUid('it'), itemId:item.id, name:item.name, category:item.category, source:lootSource(entry), addedAt:Date.now(), addedBy:actorFields().actorName };
+      if(entry.lat != null) inst.foundAt = entry.coord;
+      ops[holder.id + '/' + inst.uid] = inst;
+      logs.push(mkLog('guardar', holder, Object.assign({ item:itemRef(inst), source:lootSource(entry), searchId:entry.searchId, invAfter:invCount(holder.id) + k + 1 },
+        entry.lat != null ? { lat:entry.lat, lng:entry.lng } : {})));
+      return inst;
+    });
+    const ok = await commitInv(ops, logs);
+    take.forEach(i => { entry.items[i].decision = ok ? 'kept' : 'pending'; });
+    if(ok){
+      if(take.length < idxs.length) toast(`Inventário cheio: guardei ${take.length}, sobraram ${idxs.length - take.length}.`, true);
+      else toast(take.length > 1 ? `${take.length} itens → inventário de ${holder.name}` : `${insts[0].name} → inventário de ${holder.name}`);
+    }
+    rerenderLoot();
   }
-  async function declineLoot(entry, reason){
-    if(entry.decision !== 'pending') return;
-    entry.decision = 'declined';
-    renderLootResults(); renderFishResults();
-    await commitInv({}, [mkLog('recusar', holderById(entry.holderId), { item:itemRef(entry.item), source:lootSource(entry), reason:reason || null })]);
+  async function declineLootItems(entry, idxs, reason){
+    idxs = idxs.filter(i => entry.items[i] && entry.items[i].decision === 'pending');
+    if(!idxs.length) return;
+    idxs.forEach(i => { entry.items[i].decision = 'declined'; });
+    rerenderLoot();
+    const holder = holderById(entry.holderId);
+    await commitInv({}, idxs.map(i => mkLog('recusar', holder, { item:itemRef(entry.items[i].item), source:lootSource(entry), searchId:entry.searchId, reason:reason || null })));
   }
   // ao limpar o histórico de saque, o que ficou sem decisão vira "não mantido"
   // no registro, pra auditoria nunca ficar com item "no limbo"
   function flushPending(list){
     const logs = [];
     list.forEach(e => {
-      if(e.item && e.decision === 'pending'){
-        e.decision = 'declined';
-        logs.push(mkLog('recusar', holderById(e.holderId), { item:itemRef(e.item), source:lootSource(e), reason:'histórico limpo sem decisão' }));
-      }
+      (e.items || []).forEach(it => {
+        if(it.decision === 'pending'){
+          it.decision = 'declined';
+          logs.push(mkLog('recusar', holderById(e.holderId), { item:itemRef(it.item), source:lootSource(e), searchId:e.searchId, reason:'histórico limpo sem decisão' }));
+        }
+      });
     });
     if(logs.length) commitInv({}, logs);
   }
-  function buildDecisionEl(entry){
+  function buildItemDecision(entry, idx, ask){
+    const it = entry.items[idx];
     const el = document.createElement('div');
     el.className = 'loot-decision';
     const holder = holderById(entry.holderId);
-    if(entry.decision === 'kept'){
+    if(it.decision === 'kept'){
       el.innerHTML = `<div class="loot-decision-state kept">✓ Guardado no inventário de ${escapeHtml(holder ? holder.name : entry.foundBy)}</div>`;
       return el;
     }
-    if(entry.decision === 'declined'){
+    if(it.decision === 'declined'){
       el.innerHTML = '<div class="loot-decision-state declined">✕ Não mantido</div>';
       return el;
     }
-    const n = holder ? invCount(holder.id) : 0;
-    const full = !!holder && n >= MAX_INV;
-    const working = entry.decision === 'working';
+    const full = !!holder && invCount(holder.id) >= MAX_INV;
+    const working = it.decision === 'working';
     let warn = '';
-    if(!holder) warn = 'Selecione um personagem (token) antes de saquear para poder guardar o item.';
-    else if(full) warn = 'Inventário cheio. Libere espaço (usar, trocar ou descartar) ou escolha "Não manter".';
+    if(ask){
+      if(!holder) warn = 'Selecione um personagem (token) antes de saquear para poder guardar o item.';
+      else if(full) warn = 'Inventário cheio. Libere espaço (usar, trocar ou descartar) ou escolha "Não manter".';
+    }
     el.innerHTML = `
-      <div class="loot-decision-q">Manter no inventário${holder ? ' de ' + escapeHtml(holder.name) : ''}?</div>
+      ${ask ? `<div class="loot-decision-q">Manter no inventário${holder ? ' de ' + escapeHtml(holder.name) : ''}?</div>` : ''}
       <div class="loot-decision-btns">
-        <button type="button" class="inv-mini-btn primary" data-act="keep" ${(!holder || full || working) ? 'disabled' : ''}>${working ? 'Guardando...' : `Guardar (${n}/${MAX_INV})`}</button>
-        <button type="button" class="inv-mini-btn danger" data-act="decline" ${working ? 'disabled' : ''}>Não manter</button>
+        <button type="button" class="inv-mini-btn primary" data-act="keep" ${(!holder || full || working) ? 'disabled' : ''}>${working ? 'Guardando...' : 'Guardar'}</button>
+        <button type="button" class="inv-mini-btn danger" data-act="decline" ${working ? 'disabled' : ''}>${ask ? 'Não manter' : 'Descartar'}</button>
       </div>
       ${warn ? `<div class="loot-decision-warn">${warn}</div>` : ''}`;
-    el.querySelector('[data-act="keep"]').addEventListener('click', () => keepLoot(entry));
-    el.querySelector('[data-act="decline"]').addEventListener('click', () => declineLoot(entry));
+    el.querySelector('[data-act="keep"]').addEventListener('click', () => keepLootItems(entry, [idx]));
+    el.querySelector('[data-act="decline"]').addEventListener('click', () => declineLootItems(entry, [idx]));
     return el;
   }
-  function attachDecision(card, entry){
-    if(!entry.item) return;
-    card.insertBefore(buildDecisionEl(entry), card.querySelector('.send-row'));
+  // barra "Guardar tudo / Descartar o resto" (só quando há mais de um item sem decisão)
+  function buildBulkBar(entry){
+    const its = entry.items || [];
+    const pend = pendingIdx(entry);
+    if(its.length < 2 || pend.length < 1) return null;
+    const holder = holderById(entry.holderId);
+    const room = !holder ? 0 : (MAX_INV === Infinity ? pend.length : Math.max(0, MAX_INV - invCount(holder.id)));
+    const el = document.createElement('div');
+    el.className = 'loot-bulk';
+    let note = '';
+    if(!holder) note = 'Selecione um personagem (token) antes de saquear para poder guardar.';
+    else if(room === 0) note = 'Inventário cheio. Libere espaço ou descarte o que não quiser.';
+    else if(room < pend.length) note = `Só cabem ${room} dos ${pend.length} itens restantes.`;
+    el.innerHTML = `
+      <div class="loot-decision-q">${pend.length} item(ns) sem decisão${holder ? ' · inventário de ' + escapeHtml(holder.name) + ': ' + escapeHtml(capTxt(holder.id)) : ''}</div>
+      <div class="loot-decision-btns">
+        <button type="button" class="inv-mini-btn primary" data-act="keep-all" ${(!holder || room === 0) ? 'disabled' : ''}>Guardar tudo${holder && room < pend.length && room > 0 ? ` (${room})` : ''}</button>
+        <button type="button" class="inv-mini-btn danger" data-act="decline-all">Descartar o resto</button>
+      </div>
+      ${note ? `<div class="loot-decision-warn">${note}</div>` : ''}`;
+    el.querySelector('[data-act="keep-all"]').addEventListener('click', () => keepLootItems(entry, pendingIdx(entry)));
+    el.querySelector('[data-act="decline-all"]').addEventListener('click', () => declineLootItems(entry, pendingIdx(entry)));
+    return el;
   }
 
   async function doUse(hid, uid, consume, note){
@@ -3009,7 +3334,7 @@
       const row = document.createElement('div');
       row.className = 'inv-item' + (inv.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '');
       row.innerHTML = `
-        <div class="inv-item-name">${escapeHtml(inv.name)}</div>
+        <div class="inv-item-name">${iconHtml({ id:inv.itemId, name:inv.name, category:inv.category })}${escapeHtml(inv.name)}</div>
         <span class="inv-item-cat">${escapeHtml(inv.category)}</span>
         ${ref ? `<div class="inv-item-util">${escapeHtml(ref.utility)}</div>${compatLine(ref)}` : ''}
         ${inv.foundAt ? `<div class="inv-item-util">📍 Achado em: ${escapeHtml(inv.foundAt)}</div>` : ''}
@@ -3087,7 +3412,7 @@
     const over = aAfter > MAX_INV || bAfter > MAX_INV;
     const empty = !t.give.length && !t.take.length;
     const checks = (list, side, sel) => list.length
-      ? list.map(i => `<label><input type="checkbox" data-side="${side}" value="${escapeHtml(i.uid)}" ${sel.includes(i.uid) ? 'checked' : ''}><span>${escapeHtml(i.name)}</span></label>`).join('')
+      ? list.map(i => `<label><input type="checkbox" data-side="${side}" value="${escapeHtml(i.uid)}" ${sel.includes(i.uid) ? 'checked' : ''}><span>${iconHtml({ id:i.itemId, name:i.name, category:i.category })}${escapeHtml(i.name)}</span></label>`).join('')
       : '<div class="inv-item-util">Nenhum item.</div>';
     box.innerHTML = `
       <div class="inv-trade">
@@ -3133,7 +3458,7 @@
     const it = e.item ? `"${escapeHtml(e.item.name)}"` : '';
     const src = SOURCE_LABELS[e.source] || e.source || '';
     switch(e.action){
-      case 'saque': return `${who} encontrou ${it}${e.locName ? ' em ' + escapeHtml(e.locName) : ''}${e.coord ? ' (📍 ' + escapeHtml(e.coord) + ')' : ''}${e.pinTitle ? ' · local: ' + escapeHtml(e.pinTitle) : ''}`;
+      case 'saque': return `${who} encontrou ${it}${e.total > 1 ? ' (item ' + e.n + ' de ' + e.total + ')' : ''}${e.locName ? ' em ' + escapeHtml(e.locName) : ''}${e.coord ? ' (📍 ' + escapeHtml(e.coord) + ')' : ''}${e.pinTitle ? ' · local: ' + escapeHtml(e.pinTitle) : ''}`;
       case 'guardar': return `${who} guardou ${it} no inventário (${escapeHtml(src)}) · ${e.invAfter != null ? fmtCount(e.invAfter) : ''}`;
       case 'recusar': return `${who} não manteve ${it}${e.reason ? ' (' + escapeHtml(e.reason) + ')' : ''}`;
       case 'adicionar': return `${who} recebeu ${it} direto da tabela de itens · ${e.invAfter != null ? fmtCount(e.invAfter) : ''}`;
@@ -3317,6 +3642,8 @@
       invMode: ['slots','carga','livre'].includes(c.invMode) ? c.invMode : 'slots',
       invLimit: Math.max(1, parseInt(c.invLimit, 10) || 20),
       decimals: Number.isInteger(c.decimals) ? Math.min(6, Math.max(0, c.decimals)) : 4,
+      lootMin: Number.isInteger(c.lootMin) ? Math.min(8, Math.max(0, c.lootMin)) : 1,
+      lootMax: Math.max(Number.isInteger(c.lootMin) ? Math.min(8, Math.max(0, c.lootMin)) : 1, Number.isInteger(c.lootMax) ? Math.min(8, Math.max(1, c.lootMax)) : 5),
       weights: c.weights || {},
       modules: Object.assign({}, DEFAULT_MODULES, c.modules || {}),
       cardModules: Object.assign({}, DEFAULT_CARD_MODULES, c.cardModules || {})
@@ -3509,9 +3836,12 @@
     const d = hub.cfgDraft; if(!d) return;
     const weights = {};
     Object.keys(d.weights || {}).forEach(k => { const n = Number(d.weights[k]); if(!isNaN(n) && n >= 0 && n !== 1) weights[k] = n; });
+    if(parseInt(d.lootMax, 10) < parseInt(d.lootMin, 10)){ toast('O máximo de itens por saque não pode ser menor que o mínimo.', true); return; }
     const config = {
       invMode:d.invMode, invLimit:Math.max(1, parseInt(d.invLimit, 10) || 20),
       decimals:Math.min(6, Math.max(0, parseInt(d.decimals, 10) || 0)),
+      lootMin:Math.min(8, Math.max(0, parseInt(d.lootMin, 10) || 0)),
+      lootMax:Math.min(8, Math.max(1, parseInt(d.lootMax, 10) || 1)),
       weights, modules:d.modules, cardModules:d.cardModules
     };
     await DB.update({
@@ -3944,10 +4274,11 @@
   }
   function explorePostRoll(entry){
     const pin = entry.pinId ? pins.find(p => p.id === entry.pinId) : null;
-    if(!pin || !entry.item) return;
+    if(!pin) return;
+    const its = entry.items || [];
     const ex = pinExplore(pin);
-    ex.lastLoot = entry.item.name;
-    if(typeof ex.reserve === 'number'){ ex.reserve = Math.max(0, ex.reserve - 1); if(ex.reserve === 0) ex.status = 'esgotado'; }
+    if(its.length) ex.lastLoot = its.slice(0, 3).map(x => x.item.name).join(', ') + (its.length > 3 ? '…' : '');
+    if(typeof ex.reserve === 'number'){ ex.reserve = Math.max(0, ex.reserve - its.length); if(ex.reserve === 0) ex.status = 'esgotado'; }
     pin.explore = ex;
     saveKey(KEY_PINS, pins);
   }
@@ -4291,7 +4622,7 @@
     const nc = hub.newCampaign;
     if(!hub.cfgDraft){
       const c = cfg();
-      hub.cfgDraft = { name:campaignMeta ? campaignMeta.name : '', system:campaignMeta ? campaignMeta.system || '' : '', invMode:c.invMode, invLimit:c.invLimit, decimals:c.decimals,
+      hub.cfgDraft = { name:campaignMeta ? campaignMeta.name : '', system:campaignMeta ? campaignMeta.system || '' : '', invMode:c.invMode, invLimit:c.invLimit, decimals:c.decimals, lootMin:c.lootMin, lootMax:c.lootMax,
         weights:Object.assign({}, c.weights), modules:Object.assign({}, c.modules), cardModules:Object.assign({}, c.cardModules) };
     }
     const d = hub.cfgDraft;
@@ -4320,6 +4651,8 @@
       <select data-bind="cd.invMode" data-rerender>${opt('slots', 'Limite de itens', d.invMode)}${opt('carga', 'Carga por peso (faixas)', d.invMode)}${opt('livre', 'Lista livre, sem limite', d.invMode)}</select>
       ${d.invMode !== 'livre' ? `<label class="hub-label">${d.invMode === 'slots' ? 'Máximo de itens' : 'Capacidade de carga'}</label><input type="number" min="1" data-bind="cd.invLimit" value="${esc(d.invLimit)}">` : ''}
       ${d.invMode === 'carga' ? '<div class="hub-label">Peso por categoria (padrão 1)</div>' + cats.map(c => `<div class="bonus-row"><span class="w-cat">${esc(c)}</span><input type="number" step="0.1" min="0" data-bind="cd.weights.${esc(catKey(c))}" value="${esc(d.weights[catKey(c)] != null ? d.weights[catKey(c)] : 1)}"></div>`).join('') : ''}
+      <div class="hub-label">Itens por busca de saque (mínimo e máximo, 0 a 8)</div>
+      <div class="expr-row"><input type="number" min="0" max="8" data-bind="cd.lootMin" value="${esc(d.lootMin)}" aria-label="Mínimo de itens por saque"><input type="number" min="1" max="8" data-bind="cd.lootMax" value="${esc(d.lootMax)}" aria-label="Máximo de itens por saque"></div>
       <label class="hub-label">Casas decimais das coordenadas do saque (0 a 6)</label><input type="number" min="0" max="6" data-bind="cd.decimals" value="${esc(d.decimals)}">
       <button type="button" class="inv-mini-btn primary" data-act="cfg-save">Salvar configuração</button></div>` : '<p class="hub-hint">Só o mestre cria campanhas e altera a configuração.</p>'}`;
   }
@@ -4363,9 +4696,9 @@
       if(!rs.length) return;
       html += `<div class="hub-sec"><div class="hub-label">${fl}</div>${rs.map(r => {
         const chk = hub.craftHolder ? craftCheck(r, hub.craftHolder) : { missing:[], toolOk:false, canCraft:false };
-        const ing = (r.ingredients || []).map(i => { const miss = chk.missing.find(m => m.itemId === i.itemId); return `<li class="${miss ? 'bad' : 'good'}">${miss ? '✖' : '✔'} ${i.qty}× ${esc(nm(i.itemId))}${miss ? ` (tem ${miss.have})` : ''}</li>`; }).join('');
+        const ing = (r.ingredients || []).map(i => { const miss = chk.missing.find(m => m.itemId === i.itemId); return `<li class="${miss ? 'bad' : 'good'}">${miss ? '✖' : '✔'} ${i.qty}× ${iconHtml(ITEMS_BY_ID[i.itemId])}${esc(nm(i.itemId))}${miss ? ` (tem ${miss.have})` : ''}</li>`; }).join('');
         return `<div class="inv-item"><div class="inv-item-name">${esc(r.name)}</div>
-          <div class="inv-item-util">Resultado: ${r.result.qty}× ${esc(nm(r.result.itemId))}</div><ul class="craft-ing">${ing}${r.tool ? `<li class="${chk.toolOk ? 'good' : 'bad'}">${chk.toolOk ? '✔' : '✖'} Ferramenta: ${esc(nm(r.tool))}</li>` : ''}</ul>
+          <div class="inv-item-util">Resultado: ${r.result.qty}× ${iconHtml(ITEMS_BY_ID[r.result.itemId])}${esc(nm(r.result.itemId))}</div><ul class="craft-ing">${ing}${r.tool ? `<li class="${chk.toolOk ? 'good' : 'bad'}">${chk.toolOk ? '✔' : '✖'} Ferramenta: ${esc(nm(r.tool))}</li>` : ''}</ul>
           <div class="inv-item-util">${[r.station && 'Estação: ' + r.station, r.skill && 'Perícia: ' + r.skill, r.time && 'Tempo: ' + r.time, r.noise && 'Ruído: ' + r.noise, r.risk && 'Risco: ' + r.risk].filter(Boolean).map(esc).join(' · ')}</div>
           ${r.resolution ? `<div class="inv-item-util"><i>${esc(r.resolution)}</i></div>` : ''}
           <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="craft" data-id="${esc(r.id)}" data-o="sucesso" ${chk.canCraft ? '' : 'disabled'}>Deu certo</button>
@@ -4521,6 +4854,7 @@
   initInventorySync();
   attachModuleSync();
   startMetaSync();
+  if(auditQueue.length) pumpAudit();
   applyConfig();
   updateHud();
 

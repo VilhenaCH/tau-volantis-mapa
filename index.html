@@ -234,6 +234,7 @@
         </select>
         <input type="text" id="webhook-input" placeholder="https://discord.com/api/webhooks/..." value="" style="display:none;" autocomplete="off">
         <label class="dp-toggle"><input type="checkbox" id="auto-send" checked> Enviar automaticamente a cada busca</label>
+        <label class="dp-toggle"><input type="checkbox" id="search-anim" checked> Animação de busca (roleta)</label>
         <div class="dp-note">A escolha e o link próprio ficam salvos só neste dispositivo. O webhook fixo é o da mesa. Vale para saque, clima e rolagens.</div>
       </div>
 
@@ -248,10 +249,12 @@
         <h3>🎣 Rios, Igarapés e Margens</h3>
         <p>O personagem selecionado lança a linha e tenta a sorte — pode não fisgar nada, ou trazer desde um peixe comum até uma captura rara.</p>
         <button class="fish-btn" id="fish-btn">Lançar a linha</button>
+        <div class="search-stage" id="fish-stage" hidden role="status" aria-live="polite"></div>
         <div id="fish-result"><div class="fish-empty">Nenhuma tentativa de pesca ainda.</div></div>
       </div>
 
       <p class="section-label">Resultado da busca</p>
+      <div class="search-stage" id="loot-stage" hidden role="status" aria-live="polite"></div>
       <div id="result-zone">
         <div class="empty-hint">Nenhuma busca realizada ainda. Clique em um local acima para vasculhar.</div>
       </div>
