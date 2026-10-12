@@ -1432,7 +1432,12 @@ img, svg{ shape-rendering: geometricPrecision; }
   .loot-bulk .loot-decision-q{ margin-bottom:0.4rem; }
 
   /* ícones dos itens */
-  .item-icon{ display:inline-block; min-width:1.5em; text-align:center; margin-right:0.3rem; font-style:normal; line-height:1; }
+  .item-icon{ display:inline-flex; align-items:center; justify-content:center; width:1.5em; margin-right:0.35rem; color:var(--frost); vertical-align:middle; flex:0 0 auto; }
+  .item-icon svg.gi{ width:1.35em; height:1.35em; fill:currentColor; }
+  .loot-item.anomalo .item-icon, .inv-item.anomalo .item-icon, .ss-chip.ss-anom .item-icon{ color:var(--hazard); }
+  .ss-row.ss-landed .item-icon{ color:var(--safe); }
+  .cat-row .item-icon{ color:var(--frost); }
+  .credits a{ color:var(--frost); }
 
   /* animação de busca (roleta) */
   .search-stage{

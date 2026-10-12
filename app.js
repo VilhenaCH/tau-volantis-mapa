@@ -2278,57 +2278,27 @@
   });
 
   // ---------- ícones dos itens ----------
-  // Cada categoria tem um ícone; itens com nome reconhecível ganham um ícone específico.
-  // Nem todo item tem ícone próprio: os demais usam o da categoria.
-  const CAT_ICONS = {
-    'Comida':'🥫', 'Bebidas':'💧', 'Itens Médicos':'🩹', 'Armas de Fogo':'🔫', 'Armas Brancas e Improvisadas':'🔪', 'Munição':'🔸',
-    'Ferramentas':'🔧', 'Ferramentas Agrícolas':'🌾', 'Roupas e Proteção contra Frio':'🧥', 'Mochilas e Contêineres':'🎒',
-    'Componentes e Materiais de Crafting':'⚙️', 'Peças de Veículos':'🚗', 'Eletrônicos e Comunicação':'📻', 'Combustível e Aquecimento':'⛽',
-    'Iluminação':'🔦', 'Acampamento e Utilidades':'⛺', 'Abrigo Rural e Construção':'🧱', 'Floresta e Caça':'🌲', 'Pesca e Rio':'🎣',
-    'Animais e Produtos de Fazenda':'🐔', 'Plantas, Ervas e Cultivos':'🌿', 'Documentos e Itens de Lore':'📜', 'Itens Anômalos e Paranormais':'🔮'
-  };
-  const ICON_RULES = [
-    [/municao|cartucho|projetil/, '🔸'],
-    [/notebook|laptop|computador|tablet/, '💻'], [/camarao|lagostim|caranguejo/, '🦐'],
-    [/furadeira|parafusadeira|esmerilhadeira|lixadeira|rocadeira|motosserra|serra eletrica/, '🔧'],
-    [/pistola|revolver|rifle|espingarda|carabina|fuzil|escopeta|submetralhadora|calibre/, '🔫'],
-    [/machado|machadinha/, '🪓'], [/martelo|marreta/, '🔨'], [/serra/, '🪚'], [/faca|facao|machete|canivete|adaga|lamina|estilete/, '🔪'],
-    [/arco|flecha|besta/, '🏹'], [/chave de fenda|chave inglesa|chave de roda|alicate|torquimetro/, '🔧'], [/chave/, '🔑'],
-    [/prego|parafuso|porca|arruela/, '🔩'], [/corda|barbante|cordao|cabo de aco/, '🪢'], [/fita adesiva|fita isolante/, '🩹'],
-    [/fosforo|isqueiro|maçarico/, '🔥'], [/lanterna|farol/, '🔦'], [/vela|lampiao|lamparina/, '🕯️'], [/pilha|bateria/, '🔋'],
-    [/radio|walkie|transmissor/, '📻'], [/celular|telefone/, '📱'], [/mapa|croqui/, '🗺️'], [/bussola/, '🧭'], [/relogio/, '⌚'],
-    [/binoculo|luneta/, '🔭'], [/oculos/, '👓'], [/mascara|respirador/, '😷'], [/capacete/, '⛑️'],
-    [/bota|sapato|tenis|calcado|chinelo|sandalia/, '🥾'], [/luva/, '🧤'], [/gorro|touca|chapeu|bone/, '🧢'], [/cachecol/, '🧣'],
-    [/jaqueta|casaco|blusa|moletom|camisa|camiseta|colete|poncho/, '🧥'], [/calca|bermuda|short/, '👖'], [/meia/, '🧦'],
-    [/mochila|bolsa|sacola|maleta/, '🎒'], [/cobertor|manta|saco de dormir|edredom/, '🛏️'], [/barraca|lona/, '⛺'],
-    [/bandagem|curativo|atadura|gaze|esparadrapo/, '🩹'], [/seringa|injecao|insulina|ampola/, '💉'],
-    [/comprimido|analgesico|antibiotico|paracetamol|dipirona|pilula|remedio|medicamento|xarope|vitamina/, '💊'],
-    [/kit de primeiros|kit medico|maleta medica/, '🧰'], [/alcool|antisseptico|iodo|agua oxigenada/, '🧴'],
-    [/cerveja|cachaca|pinga|vodka|whisky|rum |licor|conhaque/, '🍺'], [/vinho/, '🍷'], [/cafe/, '☕'], [/leite/, '🥛'],
-    [/refrigerante|suco|energetico|isotonico/, '🥤'], [/agua/, '💧'], [/garrafa|cantil|garrafao/, '🍶'],
-    [/pao|biscoito|bolacha|bolo/, '🍞'], [/ovo/, '🥚'], [/queijo/, '🧀'], [/mel\b/, '🍯'], [/chocolate|doce|barra de cereal/, '🍫'],
-    [/carne|presunto|linguica|salsicha|bacon|charque|bife|frango/, '🥩'], [/peixe|sardinha|atum|tilapia|traira|bagre|tambaqui|pirarucu|piranha|tucunare/, '🐟'],
-    [/maca|banana|laranja|manga|limao|goiaba|abacaxi|fruta|acai|cupuacu/, '🍎'], [/batata|cenoura|tomate|cebola|alface|mandioca|aipim|verdura|milho|abobora/, '🥔'],
-    [/feijao|arroz|lata|conserva|macarrao|farinha|sal\b|acucar|oleo/, '🥫'],
-    [/gasolina|combustivel|diesel|galao|querosene|etanol/, '⛽'], [/pneu|estepe/, '🛞'], [/macaco|triangulo/, '🚗'],
-    [/cadeado|corrente/, '🔒'], [/livro|diario|caderno|carta|bilhete|jornal|documento|fotografia|foto\b/, '📜'],
-    [/anzol|vara de pesca|molinete|isca/, '🎣'], [/rede\b|tarrafa/, '🕸️'], [/galinha|pinto|pato|porco|vaca|cavalo|ovelha|cabra/, '🐔'],
-    [/semente|muda\b/, '🌱'], [/erva|folha|raiz|cogumelo|cipo/, '🌿'], [/osso|cranio|dente|garra|pena/, '🦴'], [/pele|couro/, '🟫'],
-    [/amuleto|talisma|relicario|idolo|totem|runa|simbolo/, '🔮']
-  ];
+  // Ícones de verdade (game-icons.net, CC BY 3.0), vindos de tv-icons.js. Nome
+  // reconhecível → ícone específico; o resto usa o ícone do tipo do item.
+  const GI = window.TV_ICONS || {};
+  const CAT_ICONS = window.TV_CAT_ICONS || {};
+  const ICON_RULES = (window.TV_ICON_RULES || []).map(r => [new RegExp(r[0]), r[1]]);
   const ICON_CACHE = {};
   function normName(s){ return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
-  function itemIcon(item){
-    if(!item) return '❔';
+  function itemIconName(item){
+    if(!item) return 'hole';
     const key = item.id != null ? 'i' + item.id : 'n' + item.name;
     if(ICON_CACHE[key]) return ICON_CACHE[key];
     // "sem bateria", "sem combustível"...: o que falta não define o item
     const n = normName(item.name).replace(/\bsem [a-z]+/g, '');
     let ic = null;
     for(const r of ICON_RULES){ if(r[0].test(n)){ ic = r[1]; break; } }
-    return (ICON_CACHE[key] = ic || CAT_ICONS[item.category] || '📦');
+    return (ICON_CACHE[key] = ic || CAT_ICONS[item.category] || 'wooden-crate');
   }
-  function iconHtml(item){ return `<span class="item-icon" aria-hidden="true">${itemIcon(item)}</span>`; }
+  function svgIcon(name){
+    return `<svg class="gi" viewBox="0 0 512 512" data-icon="${name}" aria-hidden="true" focusable="false">${GI[name] || GI['wooden-crate'] || ''}</svg>`;
+  }
+  function iconHtml(item){ return `<span class="item-icon" aria-hidden="true">${svgIcon(itemIconName(item))}</span>`; }
 
   function compatLine(item){
     if (!item.calibre) return '';
@@ -2478,7 +2448,7 @@
       const rPrev = stage.querySelector('.ss-prev'), rCur = stage.querySelector('.ss-cur'), rNext = stage.querySelector('.ss-next');
       const foundBox = stage.querySelector('.ss-found');
       titleEl.textContent = opts.title;
-      const rowHtml = it => `<span class="item-icon" aria-hidden="true">${it._icon || itemIcon(it)}</span><span class="ss-name">${escapeHtml(it.name)}</span>`;
+      const rowHtml = it => `<span class="item-icon" aria-hidden="true">${svgIcon(it._icon || itemIconName(it))}</span><span class="ss-name">${escapeHtml(it.name)}</span>`;
       const rand = prev => {
         let it, g = 0;
         do{ it = pool[Math.floor(Math.random() * pool.length)]; }while(it === prev && pool.length > 1 && g++ < 6);
@@ -2521,7 +2491,7 @@
           await wait(380);
         }
         if(!found.length && !skipped){
-          await spinTo({ name: opts.emptyText || 'Nada de útil aqui', _icon: '🕳️', category: '' }, 14, 220);
+          await spinTo({ name: opts.emptyText || 'Nada de útil aqui', _icon: 'hole', category: '' }, 14, 220);
           if(skipped) return;
           await wait(380);
         }
@@ -2767,7 +2737,7 @@
           <div class="result-loc">Rios, Igarapés e Margens</div>
           <div class="found-by">Pescado por: ${escapeHtml(entry.foundBy)}</div>
         </div>
-        <div class="fish-name">${isNothing ? '🕳️ Nada fisgou a isca desta vez' : iconHtml(entry.item) + entry.item.name}</div>
+        <div class="fish-name">${isNothing ? '<span class="item-icon" aria-hidden="true">' + svgIcon('hole') + '</span>Nada fisgou a isca desta vez' : iconHtml(entry.item) + entry.item.name}</div>
         <div class="fish-desc">${isNothing ? 'A linha voltou vazia. Vale tentar de novo em outro ponto do rio.' : entry.item.utility}</div>
         ${coordHtml(entry)}
         <div class="send-row">
@@ -2810,7 +2780,7 @@
     cats.forEach(cat => {
       const opt = document.createElement('option');
       opt.value = cat;
-      opt.textContent = `${CAT_ICONS[cat] || ''} ${cat} (${ITEMS.filter(i => i.category === cat).length})`;
+      opt.textContent = `${cat} (${ITEMS.filter(i => i.category === cat).length})`;
       itemFilterCat.appendChild(opt);
     });
   })();
@@ -2839,7 +2809,7 @@
         <td><button type="button" class="inv-add-btn" data-id="${item.id}">＋ Inventário</button></td>
       </tr>`;
       }).join('');
-      return `<tr class="cat-row" data-cat="${escapeHtml(cat)}" tabindex="0" role="button" aria-expanded="${!closed}"><td colspan="3">${closed ? '▸' : '▾'} ${CAT_ICONS[cat] || ''} ${escapeHtml(cat)} <span class="cat-count">${groups[cat].length}</span></td></tr>${rows}`;
+      return `<tr class="cat-row" data-cat="${escapeHtml(cat)}" tabindex="0" role="button" aria-expanded="${!closed}"><td colspan="3">${closed ? '▸' : '▾'} ${CAT_ICONS[cat] ? '<span class="item-icon" aria-hidden="true">' + svgIcon(CAT_ICONS[cat]) + '</span>' : ''}${escapeHtml(cat)} <span class="cat-count">${groups[cat].length}</span></td></tr>${rows}`;
     }).join('') || '<tr><td colspan="3" class="inv-empty">Nenhum item encontrado.</td></tr>';
   }
   function toggleCat(row){
