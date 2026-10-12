@@ -141,7 +141,7 @@
       </button>
       <button class="action-fab tabbar-item" id="fab-system" type="button" title="Sistema" aria-label="Sistema" aria-expanded="false">
         <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><line x1="8" y1="12" x2="16" y2="12"></line><line x1="8" y1="16" x2="16" y2="16"></line></svg></span>
-        <span class="tab-label">Sistema</span>
+        <span class="tab-label">Áreas</span>
       </button>
     </div>
     <!-- fundo da barra de navegação inferior no celular (decorativo,
@@ -176,12 +176,20 @@
 
     <div class="app-popover-backdrop" id="system-backdrop"></div>
     <div class="app-popover" id="system-popover">
-      <div class="vs-group-label">Sistema</div>
+      <div class="vs-group-label">Áreas</div>
+      <div class="area-grid">
+        <button type="button" class="area-btn" data-area="mundo"><span class="area-ic">🗺</span><b>Mundo</b><small>Mapa, clima, locais</small></button>
+        <button type="button" class="area-btn" data-area="personagem"><span class="area-ic">📇</span><b>Personagem</b><small>Ficha, recursos, equipamento</small></button>
+        <button type="button" class="area-btn" id="inv-toggle-btn"><span class="area-ic">🎒</span><b>Inventário</b><small>Itens, carga, contêineres</small></button>
+        <button type="button" class="area-btn" id="drawer-toggle-btn"><span class="area-ic">🧭</span><b>Expedição</b><small>Saque, pesca, ofício</small></button>
+        <button type="button" class="area-btn" data-area="diario"><span class="area-ic">📓</span><b>Diário</b><small>Pistas, objetivos, linha do tempo</small></button>
+        <button type="button" class="area-btn" data-area="grupo"><span class="area-ic">👥</span><b>Grupo</b><small>Sessão e personagens</small></button>
+        <button type="button" class="area-btn area-master" id="area-mestre" data-area="mestre" hidden><span class="area-ic">🧰</span><b>Mestre</b><small>Contêineres, recursos, backup</small></button>
+      </div>
+      <div class="toolbar-divider" style="width:auto;height:1px;margin:0.5rem 0;"></div>
       <div class="toolbar-group">
-        <button class="tool-btn" id="drawer-toggle-btn"><span class="dot" style="background:var(--hazard)"></span>Saque</button>
-        <button class="tool-btn" id="hub-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Mesa de jogo</button>
-        <button class="tool-btn" id="inv-toggle-btn"><span class="dot" style="background:var(--safe)"></span>Inventário</button>
-        <button class="tool-btn" id="nav-drawer-toggle-btn"><span class="dot" style="background:var(--ice-300)"></span>Lista</button>
+        <button class="tool-btn" id="hub-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Dados e mesa</button>
+        <button class="tool-btn" id="nav-drawer-toggle-btn"><span class="dot" style="background:var(--ice-300)"></span>Lista do mapa</button>
         <button class="tool-btn" id="token-select-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Selecionar Tokens</button>
       </div>
     </div>
@@ -339,7 +347,15 @@
           <div class="inv-cap-bar"><i id="inv-cap-fill"></i></div>
           <span id="inv-cap-text">0 / 20</span>
         </div>
-        <button type="button" class="inv-mini-btn" id="inv-trade-open">⇄ Trocar com outro…</button>
+        <div id="inv-extra"></div>
+        <div class="inv-toolbar">
+          <input type="text" id="inv-filter" placeholder="Filtrar por nome…" autocomplete="off" aria-label="Filtrar itens por nome">
+          <select id="inv-cat" aria-label="Filtrar por categoria"><option value="">Todas as categorias</option></select>
+        </div>
+        <div class="inv-item-actions">
+          <button type="button" class="inv-mini-btn" id="inv-trade-open">⇄ Trocar com outro…</button>
+          <button type="button" class="inv-mini-btn" id="inv-merge" title="Junta pilhas iguais">▣ Agrupar iguais</button>
+        </div>
         <div id="inv-trade-panel"></div>
         <div id="inv-list"></div>
       </div>

@@ -51,7 +51,9 @@
   const KEY_RECIPES = 'tv-map:recipes';
   const KEY_CLOCK = 'tv-map:clock';
   const KEY_SHORTCUTS = 'tv-map:shortcuts';
-  const DB_KEYS = new Set([KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS]);
+  const KEY_JOURNAL = 'tv-map:journal';       // diário público (membros da campanha)
+  const KEY_GMJ = 'tv-map:gm-journal';        // diário privado do mestre
+  const DB_KEYS = new Set([KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ]);
   const SCOPED_KEYS = new Set([KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG].concat(Array.from(DB_KEYS)));
 
   // ---------- campanhas: todo dado de jogo pertence a uma campanha ----------
@@ -376,6 +378,7 @@
   if(auth){
     auth.onAuthStateChanged(async (user) => {
       currentUser = user;
+      if(typeof syncGm === 'function') setTimeout(syncGm, 0);
       if(user){
         const existing = await loadPlayerProfile(user.uid);
         if(existing && existing.playerName){
@@ -669,10 +672,10 @@
 
   // ações (adicionar/ferramentas) fecham o próprio painel assim que uma
   // ferramenta é escolhida — igual um bottom sheet: escolheu, some.
-  ['add-popover', 'tools-popover'].forEach(id => {
+  ['add-popover', 'tools-popover', 'system-popover'].forEach(id => {
     const entry = appPopovers.find(p => p.popover.id === id);
     if(!entry) return;
-    entry.popover.querySelectorAll('.tool-btn').forEach(btn => {
+    entry.popover.querySelectorAll('.tool-btn, .area-btn').forEach(btn => {
       btn.addEventListener('click', () => setTimeout(entry.close, 120));
     });
   });
@@ -825,6 +828,7 @@
         </div>
       </div>` : ''}
       ${isNpc ? `<button type="button" class="inv-open-btn">🎒 Inventário (${capTxt(pin.id)})</button>` : ''}
+      ${isContainerPin(pin) ? `<button type="button" class="inv-open-btn">📦 Abrir contêiner · ${escapeHtml(CONT_STATE_LABELS[containerState(pin.id)] || '')}</button>` : ''}
       <div class="icon-picker-label">Alterar ícone</div>
       <div class="icon-picker icon-picker-inline">${buildIconPickerHtml(pin.type)}</div>
       <div class="popup-actions">
@@ -1143,12 +1147,15 @@
 
   async function setWeatherState(newState){
     if(!WEATHER_STATES[newState] || newState === weather.state){ closeWeatherPopover(); return; }
+    // com um mestre definido, só ele muda o clima (campanha sem mestre continua aberta a todos)
+    if(!isMaster()){ toast('Só o mestre muda o clima.', true); closeWeatherPopover(); return; }
     const prevState = weather.state;
     weather = { state: newState, updatedAt: Date.now(), updatedBy: currentPlayer ? currentPlayer.playerName : null };
     applyWeatherVisual();
     closeWeatherPopover();
     await saveKey(KEY_WEATHER, weather);
     sendWeatherNarrationToDiscord(prevState, newState);
+    logEvent(`Clima: ${WEATHER_STATES[prevState].label} → ${WEATHER_STATES[newState].label}`);
   }
 
   async function sendWeatherNarrationToDiscord(prevState, newState){
@@ -1252,10 +1259,10 @@
   function deletePinById(id){
     const pin = pins.find(p => p.id === id);
     if(!pin) return false;
-    const isNpc = pin.type === 'npc';
+    const isNpc = isHolderPin(pin);
     if(isNpc && invCount(pin.id) > 0 &&
-       !window.confirm(`Este NPC tem ${invCount(pin.id)} item(ns) no inventário. Excluir apaga o inventário (a perda fica no registro). Continuar?`)) return false;
-    if(isNpc) removeHolderInventory(pin.id, 'NPC excluído');
+       !window.confirm(`${pin.type === 'npc' ? 'Este NPC' : 'Este contêiner'} tem ${invCount(pin.id)} item(ns) no inventário. Excluir apaga o inventário (a perda fica no registro). Continuar?`)) return false;
+    if(isNpc) removeHolderInventory(pin.id, pin.type === 'npc' ? 'NPC excluído' : 'contêiner excluído');
     // libera quem estava "dentro" desse veículo/abrigo antes de excluir o pin
     let releasedTokens = false;
     tokens.forEach(t => {
@@ -1779,7 +1786,7 @@
         },
         remove: () => {
           // NPC com itens já tem a própria confirmação (que avisa do inventário)
-          if(!(p.type === 'npc' && invCount(p.id) > 0) && !window.confirm(`Excluir o pin "${name}"?`)) return;
+          if(!(isHolderPin(p) && invCount(p.id) > 0) && !window.confirm(`Excluir o pin "${name}"?`)) return;
           deletePinById(p.id);
         }
       };
@@ -2870,14 +2877,16 @@
 
   const ACTION_LABELS = {
     saque:'Saque', guardar:'Guardou', recusar:'Não manteve', adicionar:'Adicionou (tabela)',
-    usar:'Usou', descartar:'Descartou', troca:'Troca', craft:'Fabricação', inv_removido:'Inventário removido'
+    usar:'Usou', descartar:'Descartou', troca:'Troca', craft:'Fabricação', inv_removido:'Inventário removido',
+    vasculhar:'Vasculhou contêiner', pegar:'Pegou de contêiner', depositar:'Guardou em contêiner',
+    condicao:'Condição', reparar:'Reparo', ajuste:'Ajuste do mestre'
   };
-  const SOURCE_LABELS = { saque:'saque', pesca:'pesca', tabela:'tabela de itens', inventario:'inventário' };
+  const SOURCE_LABELS = { saque:'saque', pesca:'pesca', tabela:'tabela de itens', inventario:'inventário', 'contêiner':'contêiner', mestre:'concedido pelo mestre', craft:'fabricação', troca:'troca' };
 
   const invDrawer = document.getElementById('inv-drawer');
   const invBackdrop = document.getElementById('inv-drawer-backdrop');
   const itemAddDest = document.getElementById('item-add-dest');
-  const invUI = { holderId:null, tab:'inv', trade:null, panel:null, logHolder:'', logAction:'' };
+  const invUI = { holderId:null, tab:'inv', trade:null, panel:null, logHolder:'', logAction:'', takeTo:null, depositOpen:false, filter:'', cat:'' };
   let lastHolderSig = '';
 
   function toast(msg, isErr){
@@ -2894,17 +2903,121 @@
     return tokens.map(t => ({ id:t.id, type:'token', name:(t.label || 'Token') }))
       .concat(pins.filter(p => p.type === 'npc').map(p => ({ id:p.id, type:'npc', name:(p.title || 'NPC') })));
   }
-  function holderById(id){ return id ? (holderList().find(h => h.id === id) || null) : null; }
+  // Contêiner = pin comum (não NPC) que o mestre marcou em pin.container.enabled.
+  // O conteúdo mora no mesmo lugar dos inventários (inventories/{pinId}/{itemUid}),
+  // e o estado de exploração fica em inventories/{pinId}/_meta (chaves com "_"
+  // nunca são itens). Assim não é preciso criar nenhum caminho novo no Firebase.
+  const DATA_SCHEMA = 2; // itens v1 (sem qty/cond/slot) continuam válidos; v2 só acrescenta campos opcionais
+  function isContainerPin(p){ return !!(p && p.type !== 'npc' && p.container && p.container.enabled); }
+  function isHolderPin(p){ return !!p && (p.type === 'npc' || isContainerPin(p)); }
+  function containerPin(id){ return pins.find(p => p.id === id && isContainerPin(p)) || null; }
+  function isContainerId(id){ return !!containerPin(id); }
+  function containerList(){ return pins.filter(isContainerPin).map(p => ({ id:p.id, type:'container', name:(p.title || 'Contêiner') })); }
+  function allHolders(){ return holderList().concat(containerList()); }
+  function holderById(id){ return id ? (allHolders().find(h => h.id === id) || null) : null; }
+  function isItemKey(k){ return String(k).charAt(0) !== '_'; }
   function invItems(hid){
     const o = (hid && inventories[hid]) || {};
-    return Object.keys(o).map(k => o[k]).sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+    return Object.keys(o).filter(isItemKey).map(k => o[k]).filter(i => i && typeof i === 'object')
+      .sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
   }
-  function invCount(hid){ return hid && inventories[hid] ? Object.keys(inventories[hid]).length : 0; }
+  function invCount(hid){ return invItems(hid).length; } // pilhas ocupam 1 espaço
+  function instQty(i){ const q = parseInt(i && i.qty, 10); return q > 0 ? q : 1; }
+  function invUnits(hid){ return invItems(hid).reduce((a, i) => a + instQty(i), 0); }
+  function holderCap(hid){
+    const p = containerPin(hid);
+    if(p){ const c = parseInt(p.container.cap, 10); return c > 0 ? c : Infinity; }
+    return MAX_INV;
+  }
+  function itemQtyTxt(i){ const q = instQty(i); return q > 1 ? ' ×' + q : ''; }
+  // estado do inventário de um dono depois de aplicar `ops` (sem gravar nada)
+  function stateOf(hid, ops){
+    const m = {};
+    Object.keys((inventories[hid]) || {}).filter(isItemKey).forEach(k => { m[k] = inventories[hid][k]; });
+    Object.keys(ops || {}).forEach(p => {
+      const ps = p.split('/');
+      if(ps[0] !== hid) return;
+      if(ps.length === 1){ if(ops[p] === null) Object.keys(m).forEach(k => delete m[k]); return; }
+      if(!isItemKey(ps[1])) return;
+      if(ops[p] === null) delete m[ps[1]]; else m[ps[1]] = ops[p];
+    });
+    return m;
+  }
+  function simCount(hid, ops){ return Object.keys(stateOf(hid, ops)).length; }
+
+  // ---------- itens: pilhas, condição e equipamento ----------
+  const STACKABLE_CATS = new Set(['Comida','Bebidas','Itens Médicos','Munição','Combustível e Aquecimento','Plantas, Ervas e Cultivos','Componentes e Materiais de Crafting']);
+  function isStackable(item){
+    if(!item) return false;
+    const ref = ITEMS_BY_ID[item.id != null ? item.id : item.itemId];
+    return STACKABLE_CATS.has(item.category) || !!(ref && typeof ref.fish === 'number');
+  }
+  const COND_LEVELS = ['Quebrado','Danificado','Gasto','Bom','Novo'];
+  const CONDITION_CATS = new Set(['Armas de Fogo','Armas Brancas e Improvisadas','Ferramentas','Ferramentas Agrícolas','Roupas e Proteção contra Frio',
+    'Mochilas e Contêineres','Eletrônicos e Comunicação','Peças de Veículos','Iluminação','Pesca e Rio','Acampamento e Utilidades','Abrigo Rural e Construção']);
+  function hasCondition(i){ return !!i && CONDITION_CATS.has(i.category) && !isStackable(i); }
+  const EQUIP_SLOTS = [['cabeca','Cabeça'],['tronco','Tronco'],['maos','Mãos'],['pernas','Pernas'],['botas','Botas'],['mochila','Mochila'],['acessorio','Acessório']];
+  const DEFAULT_SLOT_CAP = { cabeca:1, tronco:1, maos:2, pernas:1, botas:1, mochila:1, acessorio:3 };
+  function slotLabel(k){ const s = EQUIP_SLOTS.find(x => x[0] === k); return s ? s[1] : k; }
+  // Sugestão de espaço pelo nome do item. É só um palpite para pré-selecionar:
+  // quem equipa pode escolher qualquer espaço, e nenhum bônus é aplicado.
+  function suggestSlot(i){
+    const n = normName(i.name);
+    if(/\b(bota|botina)/.test(n)) return 'botas';
+    if(/gorro|balaclava|capuz|chapeu|bandana|protetor de ouvido|oculos|mascara|headlamp|lanterna de cabeca/.test(n)) return 'cabeca';
+    if(i.category === 'Mochilas e Contêineres' && /mochila|sacola|saco de estopa|bolsa/.test(n) && !/cinto|coldre/.test(n)) return 'mochila';
+    if(/mochila de escoteiro/.test(n)) return 'mochila';
+    if(/cinto|coldre|luva|cachecol|relogio|fones|suspensorio/.test(n)) return 'acessorio';
+    if(/calca|perneira|meia|meiao/.test(n)) return 'pernas';
+    if(/jaqueta|casaco|parka|colete|sobretudo|macacao|poncho|capa de|uniforme|jaleco|blusao|camisa|avental|roupa|traje/.test(n)) return 'tronco';
+    if(i.category === 'Armas de Fogo' || i.category === 'Armas Brancas e Improvisadas' || i.category === 'Ferramentas' || i.category === 'Ferramentas Agrícolas' || i.category === 'Iluminação') return 'maos';
+    return null;
+  }
+  function canEquip(i){ return !!i && !consumableByDefault(i) && i.category !== 'Documentos e Itens de Lore'; }
+  function equippedItems(hid){ return invItems(hid).filter(i => i.slot); }
+
+  // Planeja a entrada de itens num dono, juntando em pilhas quando possível.
+  // Não grava: acumula em `ops` e devolve o resultado de cada item.
+  function planAdds(hid, entries, ops){
+    ops = ops || {};
+    const cap = holderCap(hid), m = stateOf(hid, ops), res = [];
+    entries.forEach(en => {
+      const item = en.item, qty = Math.max(1, parseInt(en.qty, 10) || 1);
+      let tgt = null;
+      if(isStackable(item) && !en.noStack){
+        const id = item.id != null ? item.id : item.itemId;
+        tgt = Object.keys(m).map(k => m[k]).find(i => i.itemId === id && !i.slot && i.cond == null);
+      }
+      if(tgt){
+        const upd = Object.assign({}, tgt, { qty:instQty(tgt) + qty, v:DATA_SCHEMA });
+        m[tgt.uid] = upd; ops[hid + '/' + tgt.uid] = upd;
+        res.push({ ok:true, inst:upd, stacked:true, qty, item });
+      } else if(Object.keys(m).length >= cap){
+        res.push({ ok:false, item, qty });
+      } else {
+        const id = item.id != null ? item.id : item.itemId;
+        const inst = Object.assign({ uid:newUid('it'), itemId:id, name:item.name, category:item.category, addedAt:Date.now(), addedBy:actorFields().actorName, v:DATA_SCHEMA },
+          qty > 1 ? { qty } : {}, en.extra || {});
+        Object.keys(inst).forEach(k => { if(inst[k] === undefined) delete inst[k]; });
+        m[inst.uid] = inst; ops[hid + '/' + inst.uid] = inst;
+        res.push({ ok:true, inst, stacked:false, qty, item });
+      }
+    });
+    return { ops, res, after:Object.keys(m).length };
+  }
+  // quantos dos itens dados ainda cabem (em sequência) no inventário
+  function roomFor(hid, items){
+    const ops = {};
+    let n = 0;
+    for(const it of items){ const p = planAdds(hid, [{ item:it, qty:1 }], ops); if(!p.res[0].ok) break; n++; }
+    return n;
+  }
   function holderOptionsHtml(list, withCount){
-    const tk = list.filter(h => h.type === 'token'), np = list.filter(h => h.type === 'npc');
+    const tk = list.filter(h => h.type === 'token'), np = list.filter(h => h.type === 'npc'), ct = list.filter(h => h.type === 'container');
     const opt = h => `<option value="${escapeHtml(h.id)}">${escapeHtml(h.name)}${withCount ? ` (${capTxt(h.id)})` : ''}</option>`;
     return (tk.length ? `<optgroup label="Jogadores">${tk.map(opt).join('')}</optgroup>` : '') +
-           (np.length ? `<optgroup label="NPCs">${np.map(opt).join('')}</optgroup>` : '');
+           (np.length ? `<optgroup label="NPCs">${np.map(opt).join('')}</optgroup>` : '') +
+           (ct.length ? `<optgroup label="Contêineres">${ct.map(opt).join('')}</optgroup>` : '');
   }
 
   // ---------- registro ----------
@@ -2914,8 +3027,11 @@
       actorName: currentPlayer ? currentPlayer.playerName : 'Anônimo (sem login)'
     };
   }
-  function itemRef(i){
-    return { uid: i.uid || null, itemId: i.itemId != null ? i.itemId : i.id, name: i.name, category: i.category };
+  function itemRef(i, qty){
+    const r = { uid: i.uid || null, itemId: i.itemId != null ? i.itemId : i.id, name: i.name, category: i.category };
+    const q = qty != null ? qty : (i.qty != null ? instQty(i) : 1);
+    if(q > 1) r.qty = q;
+    return r;
   }
   function mkLog(action, holder, extra){
     return Object.assign({
@@ -2936,7 +3052,9 @@
   const AUDIT_STYLE = {
     saque:['🔎 Saque', 0x3d6c8a], guardar:['🎒 Guardou', 0x4f9a63], recusar:['🗑 Não manteve', 0x8a5a4a],
     adicionar:['➕ Adicionou pela tabela', 0x4f9a63], usar:['🧪 Usou', 0xd9a441], descartar:['🗑 Descartou', 0xb04a32],
-    troca:['⇄ Troca', 0x7a64c8], craft:['🛠 Fabricação', 0xc9923a], inv_removido:['⚠ Inventário removido', 0xb04a32]
+    troca:['⇄ Troca', 0x7a64c8], craft:['🛠 Fabricação', 0xc9923a], inv_removido:['⚠ Inventário removido', 0xb04a32],
+    vasculhar:['📦 Contêiner vasculhado', 0x3d6c8a], pegar:['📤 Pegou de contêiner', 0x4f9a63], depositar:['📥 Guardou em contêiner', 0x4f9a63],
+    condicao:['🔧 Condição alterada', 0xd9a441], reparar:['🔧 Reparo', 0xc9923a], ajuste:['🧰 Ajuste do mestre', 0x7a64c8]
   };
   let auditQueue = [];
   let auditBusy = false;
@@ -2944,10 +3062,10 @@
   const auditSleep = ms => new Promise(r => setTimeout(r, ms));
   function persistAudit(){ try{ localStorage.setItem(AUDIT_QUEUE_KEY, JSON.stringify(auditQueue)); }catch(e){} }
   function md(s){ return String(s == null ? '' : s).replace(/([\\*_~`|>])/g, '\\$1').replace(/@/g, '@\u200b'); }
-  function qnames(a){ return (a || []).map(i => '"' + md(i.name) + '"').join(', ') || 'nada'; }
+  function qnames(a){ return (a || []).map(i => '"' + md(i.name) + '"' + (i.qty > 1 ? ' ×' + i.qty : '')).join(', ') || 'nada'; }
   function auditLine(e){
     const who = '**' + md(e.holderName || 'Sobrevivente desconhecido') + '**';
-    const it = e.item ? '"' + md(e.item.name) + '"' : '';
+    const it = e.item ? '"' + md(e.item.name) + '"' + (e.item.qty > 1 ? ' ×' + e.item.qty : '') : '';
     const cap = e.invAfter != null ? ' · inventário ' + fmtCount(e.invAfter) : '';
     switch(e.action){
       case 'saque': return `${who} encontrou ${it}${e.total > 1 ? ' (item ' + e.n + ' de ' + e.total + ')' : ''}${e.locName ? ' em ' + md(e.locName) : ''}${e.coord ? ' · 📍 ' + md(e.coord) : ''}`;
@@ -2959,6 +3077,11 @@
       case 'troca': return `${who} ⇄ **${md(e.counterpartName || '?')}**: entregou ${qnames(e.gave)} · recebeu ${qnames(e.got)}${e.note ? ' — ' + md(e.note) : ''}`;
       case 'craft': return `${who} ${e.outcome === 'sucesso' ? 'fabricou' : 'tentou fabricar'} "${md(e.recipe || '?')}"${e.outcome === 'sucesso' ? '' : ' e falhou'} · usou: ${qnames(e.used)}${e.made && e.made.length ? ' · obteve: ' + qnames(e.made) : ''}`;
       case 'inv_removido': return `Inventário de ${who} removido${e.reason ? ' (' + md(e.reason) + ')' : ''}: ${qnames(e.items)}`;
+      case 'vasculhar': return `**${md(e.actorName || '?')}** vasculhou ${who}${e.locName ? ' (' + md(e.locName) + ')' : ''} · encontrou: ${qnames(e.made)}`;
+      case 'pegar': return `${who} **pegou** ${qnames(e.got)} de **${md(e.counterpartName || '?')}**${cap}`;
+      case 'depositar': return `${who} **guardou** ${qnames(e.gave)} em **${md(e.counterpartName || '?')}**`;
+      case 'condicao': case 'reparar': return `${who}: ${it} · condição ${md(e.condFrom || '—')} → **${md(e.condTo || '—')}**${e.note ? ' — ' + md(e.note) : ''}`;
+      case 'ajuste': return `**${md(e.actorName || '?')}** (mestre) ajustou ${who}: ${md(e.note || '')}${e.item ? ' · ' + it : ''}`;
       default: return who;
     }
   }
@@ -3051,17 +3174,16 @@
   }
 
   // ---------- ações ----------
-  async function addItemTo(holderId, item, source, action, logExtra, instExtra){
+  async function addItemTo(holderId, item, source, action, logExtra, instExtra, qty){
     const holder = holderById(holderId);
     if(!holder){ toast('Escolha um personagem ou NPC primeiro.', true); return false; }
-    if(invCount(holderId) >= MAX_INV){ toast(`Inventário de ${holder.name} cheio (${fmtCount(MAX_INV)}).`, true); return false; }
-    const inst = { uid:newUid('it'), itemId:item.id, name:item.name, category:item.category, source, addedAt:Date.now(), addedBy:actorFields().actorName };
-    if(instExtra) Object.assign(inst, instExtra);
-    const ok = await commitInv(
-      { [holderId + '/' + inst.uid]: inst },
-      [mkLog(action, holder, Object.assign({ item:itemRef(inst), source, invAfter:invCount(holderId) + 1 }, logExtra || {}))]
+    const p = planAdds(holderId, [{ item, qty, extra:Object.assign({ source }, instExtra || {}) }]);
+    const r = p.res[0];
+    if(!r.ok){ toast(`Inventário de ${holder.name} cheio (${capTxt(holderId)}).`, true); return false; }
+    const ok = await commitInv(p.ops,
+      [mkLog(action, holder, Object.assign({ item:itemRef(r.inst, r.qty), source, invAfter:p.after }, logExtra || {}))]
     );
-    if(ok) toast(`${item.name} → inventário de ${holder.name}`);
+    if(ok) toast(`${item.name}${r.qty > 1 ? ' ×' + r.qty : ''} → inventário de ${holder.name}`);
     return ok;
   }
 
@@ -3085,21 +3207,19 @@
     const holder = holderById(entry.holderId);
     if(!holder){ toast('Selecione um personagem (token) antes de saquear para poder guardar.', true); return; }
     idxs = idxs.filter(i => entry.items[i] && entry.items[i].decision === 'pending');
-    const room = MAX_INV === Infinity ? idxs.length : Math.max(0, MAX_INV - invCount(holder.id));
-    const take = idxs.slice(0, room);
-    if(!take.length){ toast(`Inventário de ${holder.name} cheio (${fmtCount(MAX_INV)}). Libere espaço ou descarte.`, true); return; }
+    // planeja em sequência: itens empilháveis entram numa pilha existente sem ocupar espaço
+    const ops = {}, logs = [], take = [], insts = [];
+    for(const i of idxs){
+      const item = entry.items[i].item;
+      const p = planAdds(holder.id, [{ item, qty:1, extra:Object.assign({ source:lootSource(entry) }, entry.lat != null ? { foundAt:entry.coord } : {}) }], ops);
+      if(!p.res[0].ok) break;
+      take.push(i); insts.push(p.res[0].inst);
+      logs.push(mkLog('guardar', holder, Object.assign({ item:itemRef(p.res[0].inst, 1), source:lootSource(entry), searchId:entry.searchId, invAfter:p.after },
+        entry.lat != null ? { lat:entry.lat, lng:entry.lng } : {})));
+    }
+    if(!take.length){ toast(`Inventário de ${holder.name} cheio (${capTxt(holder.id)}). Libere espaço ou descarte.`, true); return; }
     take.forEach(i => { entry.items[i].decision = 'working'; });
     rerenderLoot();
-    const ops = {}, logs = [];
-    const insts = take.map((i, k) => {
-      const item = entry.items[i].item;
-      const inst = { uid:newUid('it'), itemId:item.id, name:item.name, category:item.category, source:lootSource(entry), addedAt:Date.now(), addedBy:actorFields().actorName };
-      if(entry.lat != null) inst.foundAt = entry.coord;
-      ops[holder.id + '/' + inst.uid] = inst;
-      logs.push(mkLog('guardar', holder, Object.assign({ item:itemRef(inst), source:lootSource(entry), searchId:entry.searchId, invAfter:invCount(holder.id) + k + 1 },
-        entry.lat != null ? { lat:entry.lat, lng:entry.lng } : {})));
-      return inst;
-    });
     const ok = await commitInv(ops, logs);
     take.forEach(i => { entry.items[i].decision = ok ? 'kept' : 'pending'; });
     if(ok){
@@ -3143,7 +3263,7 @@
       el.innerHTML = '<div class="loot-decision-state declined">✕ Não mantido</div>';
       return el;
     }
-    const full = !!holder && invCount(holder.id) >= MAX_INV;
+    const full = !!holder && roomFor(holder.id, [it.item]) < 1;
     const working = it.decision === 'working';
     let warn = '';
     if(ask){
@@ -3167,7 +3287,7 @@
     const pend = pendingIdx(entry);
     if(its.length < 2 || pend.length < 1) return null;
     const holder = holderById(entry.holderId);
-    const room = !holder ? 0 : (MAX_INV === Infinity ? pend.length : Math.max(0, MAX_INV - invCount(holder.id)));
+    const room = !holder ? 0 : roomFor(holder.id, pend.map(i => entry.items[i].item));
     const el = document.createElement('div');
     el.className = 'loot-bulk';
     let note = '';
@@ -3186,19 +3306,81 @@
     return el;
   }
 
+  // tira `n` unidades de uma instância: devolve a operação (instância reduzida ou null)
+  function takeUnits(inst, n){
+    const q = instQty(inst);
+    return n >= q ? null : Object.assign({}, inst, { qty:q - n, v:DATA_SCHEMA });
+  }
   async function doUse(hid, uid, consume, note){
     const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
     if(!holder || !inst){ toast('Item não encontrado.', true); return; }
-    const ok = await commitInv(consume ? { [hid + '/' + uid]: null } : {},
-      [mkLog('usar', holder, { item:itemRef(inst), consumed:!!consume, note:note || null, source:'inventario', invAfter:invCount(hid) - (consume ? 1 : 0) })]);
+    const ops = consume ? { [hid + '/' + uid]: takeUnits(inst, 1) } : {};
+    const ok = await commitInv(ops,
+      [mkLog('usar', holder, { item:itemRef(inst, 1), consumed:!!consume, note:note || null, source:'inventario', invAfter:simCount(hid, ops) })]);
     if(ok){ invUI.panel = null; toast(consume ? `${inst.name} usado e consumido.` : `${inst.name} usado.`); renderInvDrawer(); }
   }
-  async function doDiscard(hid, uid, note){
+  async function doDiscard(hid, uid, note, amount){
     const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
     if(!holder || !inst){ toast('Item não encontrado.', true); return; }
-    const ok = await commitInv({ [hid + '/' + uid]: null },
-      [mkLog('descartar', holder, { item:itemRef(inst), note:note || null, source:'inventario', invAfter:invCount(hid) - 1 })]);
-    if(ok){ invUI.panel = null; toast(`${inst.name} descartado.`); renderInvDrawer(); }
+    const q = instQty(inst), n = Math.min(q, Math.max(1, parseInt(amount, 10) || q));
+    const ops = { [hid + '/' + uid]: takeUnits(inst, n) };
+    const ok = await commitInv(ops,
+      [mkLog('descartar', holder, { item:itemRef(inst, n), note:note || null, source:'inventario', invAfter:simCount(hid, ops) })]);
+    if(ok){ invUI.panel = null; toast(`${inst.name}${n > 1 ? ' ×' + n : ''} descartado.`); renderInvDrawer(); }
+  }
+  // dividir uma pilha: `n` unidades viram uma nova instância (ocupa um espaço)
+  async function doSplit(hid, uid, n){
+    const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
+    if(!holder || !inst){ toast('Item não encontrado.', true); return; }
+    const q = instQty(inst); n = parseInt(n, 10);
+    if(!(n >= 1 && n < q)){ toast(`Escolha de 1 a ${q - 1} unidades.`, true); return; }
+    if(invCount(hid) >= holderCap(hid)){ toast('Sem espaço livre para a nova pilha.', true); return; }
+    const copy = Object.assign({}, inst, { uid:newUid('it'), qty:n, slot:null, addedAt:Date.now(), v:DATA_SCHEMA });
+    delete copy.slot;
+    const ok = await commitInv({ [hid + '/' + uid]: takeUnits(inst, n), [hid + '/' + copy.uid]: copy }, []);
+    if(ok){ invUI.panel = null; toast(`Pilha dividida: ${q - n} + ${n}.`); renderInvDrawer(); }
+  }
+  // agrupar: junta instâncias iguais (mesmo item, sem condição própria, não equipadas)
+  async function doMerge(hid){
+    const groups = {};
+    invItems(hid).filter(i => isStackable(i) && !i.slot && i.cond == null).forEach(i => { (groups[i.itemId] = groups[i.itemId] || []).push(i); });
+    const ops = {}; let merged = 0;
+    Object.keys(groups).forEach(k => {
+      const g = groups[k]; if(g.length < 2) return;
+      const total = g.reduce((a, i) => a + instQty(i), 0);
+      ops[hid + '/' + g[0].uid] = Object.assign({}, g[0], { qty:total, v:DATA_SCHEMA });
+      g.slice(1).forEach(i => { ops[hid + '/' + i.uid] = null; merged += 1; });
+    });
+    if(!merged){ toast('Nada para agrupar.'); return; }
+    const ok = await commitInv(ops, []);
+    if(ok) toast(`${merged} pilha(s) agrupada(s).`);
+  }
+  async function doEquip(hid, uid, slot){
+    const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
+    if(!holder || !inst){ toast('Item não encontrado.', true); return; }
+    if(slot){
+      const cap = cfg().equipSlots[slot] != null ? cfg().equipSlots[slot] : 1;
+      const used = equippedItems(hid).filter(i => i.slot === slot && i.uid !== uid);
+      if(used.length >= cap){ toast(`${slotLabel(slot)} cheio (${used.length}/${cap}). Desequipe ${used[0].name} antes.`, true); return; }
+    }
+    const upd = Object.assign({}, inst, { v:DATA_SCHEMA });
+    if(slot) upd.slot = slot; else delete upd.slot;
+    // gravar `null` remove a chave no Firebase; reescrever a instância sem `slot` faz o mesmo efeito
+    const ok = await commitInv({ [hid + '/' + uid]: upd }, []);
+    if(ok){ invUI.panel = null; toast(slot ? `${inst.name} equipado (${slotLabel(slot)}).` : `${inst.name} desequipado.`); renderInvDrawer(); }
+  }
+  async function doCondition(hid, uid, level, note){
+    const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
+    if(!holder || !inst){ toast('Item não encontrado.', true); return; }
+    level = parseInt(level, 10);
+    if(!(level >= 0 && level < COND_LEVELS.length)){ toast('Escolha uma condição.', true); return; }
+    const from = inst.cond;
+    if(from === level){ invUI.panel = null; renderInvDrawer(); return; }
+    // pilha com condição própria não faz sentido: separa 1 unidade se houver mais
+    const upd = Object.assign({}, inst, { cond:level, v:DATA_SCHEMA });
+    const ok = await commitInv({ [hid + '/' + uid]: upd }, [mkLog(from != null && level > from ? 'reparar' : 'condicao', holder, {
+      item:itemRef(inst, 1), condFrom:from != null ? COND_LEVELS[from] : null, condTo:COND_LEVELS[level], note:note || null, source:'inventario' })]);
+    if(ok){ invUI.panel = null; toast(`${inst.name}: ${COND_LEVELS[level]}.`); renderInvDrawer(); }
   }
   async function doTrade(){
     const t = invUI.trade;
@@ -3213,16 +3395,21 @@
     if(!giveItems.length && !takeItems.length) return;
     const aAfter = invCount(a.id) - giveItems.length + takeItems.length;
     const bAfter = invCount(b.id) + giveItems.length - takeItems.length;
-    if(aAfter > MAX_INV || bAfter > MAX_INV){ toast(`A troca excede o limite de ${MAX_INV} itens.`, true); return; }
+    if(aAfter > holderCap(a.id) || bAfter > holderCap(b.id)){ toast('A troca excede o limite de itens de um dos lados.', true); return; }
     const ops = {};
-    const moved = (inst) => Object.assign({}, inst, { source:'troca', addedAt:Date.now() });
+    const moved = (inst) => { const c = Object.assign({}, inst, { source:'troca', addedAt:Date.now(), v:DATA_SCHEMA }); delete c.slot; return c; };
     giveItems.forEach(i => { ops[a.id + '/' + i.uid] = null; ops[b.id + '/' + i.uid] = moved(i); });
     takeItems.forEach(i => { ops[b.id + '/' + i.uid] = null; ops[a.id + '/' + i.uid] = moved(i); });
+    // itens que saem de um contêiner são "reivindicados" antes, numa transação:
+    // se duas pessoas pegarem o mesmo item ao mesmo tempo, só uma consegue
+    const claimed = await claimFromContainers([[a, giveItems], [b, takeItems]]);
+    if(claimed === false) return;
     const ok = await commitInv(ops, [mkLog('troca', a, {
       counterpartId:b.id, counterpartName:b.name, counterpartType:b.type,
       gave:giveItems.map(itemRef), got:takeItems.map(itemRef),
       note:t.note || null, source:'inventario', invAfter:aAfter, counterpartInvAfter:bAfter
     })]);
+    if(!ok) await restoreClaims(claimed);
     if(ok){ invUI.trade = null; toast('Troca concluída.'); renderInvDrawer(); }
   }
   // dono removido do mapa: o inventário some, mas o conteúdo fica registrado
@@ -3242,6 +3429,160 @@
         { items:invItems(hid).map(itemRef), reason:'mapa reiniciado' }));
     });
     commitInv(ops, logs);
+  }
+
+  // ---------- contêineres: reivindicar, vasculhar, pegar, guardar ----------
+  // Itens que saem de um contêiner passam por uma transação do Firebase sobre
+  // aquele item: se duas pessoas tentarem pegar o mesmo, só a primeira consegue.
+  function containerOpenFor(id){
+    const p = containerPin(id);
+    return !!p && (p.container.access !== 'bloqueado' || isMaster());
+  }
+  async function claimFromContainers(pairs){
+    const claims = [];
+    if(!firebaseReady) return claims;
+    for(const pair of pairs){
+      const h = pair[0], insts = pair[1];
+      if(!h || h.type !== 'container') continue;
+      for(const inst of insts){
+        const ref = fbRefOf(KEY_INV).child(h.id).child(inst.uid);
+        let got = null;
+        try{
+          const r = await ref.transaction(cur => { got = cur; return cur ? null : undefined; });
+          if(!r.committed){ await restoreClaims(claims); toast(`"${inst.name}" já foi pego por outra pessoa.`, true); return false; }
+        }catch(e){
+          console.error('Falha ao reservar item do contêiner', e);
+          await restoreClaims(claims);
+          toast('Não foi possível reservar o item (confira as regras do Firebase).', true);
+          return false;
+        }
+        claims.push({ cid:h.id, uid:inst.uid, val:got });
+      }
+    }
+    return claims;
+  }
+  async function restoreClaims(claims){
+    if(!claims || !claims.length || !firebaseReady) return;
+    for(const c of claims){
+      try{ await fbRefOf(KEY_INV).child(c.cid).child(c.uid).set(c.val); }
+      catch(e){ console.error('Falha ao devolver item reservado ao contêiner', e); }
+    }
+  }
+  function containerMeta(id){ const o = inventories[id]; return (o && o._meta) || null; }
+  const CONT_STATE_LABELS = { inexplorado:'❔ Inexplorado', parcial:'◐ Explorado parcialmente', explorado:'✔ Explorado', esgotado:'⛔ Esgotado', bloqueado:'🔒 Bloqueado' };
+  function containerState(id){
+    const pin = containerPin(id);
+    if(!pin) return null;
+    if(pin.container.access === 'bloqueado') return 'bloqueado';
+    const meta = containerMeta(id), n = invCount(id), generative = !!(pin.container.locKey && byLoc[pin.container.locKey]);
+    if(generative && !(meta && meta.generatedAt)) return n > 0 ? 'parcial' : 'inexplorado';
+    if(n === 0) return 'esgotado';
+    return meta && meta.initial && n < meta.initial ? 'parcial' : 'explorado';
+  }
+  function rollContainerContents(cc, free){
+    const pool = (byLoc[cc.locKey] || []).slice();
+    const lo = Math.max(0, cc.min != null ? parseInt(cc.min, 10) || 0 : 1);
+    const hi = Math.max(lo, cc.max != null ? parseInt(cc.max, 10) || 0 : 3);
+    const count = Math.min(lo + Math.floor(Math.random() * (hi - lo + 1)), pool.length, free);
+    const out = [];
+    for(let i = 0; i < count; i++){ const it = weightedPick(pool, cc.locKey); out.push(it); pool.splice(pool.indexOf(it), 1); }
+    return out;
+  }
+  // Gera o conteúdo UMA vez (ou de novo, se force = mestre reabastecendo). A transação
+  // grava itens + _meta juntos: quem chega depois descobre que já foi vasculhado.
+  async function generateContainer(id, force){
+    const pin = containerPin(id), holder = holderById(id);
+    if(!pin || !holder) return false;
+    const cc = pin.container;
+    if(!cc.locKey || !byLoc[cc.locKey]){ toast('Este contêiner não tem tabela de saque. O mestre pode definir uma ou abastecê-lo à mão.', true); return false; }
+    if(!containerOpenFor(id)){ toast('Contêiner bloqueado.', true); return false; }
+    const cap = holderCap(id), free = cap === Infinity ? 99 : Math.max(0, cap - invCount(id));
+    const now = Date.now(), a = actorFields();
+    const insts = rollContainerContents(cc, free).map(it => ({ uid:newUid('it'), itemId:it.id, name:it.name, category:it.category, source:'contêiner', addedAt:now, addedBy:a.actorName, v:DATA_SCHEMA }));
+    const metaFor = (prev, n) => ({ state:'explorado', generatedAt:now, generatedBy:a.actorName, initial:n, gen:((prev && prev.gen) || 0) + 1, locKey:cc.locKey });
+    let added = [];
+    if(firebaseReady){
+      try{
+        const r = await fbRefOf(KEY_INV).child(id).transaction(cur => {
+          if(!force && cur && cur._meta && cur._meta.generatedAt) return; // outra pessoa já vasculhou
+          const node = {}; let n = 0;
+          if(cur) Object.keys(cur).forEach(k => { if(isItemKey(k)){ node[k] = cur[k]; n++; } });
+          const add = [];
+          insts.forEach(i => { if(cap === Infinity || n + add.length < cap) add.push(i); });
+          add.forEach(i => { node[i.uid] = i; });
+          node._meta = metaFor(cur && cur._meta, n + add.length);
+          return node;
+        });
+        if(!r.committed){ toast('Outra pessoa já vasculhou este contêiner.'); return false; }
+        const snap = r.snapshot.val() || {};
+        added = insts.filter(i => snap[i.uid]);
+      }catch(e){ console.error('Falha ao vasculhar contêiner', e); toast('Não foi possível vasculhar (confira as regras do Firebase).', true); return false; }
+    } else {
+      const meta0 = containerMeta(id);
+      if(!force && meta0 && meta0.generatedAt){ toast('Este contêiner já foi vasculhado.'); return false; }
+      const ops = {}, keep = invCount(id);
+      insts.forEach(i => { if(cap === Infinity || keep + added.length < cap){ added.push(i); ops[id + '/' + i.uid] = i; } });
+      ops[id + '/_meta'] = metaFor(meta0, keep + added.length);
+      await commitInv(ops, []);
+    }
+    await commitInv({}, [mkLog('vasculhar', holder, { made:added.map(i => itemRef(i, 1)), locName:LOC_NAMES[cc.locKey], source:'contêiner', refill:!!force })]);
+    toast(added.length ? `${holder.name}: ${added.length} item(ns) encontrado(s).` : `${holder.name}: nada de útil.`);
+    onInvChanged();
+    return true;
+  }
+  async function containerTake(cid, uids, toId){
+    const cont = holderById(cid), to = holderById(toId);
+    if(!cont || !to || to.type === 'container'){ toast('Escolha quem vai pegar os itens.', true); return; }
+    if(!containerOpenFor(cid)){ toast('Contêiner bloqueado.', true); return; }
+    if(!canEditHolder(to)){ toast('Você não pode mexer no inventário de ' + to.name + '.', true); return; }
+    const insts = uids.map(u => inventories[cid] && inventories[cid][u]).filter(i => i && isItemKey(i.uid));
+    if(!insts.length){ toast('Item não encontrado (talvez já tenha sido pego).', true); return; }
+    const entriesFor = list => list.map(inst => ({ item:{ id:inst.itemId, name:inst.name, category:inst.category }, qty:instQty(inst), noStack:inst.cond != null,
+      extra:{ uid:inst.uid, source:'contêiner', cond:inst.cond, note:inst.note, foundAt:inst.foundAt } }));
+    if(planAdds(to.id, entriesFor(insts)).res.some(r => !r.ok)){ toast(`Inventário de ${to.name} cheio (${capTxt(to.id)}).`, true); return; }
+    const claims = await claimFromContainers([[cont, insts]]);
+    if(claims === false){ onInvChanged(); return; }
+    const got = claims.length ? claims.map(c => c.val).filter(Boolean) : insts;
+    const plan = planAdds(to.id, entriesFor(got));
+    if(plan.res.some(r => !r.ok)){ await restoreClaims(claims); toast(`Inventário de ${to.name} cheio.`, true); return; }
+    got.forEach(i => { plan.ops[cid + '/' + i.uid] = null; });
+    const ok = await commitInv(plan.ops, [mkLog('pegar', to, { counterpartId:cid, counterpartName:cont.name, counterpartType:'container',
+      got:plan.res.map(r => itemRef(r.inst, r.qty)), source:'contêiner', invAfter:plan.after })]);
+    if(!ok){ await restoreClaims(claims); return; }
+    toast(got.length > 1 ? `${got.length} itens → inventário de ${to.name}` : `${got[0].name}${got[0].qty > 1 ? ' ×' + got[0].qty : ''} → inventário de ${to.name}`);
+    onInvChanged();
+  }
+  async function containerDeposit(cid, fromId, uids){
+    const cont = holderById(cid), from = holderById(fromId);
+    if(!cont || !from){ return; }
+    if(!containerOpenFor(cid)){ toast('Contêiner bloqueado.', true); return; }
+    if(!canEditHolder(from)){ toast('Você não pode mexer no inventário de ' + from.name + '.', true); return; }
+    const insts = uids.map(u => inventories[fromId] && inventories[fromId][u]).filter(Boolean);
+    if(!insts.length) return;
+    const entries = insts.map(inst => ({ item:{ id:inst.itemId, name:inst.name, category:inst.category }, qty:instQty(inst), noStack:inst.cond != null,
+      extra:{ uid:inst.uid, source:'inventario', cond:inst.cond, note:inst.note, foundAt:inst.foundAt } }));
+    const plan = planAdds(cid, entries);
+    if(plan.res.some(r => !r.ok)){ toast(`${cont.name} está cheio (${capTxt(cid)}).`, true); return; }
+    insts.forEach(i => { plan.ops[fromId + '/' + i.uid] = null; });
+    const ok = await commitInv(plan.ops, [mkLog('depositar', from, { counterpartId:cid, counterpartName:cont.name, counterpartType:'container',
+      gave:insts.map(i => itemRef(i)), source:'inventario', invAfter:simCount(fromId, plan.ops) })]);
+    if(ok){ toast(`${insts.length} item(ns) guardado(s) em ${cont.name}.`); onInvChanged(); }
+  }
+  async function containerClear(cid){
+    if(!isMaster()){ toast('Só o mestre esvazia contêineres.', true); return; }
+    const cont = holderById(cid), items = invItems(cid);
+    if(!cont || !items.length) return;
+    if(!window.confirm(`Esvaziar "${cont.name}"? ${items.length} item(ns) serão removidos (fica no registro).`)) return;
+    const ops = {}; items.forEach(i => { ops[cid + '/' + i.uid] = null; });
+    await commitInv(ops, [mkLog('inv_removido', cont, { items:items.map(i => itemRef(i)), reason:'esvaziado pelo mestre' })]);
+    onInvChanged();
+  }
+  function setContainerCfg(id, patch){
+    if(!isMaster()){ toast('Só o mestre configura contêineres.', true); return; }
+    const p = pins.find(x => x.id === id); if(!p) return;
+    p.container = Object.assign({ enabled:false, locKey:'', min:1, max:3, cap:null, access:'aberto' }, p.container || {}, patch, { updatedBy:actorFields().actorName });
+    saveKey(KEY_PINS, pins);
+    onInvChanged(); hubChanged();
   }
 
   // ---------- gaveta de inventário ----------
@@ -3265,10 +3606,47 @@
     renderInvDrawer();
   }
 
+  function slotsHtml(hid){
+    const eq = equippedItems(hid), caps = cfg().equipSlots;
+    return `<div class="eq-panel"><div class="eq-title">Equipado</div><div class="eq-grid">${EQUIP_SLOTS.map(s => {
+      const list = eq.filter(i => i.slot === s[0]), cap = caps[s[0]] != null ? caps[s[0]] : 1;
+      return `<div class="eq-slot"><span class="eq-slot-name">${escapeHtml(s[1])} <small>${list.length}/${cap}</small></span>${
+        list.length ? list.map(i => `<button type="button" class="eq-item" data-act="unequip" data-uid="${escapeHtml(i.uid)}" aria-label="Desequipar ${escapeHtml(i.name)}">${escapeHtml(i.name)}${i.cond != null ? ' · ' + COND_LEVELS[i.cond] : ''} ✕</button>`).join('') : '<span class="eq-empty">vazio</span>'}</div>`;
+    }).join('')}</div><p class="hub-hint">Equipar só organiza o personagem. Nenhum bônus é aplicado sozinho: os efeitos ficam com a mesa.</p></div>`;
+  }
+  function containerHeaderHtml(h){
+    const pin = containerPin(h.id), st = containerState(h.id), cc = pin.container, master = isMaster(), locked = cc.access === 'bloqueado';
+    const chars = holderList().filter(x => x.type === 'token' && canEditHolder(x));
+    if(!chars.some(x => x.id === invUI.takeTo)) invUI.takeTo = (charSelect.value && chars.some(x => x.id === charSelect.value)) ? charSelect.value : (chars[0] ? chars[0].id : null);
+    const meta = containerMeta(h.id);
+    let html = `<div class="cont-head"><div class="cont-state st-${st}">${escapeHtml(CONT_STATE_LABELS[st] || st)}</div>
+      <div class="inv-item-util">${cc.locKey ? 'Tabela: ' + escapeHtml(LOC_NAMES[cc.locKey] || cc.locKey) : 'Abastecido à mão pelo mestre'}${meta && meta.generatedBy ? ' · vasculhado por ' + escapeHtml(meta.generatedBy) : ''}</div>`;
+    if(locked && !master) html += '<p class="hub-hint">Este contêiner está bloqueado. Só o mestre pode abri-lo.</p>';
+    else {
+      if(cc.locKey && !(meta && meta.generatedAt)) html += '<button type="button" class="inv-mini-btn primary" data-act="cont-search">🔍 Vasculhar</button>';
+      html += chars.length ? `<label class="hub-label">Pegar para</label><select data-role="take-to">${chars.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === invUI.takeTo ? 'selected' : ''}>${escapeHtml(x.name)} (${escapeHtml(capTxt(x.id))})</option>`).join('')}</select>
+        <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="cont-take-all" ${invCount(h.id) ? '' : 'disabled'}>Pegar tudo</button>
+        <button type="button" class="inv-mini-btn" data-act="cont-deposit-open">Guardar do inventário…</button></div>`
+        : '<p class="hub-hint">Você não controla nenhum token neste mapa, então não pode pegar itens.</p>';
+    }
+    if(invUI.depositOpen && chars.length){
+      const mine = invItems(invUI.takeTo).filter(i => !i.slot);
+      html += `<div class="inv-inline"><div class="hub-label">Guardar de ${escapeHtml((holderById(invUI.takeTo) || {}).name || '')}</div>${
+        mine.length ? mine.map(i => `<div class="cont-row"><span>${iconHtml({ id:i.itemId, name:i.name, category:i.category })}${escapeHtml(i.name)}${itemQtyTxt(i)}</span><button type="button" class="inv-mini-btn" data-act="cont-deposit" data-uid="${escapeHtml(i.uid)}">Guardar</button></div>`).join('') : '<div class="inv-item-util">Nada para guardar (itens equipados ficam de fora).</div>'}</div>`;
+    }
+    if(master){
+      html += `<div class="hub-label">Mestre</div><div class="inv-item-actions">
+        ${cc.locKey ? '<button type="button" class="inv-mini-btn" data-act="cont-refill">Reabastecer</button>' : ''}
+        <button type="button" class="inv-mini-btn danger" data-act="cont-clear" ${invCount(h.id) ? '' : 'disabled'}>Esvaziar</button>
+        <button type="button" class="inv-mini-btn" data-act="cont-lock">${locked ? '🔓 Desbloquear' : '🔒 Bloquear'}</button></div>`;
+    }
+    return html + '</div>';
+  }
+
   function renderInvDrawer(){
-    const hl = holderList();
+    const hl = allHolders();
     const hs = document.getElementById('inv-holder-select');
-    hs.innerHTML = hl.length ? holderOptionsHtml(hl, true) : '<option value="">Nenhum token ou NPC no mapa</option>';
+    hs.innerHTML = hl.length ? holderOptionsHtml(hl, true) : '<option value="">Nenhum token, NPC ou contêiner no mapa</option>';
     if(!hl.some(h => h.id === invUI.holderId)) invUI.holderId = hl[0] ? hl[0].id : null;
     hs.value = invUI.holderId || '';
 
@@ -3277,88 +3655,138 @@
     document.getElementById('inv-pane-log').style.display = invUI.tab === 'log' ? '' : 'none';
     if(invUI.tab === 'log'){ renderInvLog(); return; }
 
-    const hid = invUI.holderId, n = invCount(hid);
+    const hid = invUI.holderId, n = invCount(hid), hobj = holderById(hid), isCont = !!hobj && hobj.type === 'container';
     const fill = document.getElementById('inv-cap-fill');
-    const cc = cfg();
-    const pct = cc.invMode === 'slots' ? n / MAX_INV : (cc.invMode === 'carga' ? invWeight(hid) / cc.invLimit : 0);
+    const cc = cfg(), cap = hid ? holderCap(hid) : Infinity;
+    const pct = isCont ? (cap === Infinity ? 0 : n / cap) : (cc.invMode === 'slots' ? n / MAX_INV : (cc.invMode === 'carga' ? invWeight(hid) / cc.invLimit : 0));
     fill.style.width = Math.min(100, pct * 100) + '%';
     fill.className = pct >= 1 ? 'full' : (pct >= 0.8 ? 'warn' : '');
     document.getElementById('inv-cap-text').textContent = capTxt(hid);
     document.getElementById('inv-trade-open').disabled = !hid;
+    document.getElementById('inv-trade-open').style.display = isCont ? 'none' : '';
+    document.getElementById('inv-merge').style.display = isCont ? 'none' : '';
 
     renderTradePanel();
 
+    // categorias presentes, para o filtro
+    const catSel = document.getElementById('inv-cat');
+    const cats = Array.from(new Set(invItems(hid).map(i => i.category))).sort();
+    if(invUI.cat && !cats.includes(invUI.cat)) invUI.cat = '';
+    catSel.innerHTML = '<option value="">Todas as categorias</option>' + cats.map(c => `<option value="${escapeHtml(c)}" ${c === invUI.cat ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+    document.getElementById('inv-extra').innerHTML = !hid ? '' : (isCont ? containerHeaderHtml(hobj) : slotsHtml(hid));
+
     const list = document.getElementById('inv-list');
     list.innerHTML = '';
-    const items = invItems(hid);
     if(!hid){
-      list.innerHTML = '<div class="inv-empty">Crie um token ou um NPC no mapa para ter um inventário.</div>';
+      list.innerHTML = '<div class="inv-empty">Crie um token, um NPC ou um contêiner no mapa para ter um inventário.</div>';
       return;
     }
-    if(!items.length){
-      list.innerHTML = '<div class="inv-empty">Inventário vazio. Itens chegam por saque, pela tabela de itens ou por troca.</div>';
+    const q = (invUI.filter || '').trim().toLowerCase();
+    const items = invItems(hid).filter(i => (!invUI.cat || i.category === invUI.cat) && (!q || normName(i.name).includes(normName(q))));
+    if(!invItems(hid).length){
+      list.innerHTML = isCont ? '<div class="inv-empty">Vazio.</div>' : '<div class="inv-empty">Inventário vazio. Itens chegam por saque, pela tabela de itens, por troca ou de contêineres.</div>';
       return;
     }
+    if(!items.length){ list.innerHTML = '<div class="inv-empty">Nenhum item com esse filtro.</div>'; return; }
     items.forEach(inv => {
       const ref = ITEMS_BY_ID[inv.itemId];
       const row = document.createElement('div');
-      row.className = 'inv-item' + (inv.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '');
+      row.className = 'inv-item' + (inv.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '') + (inv.cond === 0 ? ' broken' : '');
       row.innerHTML = `
-        <div class="inv-item-name">${iconHtml({ id:inv.itemId, name:inv.name, category:inv.category })}${escapeHtml(inv.name)}</div>
-        <span class="inv-item-cat">${escapeHtml(inv.category)}</span>
+        <div class="inv-item-name">${iconHtml({ id:inv.itemId, name:inv.name, category:inv.category })}${escapeHtml(inv.name)}${instQty(inv) > 1 ? ` <span class="qty-chip">×${instQty(inv)}</span>` : ''}${inv.slot ? ` <span class="eq-chip">${escapeHtml(slotLabel(inv.slot))}</span>` : ''}</div>
+        <span class="inv-item-cat">${escapeHtml(inv.category)}</span>${inv.cond != null ? `<span class="inv-item-cat cond-${inv.cond}">${escapeHtml(COND_LEVELS[inv.cond])}</span>` : ''}
         ${ref ? `<div class="inv-item-util">${escapeHtml(ref.utility)}</div>${compatLine(ref)}` : ''}
         ${inv.foundAt ? `<div class="inv-item-util">📍 Achado em: ${escapeHtml(inv.foundAt)}</div>` : ''}
         <div class="inv-item-actions">
+          ${isCont ? `<button type="button" class="inv-mini-btn primary" data-act="cont-take" ${containerOpenFor(hid) ? '' : 'disabled'}>Pegar</button>` : `
           <button type="button" class="inv-mini-btn" data-act="use">Usar</button>
-          <button type="button" class="inv-mini-btn" data-act="trade">Trocar</button>
-          <button type="button" class="inv-mini-btn danger" data-act="discard">Descartar</button>
+          ${canEquip(inv) ? `<button type="button" class="inv-mini-btn" data-act="${inv.slot ? 'unequip' : 'equip'}">${inv.slot ? 'Desequipar' : 'Equipar'}</button>` : ''}
+          <button type="button" class="inv-mini-btn" data-act="trade">Trocar</button>`}
+          <button type="button" class="inv-mini-btn" data-act="more" aria-label="Mais ações">⋯ Mais</button>
         </div>`;
-      row.querySelector('[data-act="use"]').addEventListener('click', () => {
-        invUI.panel = { type:'use', uid:inv.uid, consume:consumableByDefault(inv), note:'' };
-        renderInvDrawer();
-      });
-      row.querySelector('[data-act="discard"]').addEventListener('click', () => {
-        invUI.panel = { type:'discard', uid:inv.uid, note:'' };
-        renderInvDrawer();
-      });
-      row.querySelector('[data-act="trade"]').addEventListener('click', () => {
+      const act = (a, fn) => { const b = row.querySelector(`[data-act="${a}"]`); if(b) b.addEventListener('click', fn); };
+      const setPanel = p => { invUI.panel = Object.assign({ uid:inv.uid, note:'' }, p); renderInvDrawer(); };
+      act('use', () => setPanel({ type:'use', consume:consumableByDefault(inv) }));
+      act('equip', () => setPanel({ type:'equip', slot:suggestSlot(inv) || 'acessorio' }));
+      act('unequip', () => doEquip(hid, inv.uid, null));
+      act('cont-take', () => containerTake(hid, [inv.uid], invUI.takeTo));
+      act('more', () => { invUI.panel = (invUI.panel && invUI.panel.uid === inv.uid && invUI.panel.type === 'more') ? null : { type:'more', uid:inv.uid, note:'' }; renderInvDrawer(); });
+      act('trade', () => {
         invUI.trade = { otherId:null, give:[inv.uid], take:[], note:'' };
         invUI.panel = null;
         renderInvDrawer();
         document.getElementById('inv-trade-panel').scrollIntoView({ block:'nearest' });
       });
       const pn = invUI.panel;
-      if(pn && pn.uid === inv.uid){
-        const box = document.createElement('div');
-        box.className = 'inv-inline';
-        if(pn.type === 'use'){
-          box.innerHTML = `
-            <label><input type="checkbox" data-role="consume" ${pn.consume ? 'checked' : ''}> Consumir (remove do inventário)</label>
-            <input type="text" data-role="note" maxlength="140" placeholder="Observação (opcional)" value="${escapeHtml(pn.note)}">
-            <div class="inv-inline-actions">
-              <button type="button" class="inv-mini-btn primary" data-act="ok">Confirmar uso</button>
-              <button type="button" class="inv-mini-btn" data-act="cancel">Cancelar</button>
-            </div>`;
-          box.querySelector('[data-role="consume"]').addEventListener('change', e => { pn.consume = e.target.checked; });
-        } else {
-          box.innerHTML = `
-            <p>Descartar remove o item do inventário de vez. A ação fica registrada.</p>
-            <input type="text" data-role="note" maxlength="140" placeholder="Observação (opcional)" value="${escapeHtml(pn.note)}">
-            <div class="inv-inline-actions">
-              <button type="button" class="inv-mini-btn danger" data-act="ok">Confirmar descarte</button>
-              <button type="button" class="inv-mini-btn" data-act="cancel">Cancelar</button>
-            </div>`;
-        }
-        box.querySelector('[data-role="note"]').addEventListener('input', e => { pn.note = e.target.value.trim(); });
-        box.querySelector('[data-act="cancel"]').addEventListener('click', () => { invUI.panel = null; renderInvDrawer(); });
-        box.querySelector('[data-act="ok"]').addEventListener('click', () => {
-          if(pn.type === 'use') doUse(hid, inv.uid, pn.consume, pn.note);
-          else doDiscard(hid, inv.uid, pn.note);
-        });
-        row.appendChild(box);
-      }
+      if(pn && pn.uid === inv.uid) row.appendChild(buildInvPanel(pn, inv, hid, isCont));
       list.appendChild(row);
     });
+  }
+
+  function itemHistory(uid){
+    const hit = e => (e.item && e.item.uid === uid) || [e.gave, e.got, e.used, e.made, e.items].some(a => (a || []).some(i => i && i.uid === uid));
+    return lootLog.filter(hit).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 8);
+  }
+  // painel embutido na linha do item (usar, equipar, dividir, condição, descartar, inspecionar)
+  function buildInvPanel(pn, inv, hid, isCont){
+    const box = document.createElement('div');
+    box.className = 'inv-inline';
+    const q = instQty(inv);
+    const noteField = `<input type="text" data-role="note" maxlength="140" placeholder="Observação (opcional)" value="${escapeHtml(pn.note || '')}">`;
+    const actions = (okLabel, okCls) => `<div class="inv-inline-actions"><button type="button" class="inv-mini-btn ${okCls || 'primary'}" data-act="ok">${okLabel}</button><button type="button" class="inv-mini-btn" data-act="cancel">Cancelar</button></div>`;
+    if(pn.type === 'more'){
+      box.innerHTML = `<div class="inv-item-actions">
+        <button type="button" class="inv-mini-btn" data-go="inspect">🔍 Inspecionar</button>
+        ${!isCont && q > 1 ? '<button type="button" class="inv-mini-btn" data-go="split">✂ Dividir pilha</button>' : ''}
+        ${!isCont && hasCondition(inv) ? `<button type="button" class="inv-mini-btn" data-go="cond">🔧 ${inv.cond != null && inv.cond < COND_LEVELS.length - 1 ? 'Reparar / condição' : 'Condição'}</button>` : ''}
+        ${!isCont || isMaster() ? '<button type="button" class="inv-mini-btn danger" data-go="discard">Descartar</button>' : ''}
+        <button type="button" class="inv-mini-btn" data-act="cancel">Fechar</button></div>`;
+      box.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
+        invUI.panel = { type:b.dataset.go, uid:inv.uid, note:'', amount:q, level:inv.cond != null ? inv.cond : 3, split:Math.max(1, Math.floor(q / 2)) };
+        renderInvDrawer();
+      }));
+    } else if(pn.type === 'inspect'){
+      const ref = ITEMS_BY_ID[inv.itemId];
+      const hist = itemHistory(inv.uid);
+      box.innerHTML = `<div class="inv-item-util"><b>Categoria:</b> ${escapeHtml(inv.category)}${q > 1 ? ` · <b>Quantidade:</b> ${q}` : ''}${inv.cond != null ? ` · <b>Condição:</b> ${escapeHtml(COND_LEVELS[inv.cond])}` : ''}${inv.slot ? ` · <b>Equipado:</b> ${escapeHtml(slotLabel(inv.slot))}` : ''}</div>
+        ${ref ? `<div class="inv-item-util"><b>Utilidade:</b> ${escapeHtml(ref.utility)}</div>${compatLine(ref)}` : ''}
+        <div class="inv-item-util"><b>Origem:</b> ${escapeHtml(SOURCE_LABELS[inv.source] || inv.source || '—')}${inv.addedBy ? ' · por ' + escapeHtml(inv.addedBy) : ''}${inv.addedAt ? ' · ' + escapeHtml(fmtTs(inv.addedAt)) : ''}${inv.foundAt ? '<br>📍 ' + escapeHtml(inv.foundAt) : ''}</div>
+        <div class="hub-label">Histórico deste item</div>${hist.length ? hist.map(e => `<div class="log-row"><div class="log-meta"><span class="log-badge ${escapeHtml(e.action)}">${escapeHtml(ACTION_LABELS[e.action] || e.action)}</span><span>${escapeHtml(fmtTs(e.ts))}</span></div><div>${logText(e)}</div></div>`).join('') : '<div class="inv-item-util">Sem movimentações registradas para esta unidade.</div>'}
+        <div class="inv-inline-actions"><button type="button" class="inv-mini-btn" data-act="cancel">Fechar</button></div>`;
+    } else if(pn.type === 'use'){
+      box.innerHTML = `<label><input type="checkbox" data-role="consume" ${pn.consume ? 'checked' : ''}> Consumir (${q > 1 ? 'gasta 1 unidade' : 'remove do inventário'})</label>${noteField}${actions('Confirmar uso')}`;
+      box.querySelector('[data-role="consume"]').addEventListener('change', e => { pn.consume = e.target.checked; });
+    } else if(pn.type === 'discard'){
+      box.innerHTML = `<p>Descartar remove ${q > 1 ? 'unidades' : 'o item'} do inventário de vez. A ação fica registrada.</p>
+        ${q > 1 ? `<label class="hub-label">Quantidade a descartar (1 a ${q})</label><input type="number" min="1" max="${q}" data-role="amount" value="${pn.amount || q}">` : ''}${noteField}${actions('Confirmar descarte', 'danger')}`;
+      const am = box.querySelector('[data-role="amount"]'); if(am) am.addEventListener('input', e => { pn.amount = e.target.value; });
+    } else if(pn.type === 'split'){
+      box.innerHTML = `<label class="hub-label">Separar quantas unidades? (1 a ${q - 1})</label><input type="number" min="1" max="${q - 1}" data-role="split" value="${pn.split}">${actions('Dividir')}`;
+      box.querySelector('[data-role="split"]').addEventListener('input', e => { pn.split = e.target.value; });
+    } else if(pn.type === 'equip'){
+      const caps = cfg().equipSlots;
+      box.innerHTML = `<label class="hub-label">Equipar em</label><select data-role="slot">${EQUIP_SLOTS.map(s => {
+        const used = equippedItems(hid).filter(i => i.slot === s[0]).length, cap = caps[s[0]] != null ? caps[s[0]] : 1;
+        return `<option value="${s[0]}" ${s[0] === pn.slot ? 'selected' : ''}>${escapeHtml(s[1])} (${used}/${cap})</option>`;
+      }).join('')}</select>${actions('Equipar')}`;
+      box.querySelector('[data-role="slot"]').addEventListener('change', e => { pn.slot = e.target.value; });
+    } else if(pn.type === 'cond'){
+      box.innerHTML = `<label class="hub-label">Condição${inv.cond != null ? ' (atual: ' + escapeHtml(COND_LEVELS[inv.cond]) + ')' : ' (ainda não definida)'}</label>
+        <select data-role="level">${COND_LEVELS.map((l, i) => `<option value="${i}" ${i === Number(pn.level) ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select>${noteField}
+        <p class="hub-hint">Reparar é subir a condição; dano é descê-la. O resultado de um teste de reparo é decidido pela mesa.</p>${actions('Registrar')}`;
+      box.querySelector('[data-role="level"]').addEventListener('change', e => { pn.level = e.target.value; });
+    }
+    const nf = box.querySelector('[data-role="note"]'); if(nf) nf.addEventListener('input', e => { pn.note = e.target.value.trim(); });
+    const cancel = box.querySelector('[data-act="cancel"]'); if(cancel) cancel.addEventListener('click', () => { invUI.panel = null; renderInvDrawer(); });
+    const ok = box.querySelector('[data-act="ok"]');
+    if(ok) ok.addEventListener('click', () => {
+      if(pn.type === 'use') doUse(hid, inv.uid, pn.consume, pn.note);
+      else if(pn.type === 'discard') doDiscard(hid, inv.uid, pn.note, pn.amount);
+      else if(pn.type === 'split') doSplit(hid, inv.uid, pn.split);
+      else if(pn.type === 'equip') doEquip(hid, inv.uid, pn.slot);
+      else if(pn.type === 'cond') doCondition(hid, inv.uid, pn.level, pn.note);
+    });
+    return box;
   }
 
   function renderTradePanel(){
@@ -3366,7 +3794,7 @@
     const t = invUI.trade;
     if(!t){ box.innerHTML = ''; return; }
     const me = holderById(invUI.holderId);
-    const others = holderList().filter(h => h.id !== invUI.holderId);
+    const others = allHolders().filter(h => h.id !== invUI.holderId && !(h.type === 'container' && !containerOpenFor(h.id)));
     if(!me || !others.length){
       box.innerHTML = '<div class="inv-empty">Não há outro token ou NPC no mapa para trocar.</div>';
       invUI.trade = null;
@@ -3379,21 +3807,21 @@
     t.take = t.take.filter(u => theirs.some(i => i.uid === u));
     const aAfter = mine.length - t.give.length + t.take.length;
     const bAfter = theirs.length + t.give.length - t.take.length;
-    const over = aAfter > MAX_INV || bAfter > MAX_INV;
+    const over = aAfter > holderCap(me.id) || bAfter > holderCap(other.id);
     const empty = !t.give.length && !t.take.length;
     const checks = (list, side, sel) => list.length
-      ? list.map(i => `<label><input type="checkbox" data-side="${side}" value="${escapeHtml(i.uid)}" ${sel.includes(i.uid) ? 'checked' : ''}><span>${iconHtml({ id:i.itemId, name:i.name, category:i.category })}${escapeHtml(i.name)}</span></label>`).join('')
+      ? list.map(i => `<label><input type="checkbox" data-side="${side}" value="${escapeHtml(i.uid)}" ${sel.includes(i.uid) ? 'checked' : ''}><span>${iconHtml({ id:i.itemId, name:i.name, category:i.category })}${escapeHtml(i.name)}${itemQtyTxt(i)}</span></label>`).join('')
       : '<div class="inv-item-util">Nenhum item.</div>';
     box.innerHTML = `
       <div class="inv-trade">
         <select data-role="other">${holderOptionsHtml(others, true)}</select>
         <div class="inv-trade-cols">
-          <div class="inv-trade-col"><h4>Você entrega (${escapeHtml(me.name)})</h4>${checks(mine, 'give', t.give)}</div>
+          <div class="inv-trade-col"><h4>Você entrega (${escapeHtml(me.name)})</h4>${checks(mine.filter(i => !i.slot), 'give', t.give)}</div>
           <div class="inv-trade-col"><h4>Você recebe (${escapeHtml(other.name)})</h4>${checks(theirs, 'take', t.take)}</div>
         </div>
         <div class="inv-trade-preview">
           ${escapeHtml(me.name)}: ${fmtCount(aAfter)} · ${escapeHtml(other.name)}: ${fmtCount(bAfter)}
-          ${over ? `<br><span class="bad">A troca excede o limite de ${MAX_INV} itens.</span>` : ''}
+          ${over ? `<br><span class="bad">A troca excede o limite de itens de um dos lados.</span>` : ''}
         </div>
         <input type="text" data-role="note" maxlength="140" placeholder="Observação (opcional)" value="${escapeHtml(t.note || '')}">
         <div class="inv-inline-actions">
@@ -3422,10 +3850,10 @@
     try{ return new Date(ts).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' }); }
     catch(e){ return ''; }
   }
-  function namesOf(arr){ return (arr || []).map(i => `"${i.name}"`).join(', ') || 'nada'; }
+  function namesOf(arr){ return (arr || []).map(i => `"${i.name}"${i.qty > 1 ? ' ×' + i.qty : ''}`).join(', ') || 'nada'; }
   function logText(e){
     const who = escapeHtml(e.holderName || 'Sobrevivente desconhecido');
-    const it = e.item ? `"${escapeHtml(e.item.name)}"` : '';
+    const it = e.item ? `"${escapeHtml(e.item.name)}"${e.item.qty > 1 ? ' ×' + e.item.qty : ''}` : '';
     const src = SOURCE_LABELS[e.source] || e.source || '';
     switch(e.action){
       case 'saque': return `${who} encontrou ${it}${e.total > 1 ? ' (item ' + e.n + ' de ' + e.total + ')' : ''}${e.locName ? ' em ' + escapeHtml(e.locName) : ''}${e.coord ? ' (📍 ' + escapeHtml(e.coord) + ')' : ''}${e.pinTitle ? ' · local: ' + escapeHtml(e.pinTitle) : ''}`;
@@ -3437,6 +3865,11 @@
       case 'troca': return `${who} ⇄ ${escapeHtml(e.counterpartName || '?')}: entregou ${escapeHtml(namesOf(e.gave))} · recebeu ${escapeHtml(namesOf(e.got))}`;
       case 'craft': return `${who} ${e.outcome === 'sucesso' ? 'fabricou' : 'tentou fabricar'} "${escapeHtml(e.recipe || '?')}"${e.outcome === 'sucesso' ? '' : ' e falhou'} · usou: ${escapeHtml(namesOf(e.used))}${e.made && e.made.length ? ' · obteve: ' + escapeHtml(namesOf(e.made)) : ''}`;
       case 'inv_removido': return `Inventário de ${who} removido${e.reason ? ' (' + escapeHtml(e.reason) + ')' : ''}: ${escapeHtml(namesOf(e.items))}`;
+      case 'vasculhar': return `${escapeHtml(e.actorName || '?')} vasculhou ${who}${e.locName ? ' (' + escapeHtml(e.locName) + ')' : ''} e encontrou: ${escapeHtml(namesOf(e.made))}`;
+      case 'pegar': return `${who} pegou ${escapeHtml(namesOf(e.got))} de ${escapeHtml(e.counterpartName || '?')}`;
+      case 'depositar': return `${who} guardou ${escapeHtml(namesOf(e.gave))} em ${escapeHtml(e.counterpartName || '?')}`;
+      case 'condicao': case 'reparar': return `${who}: ${it} · condição ${escapeHtml(e.condFrom || '—')} → ${escapeHtml(e.condTo || '—')}`;
+      case 'ajuste': return `${escapeHtml(e.actorName || '?')} (mestre) ajustou ${who}: ${escapeHtml(e.note || '')}${e.item ? ' · ' + it : ''}`;
       default: return who;
     }
   }
@@ -3496,8 +3929,8 @@
   // ---------- ligações com o resto da interface ----------
   function refreshAddDest(){
     if(!invReady) return;
-    const prev = itemAddDest.value, hl = holderList();
-    itemAddDest.innerHTML = hl.length ? holderOptionsHtml(hl, true) : '<option value="">Nenhum token ou NPC no mapa</option>';
+    const prev = itemAddDest.value, hl = allHolders();
+    itemAddDest.innerHTML = hl.length ? holderOptionsHtml(hl, true) : '<option value="">Nenhum token, NPC ou contêiner no mapa</option>';
     itemAddDest.value = (prev && hl.some(h => h.id === prev)) ? prev : (charSelect.value || (hl[0] || {}).id || '');
   }
   function updateSaqueInvCount(){
@@ -3508,7 +3941,7 @@
   // chamado quando tokens/NPCs mudam (renderNavList): só reage se nomes/ids mudaram
   function invHoldersChanged(){
     if(!invReady) return;
-    const sig = holderList().map(h => h.id + ':' + h.name).join('|');
+    const sig = allHolders().map(h => h.id + ':' + h.name).join('|');
     if(sig === lastHolderSig) return;
     lastHolderSig = sig;
     refreshAddDest(); updateSaqueInvCount();
@@ -3534,6 +3967,26 @@
     invUI.trade = { otherId:null, give:[], take:[], note:'' }; invUI.panel = null; renderInvDrawer();
   });
   invDrawer.querySelectorAll('.inv-tab').forEach(b => b.addEventListener('click', () => setInvTab(b.dataset.tab)));
+  document.getElementById('inv-filter').addEventListener('input', e => { invUI.filter = e.target.value; renderInvDrawer(); const f = document.getElementById('inv-filter'); f.focus(); try{ f.setSelectionRange(f.value.length, f.value.length); }catch(err){} });
+  document.getElementById('inv-cat').addEventListener('change', e => { invUI.cat = e.target.value; renderInvDrawer(); });
+  document.getElementById('inv-merge').addEventListener('click', () => { if(invUI.holderId) doMerge(invUI.holderId); });
+  // contêineres e equipamento: um único ouvinte no painel que é redesenhado
+  document.getElementById('inv-extra').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if(!b) return;
+    const hid = invUI.holderId, a = b.dataset.act;
+    if(a === 'unequip') doEquip(hid, b.dataset.uid, null);
+    else if(a === 'cont-search') generateContainer(hid, false);
+    else if(a === 'cont-refill'){ if(window.confirm('Reabastecer sorteia novos itens e os soma ao que já existe. Continuar?')) generateContainer(hid, true); }
+    else if(a === 'cont-take-all') containerTake(hid, invItems(hid).map(i => i.uid), invUI.takeTo);
+    else if(a === 'cont-deposit-open'){ invUI.depositOpen = !invUI.depositOpen; renderInvDrawer(); }
+    else if(a === 'cont-deposit') containerDeposit(hid, invUI.takeTo, [b.dataset.uid]);
+    else if(a === 'cont-clear') containerClear(hid);
+    else if(a === 'cont-lock'){ const p = containerPin(hid); if(p) setContainerCfg(hid, { access:p.container.access === 'bloqueado' ? 'aberto' : 'bloqueado' }); }
+  });
+  document.getElementById('inv-extra').addEventListener('change', e => {
+    if(e.target.dataset && e.target.dataset.role === 'take-to'){ invUI.takeTo = e.target.value; renderInvDrawer(); }
+  });
   document.getElementById('inv-log-holder').addEventListener('change', e => { invUI.logHolder = e.target.value; renderInvLog(); });
   document.getElementById('inv-log-action').addEventListener('change', e => { invUI.logAction = e.target.value; renderInvLog(); });
   document.getElementById('inv-log-export').addEventListener('click', exportLogCsv);
@@ -3587,6 +4040,9 @@
   let recipes = {};
   let clock = null;
   let campShortcuts = {};
+  let journal = {};
+  let gmJournal = {};
+  let gmOff = null;
   let personalShortcuts = {};
   let personalSubUid = '__none__';
   let personalOff = null;
@@ -3599,9 +4055,11 @@
     tab:'dados', charToken:null, craftHolder:null,
     newCampaign:{ name:'', system:'', mode:'vazia', source:'legacy', copyTokens:true, copyInv:false, copyChars:false, copyRecipes:true, copyWeather:false },
     sessionForm:{ title:'', date:'', present:[], extra:'' },
-    cfgDraft:null, recipeForm:null, joinCode:'', craftMsg:''
+    cfgDraft:null, recipeForm:null, joinCode:'', craftMsg:'',
+    jf:{ type:'resumo', title:'', text:'', vis:'grupo' }, djFilter:'', djTimeline:false,
+    give:{ name:'', qty:1, to:'' }, bulkPick:[], bulkNeed:'exposicao', bulkDelta:1, resDraft:null, slotDraft:null, backupMsg:''
   };
-  const rollUI = { terms:[{ sign:1, n:1, sides:20 }], modTerm:0, modType:'kh', modVal:1, expr:'', skill:'', bonuses:[], who:'', physical:false, phys:'', note:'', record:true, discord:false, last:null, scName:'', scScope:'character' };
+  const rollUI = { terms:[{ sign:1, n:1, sides:20 }], modTerm:0, modType:'kh', modVal:1, expr:'', skill:'', bonuses:[], who:'', physical:false, phys:'', note:'', record:true, important:false, discord:false, last:null, scName:'', scScope:'character' };
   let hubDirty = false;
 
   // ---------- configuração da campanha ativa ----------
@@ -3615,6 +4073,8 @@
       lootMin: Number.isInteger(c.lootMin) ? Math.min(8, Math.max(0, c.lootMin)) : 1,
       lootMax: Math.max(Number.isInteger(c.lootMin) ? Math.min(8, Math.max(0, c.lootMin)) : 1, Number.isInteger(c.lootMax) ? Math.min(8, Math.max(1, c.lootMax)) : 5),
       weights: c.weights || {},
+      equipSlots: Object.assign({}, DEFAULT_SLOT_CAP, (c.equipSlots && typeof c.equipSlots === 'object') ? c.equipSlots : {}),
+      resources: Array.isArray(c.resources) ? c.resources.filter(r => r && r.key && r.label) : [],
       modules: Object.assign({}, DEFAULT_MODULES, c.modules || {}),
       cardModules: Object.assign({}, DEFAULT_CARD_MODULES, c.cardModules || {})
     };
@@ -3627,11 +4087,12 @@
     refreshLootPins();
   }
   function itemWeight(inv){ const w = cfg().weights[catKey(inv.category)]; return typeof w === 'number' ? w : 1; }
-  function invWeight(hid){ return invItems(hid).reduce((a, i) => a + itemWeight(i), 0); }
+  function invWeight(hid){ return invItems(hid).reduce((a, i) => a + itemWeight(i) * instQty(i), 0); }
   function fmtNum(n){ return String(Math.round(n * 100) / 100).replace('.', ','); }
   function weightBand(w, cap){ const r = w / cap; return r <= 0.5 ? 'leve' : (r <= 1 ? 'carregado' : '⚠ sobrecarregado'); }
   function capTxt(hid){
     const c = cfg(), n = invCount(hid);
+    if(isContainerId(hid)){ const cap = holderCap(hid); return cap === Infinity ? `${n} itens` : `${n}/${cap}`; }
     if(c.invMode === 'slots') return `${n}/${MAX_INV}`;
     if(c.invMode === 'livre') return `${n} itens`;
     const w = invWeight(hid);
@@ -3648,6 +4109,7 @@
   function canEditHolder(h){
     if(!h) return false;
     if(isMaster()) return true;
+    if(h.type === 'container') return containerOpenFor(h.id);
     if(h.type !== 'token') return false;
     const t = tokens.find(x => x.id === h.id);
     return !!t && (!t.ownerId || (currentUser && t.ownerId === currentUser.uid));
@@ -3671,7 +4133,8 @@
   function resetCampaignState(){
     pins = []; tokens = []; shapes = []; routes = [];
     weather = { state:'calmo', updatedAt:null, updatedBy:null };
-    inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {};
+    inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {}; journal = {}; gmJournal = {};
+    hub.resDraft = null; hub.slotDraft = null; hub.cfgDraft = null;
     lootHistory = []; fishHistory = [];
     renderPins(); renderTokens(); renderShapes(); renderRoutes(); applyWeatherVisual();
     renderLootResults(); renderFishResults();
@@ -3684,6 +4147,9 @@
     on(KEY_CLOCK, v => { clock = v; updateHud(); hubChanged(); });
     on(KEY_SHORTCUTS, v => { campShortcuts = v || {}; hubChanged(); });
     syncOff.push(DB.on('campaign-sessions/' + activeCampaignId, v => { sessions = v || {}; updateHud(); hubChanged(); }));
+    on(KEY_JOURNAL, v => { journal = v || {}; hubChanged(); }, 300);
+    syncOff.push(() => { if(gmOff){ gmOff(); gmOff = null; } });
+    syncGm();
   }
   function activateCampaign(id){
     detachSync();
@@ -3715,7 +4181,9 @@
       if(!campaigns.legacy) bootstrapLegacy();
       const m = campaigns[activeCampaignId];
       if(!m && activeCampaignId !== 'legacy' && campaigns.legacy){ activateCampaign('legacy'); return; }
+      const wasMaster = campaignMeta ? campaignMeta.masterId : undefined;
       campaignMeta = m || null;
+      if(!gmOff || (campaignMeta ? campaignMeta.masterId : undefined) !== wasMaster) syncGm();
       applyConfig(); updateHud(); onInvChanged(); hubChanged();
     });
   }
@@ -3812,7 +4280,8 @@
       decimals:Math.min(6, Math.max(0, parseInt(d.decimals, 10) || 0)),
       lootMin:Math.min(8, Math.max(0, parseInt(d.lootMin, 10) || 0)),
       lootMax:Math.min(8, Math.max(1, parseInt(d.lootMax, 10) || 1)),
-      weights, modules:d.modules, cardModules:d.cardModules
+      weights, modules:d.modules, cardModules:d.cardModules,
+      equipSlots:cfg().equipSlots, resources:cfg().resources
     };
     await DB.update({
       [`campaign-meta/${activeCampaignId}/name`]: (d.name || '').trim() || 'Campanha',
@@ -3847,6 +4316,7 @@
     await DB.update(upd);
     hub.sessionForm = { title:'', date:'', present:[], extra:'' };
     toast('Nova sessão aberta. O mundo continua o mesmo.');
+    logEvent('Nova sessão aberta: ' + title);
     renderHub();
   }
   async function saveSummary(text){
@@ -3874,6 +4344,7 @@
     if(cfg().modules.clock && clockText()) parts.push(clockText());
     chip.textContent = '📖 ' + parts.join(' · ');
     chip.setAttribute('aria-label', 'Campanha ativa: ' + parts.join(', ') + '. Abrir campanhas e sessões.');
+    const am = document.getElementById('area-mestre'); if(am) am.hidden = !isMaster();
   }
 
   // ---------- roller ----------
@@ -4046,7 +4517,7 @@
     const bonusSum = bonuses.reduce((a, b) => a + b.value, 0);
     const holder = holderById(rollUI.who);
     const a = actorFields();
-    const rec = { skill:(rollUI.skill || '').trim(), terms:results, diceSum, bonuses, bonusSum, total:diceSum + bonusSum,
+    const rec = { important:!!rollUI.important, skill:(rollUI.skill || '').trim(), terms:results, diceSum, bonuses, bonusSum, total:diceSum + bonusSum,
       note:(rollUI.note || '').trim(), physical:!!rollUI.physical, tokenId:holder ? holder.id : null,
       whoName:holder ? holder.name : a.actorName, actorId:a.actorId, actorName:a.actorName,
       sessionId:(campaignMeta && campaignMeta.activeSessionId) || null };
@@ -4270,15 +4741,18 @@
     const k = String(n || '').trim().toLowerCase();
     return ITEMS.find(i => i.name.toLowerCase() === k) || null;
   }
+  // ingredientes: só itens fora do equipamento, somando as quantidades das pilhas
   function craftCheck(rec, hid){
     const have = {};
-    invItems(hid).forEach(i => { (have[i.itemId] = have[i.itemId] || []).push(i); });
+    invItems(hid).filter(i => !i.slot).forEach(i => { (have[i.itemId] = have[i.itemId] || []).push(i); });
+    const units = id => (have[id] || []).reduce((a, i) => a + instQty(i), 0);
     const missing = [];
     (rec.ingredients || []).forEach(ing => {
-      const n = (have[ing.itemId] || []).length;
+      const n = units(ing.itemId);
       if(n < ing.qty) missing.push({ itemId:ing.itemId, need:ing.qty, have:n });
     });
-    const toolOk = !rec.tool || (have[rec.tool] || []).length > 0;
+    // a ferramenta pode estar equipada; não é consumida
+    const toolOk = !rec.tool || invItems(hid).some(i => i.itemId === rec.tool);
     return { missing, toolOk, canCraft:!missing.length && toolOk, have };
   }
   async function craftDo(rec, hid, outcome){
@@ -4288,32 +4762,35 @@
     const chk = craftCheck(rec, hid);
     if(!chk.canCraft){ toast('Faltam materiais ou ferramenta.', true); return; }
     const used = [];
-    const take = () => {
-      const left = {};
-      (rec.ingredients || []).forEach(ing => {
-        const list = chk.have[ing.itemId].slice();
-        for(let k = 0; k < ing.qty; k++){ const inst = list.shift(); used.push(inst); }
-      });
-      return left;
-    };
     const ops = {};
-    let made = [];
+    let made = [], after = invCount(hid);
     const consume = outcome === 'sucesso' || !!rec.wasteOnFail;
-    if(consume){ take(); used.forEach(i => { ops[hid + '/' + i.uid] = null; }); }
+    if(consume){
+      (rec.ingredients || []).forEach(ing => {
+        let need = ing.qty;
+        chk.have[ing.itemId].slice().sort((a, b) => instQty(a) - instQty(b)).forEach(inst => {
+          if(need <= 0) return;
+          const take = Math.min(instQty(inst), need);
+          need -= take;
+          used.push(itemRef(inst, take));
+          ops[hid + '/' + inst.uid] = takeUnits(inst, take);
+        });
+      });
+      after = simCount(hid, ops);
+    }
     if(outcome === 'sucesso'){
       const ref = ITEMS_BY_ID[rec.result.itemId];
       if(!ref){ toast('O item resultante não existe mais no catálogo.', true); return; }
       const qty = Math.max(1, rec.result.qty || 1);
-      if(invCount(hid) - used.length + qty > MAX_INV){ toast('Sem espaço no inventário para o resultado.', true); return; }
-      for(let k = 0; k < qty; k++){
-        const inst = { uid:newUid('it'), itemId:ref.id, name:ref.name, category:ref.category, source:'craft', addedAt:Date.now(), addedBy:actorFields().actorName };
-        ops[hid + '/' + inst.uid] = inst; made.push(inst);
-      }
+      // empilháveis viram uma pilha; os demais, uma instância por unidade
+      const entries = isStackable(ref) ? [{ item:ref, qty, extra:{ source:'craft' } }] : Array.from({ length:qty }, () => ({ item:ref, qty:1, extra:{ source:'craft' } }));
+      const p = planAdds(hid, entries, ops);
+      if(p.res.some(r => !r.ok)){ toast('Sem espaço no inventário para o resultado.', true); return; }
+      made = p.res.map(r => itemRef(r.inst, r.qty)); after = p.after;
     }
     const ok = await commitInv(ops, [mkLog('craft', holder, {
-      recipe:rec.name, outcome, used:used.map(itemRef), made:made.map(itemRef), source:'inventario',
-      invAfter:invCount(hid) - used.length + made.length })]);
-    if(ok){ hub.craftMsg = outcome === 'sucesso' ? `Fabricado: ${made.map(m => m.name).join(', ')}.` : (consume ? 'Falhou: os materiais foram perdidos.' : 'Falhou: nada foi consumido.'); renderHub(); }
+      recipe:rec.name, outcome, used, made, source:'inventario', invAfter:after })]);
+    if(ok){ hub.craftMsg = outcome === 'sucesso' ? `Fabricado: ${made.map(m => m.name + (m.qty > 1 ? ' ×' + m.qty : '')).join(', ')}.` : (consume ? 'Falhou: os materiais foram perdidos.' : 'Falhou: nada foi consumido.'); renderHub(); }
   }
   function blankRecipe(){ return { id:null, name:'', family:'sobrevivencia', resultName:'', resultQty:1, ingredients:[{ name:'', qty:1 }], toolName:'', station:'', skill:'', time:'', noise:'', risk:'', resolution:'', wasteOnFail:false, notes:'' }; }
   async function saveRecipe(){
@@ -4369,15 +4846,16 @@
   const esc = escapeHtml;
   function hubTabs(){
     const c = cfg().modules;
-    const t = [['dados','🎲 Dados'], ['ficha','📇 Ficha'], ['sessao','📖 Sessão'], ['campanhas','🗂 Campanhas']];
-    if(c.clock || c.explore) t.push(['mundo','🌍 Mundo']);
+    const t = [['mundo','🌍 Mundo'], ['ficha','📇 Personagem'], ['grupo','👥 Grupo'], ['diario','📓 Diário'], ['dados','🎲 Dados'], ['sessao','📖 Sessão']];
     if(c.crafting) t.push(['oficio','🛠 Ofício']);
+    t.push(['campanhas','🗂 Campanhas']);
+    if(isMaster()) t.push(['mestre','🧰 Mestre']);
     return t;
   }
   function openHub(tab){
     closeDrawer(); closeNavDrawer(); closeInventory();
     if(tab) hub.tab = tab;
-    if(!hubTabs().some(t => t[0] === hub.tab)) hub.tab = 'dados';
+    if(!hubTabs().some(t => t[0] === hub.tab)) hub.tab = 'mundo';
     ensurePersonalSub();
     renderHub();
     hubDrawer.classList.add('open'); hubBackdrop.classList.add('open');
@@ -4403,7 +4881,7 @@
     const ses = activeSession();
     let html = `<div class="hub-context" role="status">📖 <b>${esc(campaignMeta ? campaignMeta.name : 'Campanha')}</b> · ${esc(ses ? ses.title : 'sem sessão')}${isMaster() ? ' · mestre' : ''}</div>`;
     html += '<div class="hub-tabs" role="tablist">' + tabs.map(t => `<button type="button" role="tab" aria-selected="${hub.tab === t[0]}" class="inv-tab${hub.tab === t[0] ? ' active' : ''}" data-act="tab" data-tab="${t[0]}">${t[1]}</button>`).join('') + '</div>';
-    const fn = { dados:renderDados, ficha:renderFicha, sessao:renderSessao, campanhas:renderCampanhas, mundo:renderMundo, oficio:renderOficio }[hub.tab];
+    const fn = { dados:renderDados, ficha:renderFicha, sessao:renderSessao, campanhas:renderCampanhas, mundo:renderMundo, oficio:renderOficio, diario:renderDiario, grupo:renderGrupo, mestre:renderMestre }[hub.tab];
     html += fn();
     // se a tela for redesenhada com um campo em foco, devolve o foco e o cursor
     // à mesma posição (senão o texto digitado passa a entrar no começo do campo)
@@ -4505,6 +4983,7 @@
       ${rollUI.physical ? `<input type="text" data-bind="rollUI.phys" value="${esc(rollUI.phys)}" placeholder="Resultados na ordem, ex.: 14 3 5 (explosões vêm logo depois do dado)" aria-label="Resultados dos dados físicos">` : ''}
       <input type="text" data-bind="rollUI.note" value="${esc(rollUI.note)}" placeholder="Observação (opcional)" maxlength="140">
       <label class="check-row"><input type="checkbox" data-bind="rollUI.record" ${rollUI.record ? 'checked' : ''}> Registrar no histórico da campanha</label>
+      <label class="check-row"><input type="checkbox" data-bind="rollUI.important" ${rollUI.important ? 'checked' : ''}> Marcar como relevante (aparece na linha do tempo do diário)</label>
       <label class="check-row"><input type="checkbox" data-bind="rollUI.discord" ${rollUI.discord ? 'checked' : ''}> Enviar esta rolagem ao Discord (webhook do painel de Saque)</label>
       <button type="button" class="inv-mini-btn primary roll-go" data-act="roll">${rollUI.physical ? 'Registrar resultado' : 'Rolar'}</button>
       <p class="hub-hint">O site só mostra dados, bônus e total. Sucesso, dificuldade e consequência ficam com a mesa.</p>
@@ -4549,9 +5028,15 @@
         <button type="button" class="inv-mini-btn" data-act="skill-add" ${dis}>＋ Perícia</button>`;
     }
     if(cm.notes) html += `<div class="hub-label">Anotações</div><textarea data-bind="card.notes" rows="4" ${dis}>${esc(card.notes)}</textarea>`;
-    if(cm.equip) html += `<div class="hub-label">Equipamento</div><p class="hub-hint">${esc(capTxt(h.id))}</p><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(h.id)}">🎒 Abrir inventário</button>`;
+    html += renderFichaExtras(h, card, dis);
+    if(cm.equip){
+      const eq = equippedItems(h.id);
+      html += `<div class="hub-label">Equipamento</div>${eq.length ? '<ul class="craft-ing">' + eq.map(i => `<li>${esc(slotLabel(i.slot))}: ${esc(i.name)}${i.cond != null ? ' · ' + esc(COND_LEVELS[i.cond]) : ''}</li>`).join('') + '</ul>' : '<p class="hub-hint">Nada equipado.</p>'}
+        <p class="hub-hint">Inventário ${esc(capTxt(h.id))}</p><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(h.id)}">🎒 Abrir inventário</button>`;
+    }
     if(mods.needs){
-      html += `<div class="hub-label">Necessidades (só registro; sem efeito automático)</div>` + NEED_LIST.map(n => {
+      const w = WEATHER_STATES[weather.state] || WEATHER_STATES.calmo;
+      html += `<div class="hub-label">Necessidades (registro; o mestre decide os efeitos)</div><p class="hub-hint">${w.emoji} Clima agora: <b>${esc(w.label)}</b>. ${esc(w.desc)}</p>` + NEED_LIST.map(n => {
         const v = (card.needs && card.needs[n[0]]) || 0;
         return `<div class="need-row"><span>${n[1]}</span><button type="button" class="die-btn" data-act="need" data-n="${n[0]}" data-d="-1" ${dis} aria-label="Reduzir ${n[1]}">−</button><b class="need-v">${NEED_LEVELS[v]}</b><button type="button" class="die-btn" data-act="need" data-n="${n[0]}" data-d="1" ${dis} aria-label="Aumentar ${n[1]}">+</button></div>`;
       }).join('');
@@ -4630,7 +5115,7 @@
   // --- mundo ---
   function renderMundo(){
     const mods = cfg().modules, master = isMaster();
-    let html = '';
+    let html = weatherBox();
     if(mods.clock){
       html += `<div class="hub-sec"><div class="hub-label">Relógio da campanha</div><div class="clock-big" aria-live="polite">${esc(clockText() || 'Dia 1 · 08:00 (não iniciado)')}</div>
         ${master ? `<div class="inv-item-actions">${[[10, '+10 min'], [60, '+1 h'], [360, '+6 h'], [1440, '+1 dia'], [-60, '−1 h']].map(x => `<button type="button" class="inv-mini-btn" data-act="clock" data-m="${x[0]}">${x[1]}</button>`).join('')}</div>` : ''}
@@ -4649,7 +5134,7 @@
           <button type="button" class="inv-mini-btn" data-act="pin-go" data-id="${esc(p.id)}">Ver no mapa</button></div>`;
       }).join('') || '<div class="inv-empty">Nenhum pin no mapa.</div>'}</div>`;
     }
-    return html || '<div class="inv-empty">Ative relógio ou exploração na configuração da campanha.</div>';
+    return html + '<div class="hub-sec"><button type="button" class="inv-mini-btn primary" data-act="close-hub">🗺 Voltar ao mapa</button></div>';
   }
 
   // --- ofício ---
@@ -4702,9 +5187,245 @@
     return html;
   }
 
+  // ---------- diário, grupo, mundo e área do mestre ----------
+  const DJ_TYPES = [['resumo','Resumo'],['pista','Pista'],['decisao','Decisão'],['objetivo','Objetivo'],['nota','Nota'],['evento','Evento']];
+  const OBJ_STATES = [['aberto','Aberto'],['cumprido','Cumprido'],['falhou','Falhou']];
+  const TIMELINE_ACTIONS = new Set(['vasculhar','pegar','depositar','troca','craft','inv_removido','reparar','ajuste']);
+  function syncGm(){
+    if(gmOff){ gmOff(); gmOff = null; }
+    gmJournal = {};
+    if(isMaster() && (!firebaseReady || currentUser)) gmOff = DB.on(scopedKey(KEY_GMJ), v => { gmJournal = v || {}; hubChanged(); }, 300);
+  }
+  async function addJournal(e){
+    const gm = e.vis === 'mestre';
+    if(gm && !isMaster()){ toast('Só o mestre escreve no diário privado.', true); return false; }
+    const path = scopedKey(gm ? KEY_GMJ : KEY_JOURNAL), id = DB.newId(path), a = actorFields();
+    const rec = JSON.parse(JSON.stringify(Object.assign({ id, author:a.actorName, authorId:a.actorId, sessionId:(campaignMeta && campaignMeta.activeSessionId) || null, vis:gm ? 'mestre' : 'grupo' }, e)));
+    rec.ts = DB.ts();
+    const ok = await DB.set(path + '/' + id, rec);
+    if(!ok) toast('Não foi possível salvar no diário (as regras do Firebase talvez ainda não liberem este caminho).', true);
+    return ok;
+  }
+  // acontecimento automático do mestre (clima, sessão...) para a linha do tempo
+  function logEvent(text){ if(isMaster()) addJournal({ type:'evento', text, auto:true, vis:'grupo' }); }
+  function canEditEntry(e){ return isMaster() || (!!currentUser && e.authorId === currentUser.uid) || (!firebaseReady); }
+  async function removeJournal(e){
+    if(!canEditEntry(e)){ toast('Só o autor ou o mestre apaga.', true); return; }
+    if(!window.confirm('Apagar esta entrada do diário?')) return;
+    await DB.set(scopedKey(e.vis === 'mestre' ? KEY_GMJ : KEY_JOURNAL) + '/' + e.id, null);
+  }
+  function journalAll(){
+    const pub = Object.keys(journal).map(k => journal[k]).filter(Boolean);
+    const gm = isMaster() ? Object.keys(gmJournal).map(k => gmJournal[k]).filter(Boolean) : [];
+    return pub.concat(gm).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  }
+  function timelineItems(){
+    const out = [];
+    journalAll().forEach(e => out.push({ ts:e.ts || 0, tag:(DJ_TYPES.find(t => t[0] === e.type) || ['', e.type])[1], priv:e.vis === 'mestre', html:`<b>${esc(e.title || '')}</b> ${esc(e.text || '')}`.trim(), by:e.author }));
+    Object.keys(sessions).map(k => sessions[k]).forEach(s => out.push({ ts:s.createdAt || 0, tag:'Sessão', html:`<b>${esc(s.title)}</b> aberta${s.date ? ' (' + esc(s.date) + ')' : ''}` }));
+    lootLog.filter(e => TIMELINE_ACTIONS.has(e.action)).forEach(e => out.push({ ts:e.ts || 0, tag:ACTION_LABELS[e.action] || e.action, html:logText(e), by:e.actorName }));
+    Object.keys(rolls).map(k => rolls[k]).filter(r => r && r.important).forEach(r => out.push({ ts:r.ts || 0, tag:'Rolagem', html:esc(rollText(r)), by:r.actorName }));
+    return out.sort((a, b) => b.ts - a.ts).slice(0, 80);
+  }
+  function renderDiario(){
+    const f = hub.jf, master = isMaster();
+    const list = journalAll().filter(e => !hub.djFilter || e.type === hub.djFilter);
+    const row = e => {
+      const t = (DJ_TYPES.find(x => x[0] === e.type) || ['', e.type])[1];
+      return `<div class="log-row"><div class="log-meta"><span class="log-badge ${e.vis === 'mestre' ? 'ajuste' : 'saque'}">${esc(t)}${e.vis === 'mestre' ? ' · privado' : ''}</span><span>${esc(fmtTs(e.ts))}</span><span>por ${esc(e.author || '?')}</span></div>
+        ${e.title ? `<b>${esc(e.title)}</b>` : ''}<div>${esc(e.text || '').replace(/\n/g, '<br>')}</div>
+        ${e.type === 'objetivo' ? `<div class="inv-item-actions">${OBJ_STATES.map(s => `<button type="button" class="inv-mini-btn ${(e.status || 'aberto') === s[0] ? 'primary' : ''}" data-act="obj-set" data-id="${esc(e.id)}" data-vis="${e.vis}" data-s="${s[0]}" ${canEditEntry(e) ? '' : 'disabled'}>${s[1]}</button>`).join('')}</div>` : ''}
+        ${canEditEntry(e) && !e.auto ? `<div class="inv-item-actions"><button type="button" class="inv-mini-btn danger" data-act="dj-del" data-id="${esc(e.id)}" data-vis="${e.vis}">Apagar</button></div>` : ''}</div>`;
+    };
+    const tl = hub.djTimeline ? timelineItems() : [];
+    return `<div class="hub-sec"><div class="hub-label">Nova entrada</div>
+      <select data-bind="jf.type" data-rerender>${DJ_TYPES.filter(t => t[0] !== 'evento').map(t => opt(t[0], t[1], f.type)).join('')}</select>
+      <input type="text" data-bind="jf.title" value="${esc(f.title)}" placeholder="Título (opcional)" maxlength="80">
+      <textarea data-bind="jf.text" rows="4" placeholder="${f.type === 'objetivo' ? 'O que o grupo quer ou precisa fazer' : 'Escreva o que importa para a continuidade'}">${esc(f.text)}</textarea>
+      ${master ? `<select data-bind="jf.vis"><option value="grupo" ${f.vis === 'grupo' ? 'selected' : ''}>Público (todo o grupo vê)</option><option value="mestre" ${f.vis === 'mestre' ? 'selected' : ''}>Privado do mestre</option></select>` : '<p class="hub-hint">Entradas aparecem para todo o grupo.</p>'}
+      <button type="button" class="inv-mini-btn primary" data-act="dj-add">Salvar no diário</button></div>
+    <div class="hub-sec"><div class="hub-label">Registros</div>
+      <select data-bind="hub.djFilter" data-rerender>${opt('', 'Todos os tipos', hub.djFilter)}${DJ_TYPES.map(t => opt(t[0], t[1], hub.djFilter)).join('')}</select>
+      <label class="check-row"><input type="checkbox" data-bind="hub.djTimeline" data-rerender ${hub.djTimeline ? 'checked' : ''}> Mostrar linha do tempo (inclui saques, trocas, fabricações e eventos)</label>
+      ${hub.djTimeline ? (tl.map(t => `<div class="log-row"><div class="log-meta"><span class="log-badge ${t.priv ? 'ajuste' : 'saque'}">${esc(t.tag)}${t.priv ? ' · privado' : ''}</span><span>${esc(fmtTs(t.ts))}</span>${t.by ? `<span>por ${esc(t.by)}</span>` : ''}</div><div>${t.html}</div></div>`).join('') || '<div class="inv-empty">Nada na linha do tempo ainda.</div>')
+        : (list.map(row).join('') || '<div class="inv-empty">Nenhuma entrada ainda.</div>')}</div>`;
+  }
+  function renderGrupo(){
+    const s = activeSession(), members = (campaignMeta && campaignMeta.members) || {};
+    const toks = holderList().filter(h => h.type === 'token');
+    const res = cfg().resources;
+    const chars = toks.map(h => {
+      const c = characters[h.id] || {}, t = tokens.find(x => x.id === h.id) || {}, eq = equippedItems(h.id);
+      return `<div class="inv-item"><div class="inv-item-name">${esc(c.name || h.name)}</div>
+        <div class="inv-item-util">${t.ownerName ? 'Jogador: ' + esc(t.ownerName) + ' · ' : ''}Inventário ${esc(capTxt(h.id))}</div>
+        ${res.length ? `<div class="inv-item-util">${res.map(r => `${esc(r.label)} <b>${resVal(c, r)}${r.max ? '/' + r.max : ''}</b>`).join(' · ')}</div>` : ''}
+        ${eq.length ? `<div class="inv-item-util">Equipado: ${eq.map(i => esc(i.name) + (i.cond != null ? ' (' + COND_LEVELS[i.cond] + ')' : '')).join(', ')}</div>` : ''}
+        <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="grp-sheet" data-id="${esc(h.id)}">Ficha</button><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(h.id)}">Inventário</button></div></div>`;
+    }).join('');
+    return `<div class="hub-sec"><div class="hub-label">Sessão</div>${s ? `<div class="inv-item-util"><b>${esc(s.title)}</b> · ${esc(s.date || '')} · ${s.closed ? 'encerrada' : 'em andamento'}<br>Presentes: ${esc((s.present || []).join(', ') || '—')}</div>` : '<div class="inv-empty">Sem sessão ativa.</div>'}
+      ${s && s.summary ? `<div class="hub-label">Resumo da última sessão</div><div class="inv-item-util">${esc(s.summary).replace(/\n/g, '<br>')}</div>` : ''}</div>
+    <div class="hub-sec"><div class="hub-label">Participantes</div>${Object.keys(members).map(u => `<div class="inv-item-util">${esc(members[u].name || u)} · ${members[u].role === 'master' ? 'mestre' : 'jogador'}</div>`).join('') || '<div class="inv-item-util">Sem lista de participantes (campanha original, aberta a todos).</div>'}</div>
+    <div class="hub-sec"><div class="hub-label">Personagens</div>${chars || '<div class="inv-empty">Nenhum token no mapa.</div>'}
+      <p class="hub-hint">Jogadores conectados e recursos compartilhados do grupo dependem de caminhos novos no Firebase e ainda não existem.</p></div>`;
+  }
+  function resVal(card, r){ const v = card && card.res && card.res[r.key]; return typeof v === 'number' ? v : (r.max || 0); }
+  function weatherBox(){
+    const w = WEATHER_STATES[weather.state] || WEATHER_STATES.calmo;
+    return `<div class="hub-sec"><div class="hub-label">Clima</div><div class="inv-item-util">${w.emoji} <b>${esc(w.label)}</b> — ${esc(w.desc)}${weather.updatedBy ? '<br>Definido por ' + esc(weather.updatedBy) : ''}</div>
+      <button type="button" class="inv-mini-btn" data-act="weather-open">Ver / mudar clima</button>
+      <p class="hub-hint">O clima é um estado compartilhado; as consequências são decididas pelo mestre.</p></div>`;
+  }
+  function renderMestre(){
+    if(!isMaster()) return '<div class="inv-empty">Área restrita ao mestre desta campanha.</div>';
+    const c = cfg(), g = hub.give, pins2 = pins.filter(p => p.type !== 'npc');
+    if(!g.to || !holderById(g.to)) g.to = (allHolders()[0] || {}).id || '';
+    if(!hub.resDraft) hub.resDraft = c.resources.map(r => Object.assign({}, r));
+    if(!hub.slotDraft) hub.slotDraft = Object.assign({}, c.equipSlots);
+    const locOpts = cc => opt('', '— abastecer à mão —', cc.locKey || '') + LOC_ORDER.map(k => opt(k, LOC_NAMES[k], cc.locKey || '')).join('');
+    const cont = pins2.map(p => {
+      const cc = p.container || {}, on = !!cc.enabled;
+      return `<div class="inv-item"><div class="inv-item-name">${esc(p.title || 'Pin')}</div>
+        <label class="check-row"><input type="checkbox" data-ctn="${esc(p.id)}" data-f="enabled" ${on ? 'checked' : ''}> É um contêiner (tem conteúdo persistente)</label>
+        ${on ? `<label class="hub-label">Tabela de saque (sorteada uma única vez)</label><select data-ctn="${esc(p.id)}" data-f="locKey">${locOpts(cc)}</select>
+        <div class="expr-row"><input type="number" min="0" max="8" data-ctn="${esc(p.id)}" data-f="min" value="${cc.min != null ? esc(cc.min) : 1}" aria-label="Mínimo de itens"><input type="number" min="1" max="8" data-ctn="${esc(p.id)}" data-f="max" value="${cc.max != null ? esc(cc.max) : 3}" aria-label="Máximo de itens"></div>
+        <input type="number" min="1" data-ctn="${esc(p.id)}" data-f="cap" value="${cc.cap || ''}" placeholder="Capacidade em espaços (vazio = sem limite)">
+        <select data-ctn="${esc(p.id)}" data-f="access">${opt('aberto', 'Aberto', cc.access || 'aberto')}${opt('bloqueado', 'Bloqueado (só o mestre abre)', cc.access || 'aberto')}</select>
+        <div class="inv-item-util">Estado: ${esc(CONT_STATE_LABELS[containerState(p.id)] || '—')} · ${invCount(p.id)} item(ns)</div>
+        <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(p.id)}">Abrir</button><button type="button" class="inv-mini-btn" data-act="pin-go" data-id="${esc(p.id)}">Ver no mapa</button></div>` : ''}</div>`;
+    }).join('');
+    const toks = holderList().filter(h => h.type === 'token');
+    return `<div class="hub-sec"><div class="hub-label">Contêineres e saque persistente</div>
+      <p class="hub-hint">Um contêiner guarda o que foi sorteado: abrir de novo mostra o que sobrou. Não há reposição automática; use "Reabastecer" quando quiser.</p>${cont || '<div class="inv-empty">Nenhum pin no mapa.</div>'}</div>
+    <div class="hub-sec"><div class="hub-label">Dar item (ajuste do mestre)</div>
+      <datalist id="item-names">${ITEMS.map(i => `<option value="${esc(i.name)}">`).join('')}</datalist>
+      <input type="text" list="item-names" data-bind="gv.name" value="${esc(g.name)}" placeholder="Nome do item do catálogo">
+      <div class="expr-row"><input type="number" min="1" class="qty-in" data-bind="gv.qty" data-num value="${esc(g.qty)}" aria-label="Quantidade"><select data-bind="gv.to">${allHolders().map(h => opt(h.id, (h.type === 'container' ? '📦 ' : h.type === 'npc' ? '👤 ' : '') + h.name, g.to)).join('')}</select></div>
+      <button type="button" class="inv-mini-btn primary" data-act="give">Entregar</button></div>
+    <div class="hub-sec"><div class="hub-label">Recursos da ficha (PV, PE, Sanidade...)</div>
+      <p class="hub-hint">Defina os recursos que a sua mesa usa. O app só guarda e mostra os valores; nenhuma regra é aplicada sozinha.</p>
+      ${hub.resDraft.map((r, i) => `<div class="bonus-row"><input type="text" data-bind="rs.${i}.label" value="${esc(r.label)}" placeholder="Nome (ex.: PV)" maxlength="20"><input type="number" min="0" data-bind="rs.${i}.max" data-num value="${esc(r.max || '')}" placeholder="Máx."><button type="button" class="inv-mini-btn danger" data-act="res-del" data-i="${i}" aria-label="Remover recurso">✕</button></div>`).join('')}
+      <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="res-add">＋ Recurso</button><button type="button" class="inv-mini-btn" data-act="res-seed">Sugerir PV / PE / Sanidade</button><button type="button" class="inv-mini-btn primary" data-act="res-save">Salvar recursos</button></div></div>
+    <div class="hub-sec"><div class="hub-label">Espaços de equipamento (quantos itens cabem em cada)</div>
+      ${EQUIP_SLOTS.map(s => `<div class="bonus-row"><span class="w-cat">${esc(s[1])}</span><input type="number" min="0" max="9" data-bind="sl.${s[0]}" data-num value="${esc(hub.slotDraft[s[0]])}"></div>`).join('')}
+      <button type="button" class="inv-mini-btn primary" data-act="slots-save">Salvar espaços</button></div>
+    ${c.modules.needs ? `<div class="hub-sec"><div class="hub-label">Ajuste de necessidades em grupo</div>
+      <p class="hub-hint">Você decide quando aplicar: escolha a necessidade, o ajuste e quem é afetado. Fica registrado na linha do tempo.</p>
+      <select data-bind="hub.bulkNeed">${NEED_LIST.map(n => opt(n[0], n[1], hub.bulkNeed)).join('')}</select>
+      <select data-bind="hub.bulkDelta" data-num>${opt(1, '+1 nível (piora)', hub.bulkDelta)}${opt(-1, '−1 nível (melhora)', hub.bulkDelta)}</select>
+      ${toks.map(h => `<label class="check-row"><input type="checkbox" data-act="bulk-pick" data-id="${esc(h.id)}" ${hub.bulkPick.includes(h.id) ? 'checked' : ''}> ${esc(h.name)}</label>`).join('') || '<div class="inv-item-util">Sem tokens.</div>'}
+      <button type="button" class="inv-mini-btn primary" data-act="bulk-apply">Aplicar</button></div>` : ''}
+    <div class="hub-sec"><div class="hub-label">Backup e restauração desta campanha</div>
+      <button type="button" class="inv-mini-btn primary" data-act="backup-export">⬇ Exportar backup (arquivo .json)</button>
+      <label class="hub-label">Restaurar de um backup</label>
+      <input type="file" accept="application/json,.json" id="backup-file">
+      <p class="hub-hint">Restaurar sobrescreve mapa, inventários, fichas, diário e registros desta campanha com o conteúdo do arquivo. Um backup do estado atual é baixado automaticamente antes.</p>
+      <button type="button" class="inv-mini-btn danger" data-act="backup-import">Restaurar do arquivo escolhido</button>${hub.backupMsg ? `<p class="hub-hint" role="status">${esc(hub.backupMsg)}</p>` : ''}</div>`;
+  }
+  function slugKey(s){ return normName(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) || 'r' + Date.now().toString(36); }
+  async function saveResources(){
+    const seen = {}, list = [];
+    hub.resDraft.forEach(r => {
+      const label = String(r.label || '').trim(); if(!label) return;
+      let key = r.key || slugKey(label); while(seen[key]) key += '2'; seen[key] = 1;
+      list.push({ key, label, max:Math.max(0, parseInt(r.max, 10) || 0) });
+    });
+    await DB.set(`campaign-meta/${activeCampaignId}/config/resources`, list.length ? list : null);
+    hub.resDraft = null; toast('Recursos salvos.'); renderHub();
+  }
+  async function saveSlots(){
+    const o = {}; EQUIP_SLOTS.forEach(s => { const n = parseInt(hub.slotDraft[s[0]], 10); o[s[0]] = isNaN(n) ? DEFAULT_SLOT_CAP[s[0]] : Math.min(9, Math.max(0, n)); });
+    await DB.set(`campaign-meta/${activeCampaignId}/config/equipSlots`, o);
+    hub.slotDraft = null; toast('Espaços salvos.'); renderHub();
+  }
+  async function giveItem(){
+    const g = hub.give, item = itemByName(g.name);
+    if(!item){ toast('Escolha um item pelo nome do catálogo.', true); return; }
+    if(!g.to || !holderById(g.to)){ toast('Escolha o destino.', true); return; }
+    const qty = Math.max(1, parseInt(g.qty, 10) || 1);
+    const ok = await addItemTo(g.to, item, 'mestre', 'ajuste', { note:'item concedido pelo mestre' }, null, qty);
+    if(ok){ g.name = ''; renderHub(); }
+  }
+  async function bulkNeeds(){
+    if(!hub.bulkPick.length){ toast('Escolha ao menos um personagem.', true); return; }
+    const nd = NEED_LIST.find(n => n[0] === hub.bulkNeed), d = Number(hub.bulkDelta) || 1;
+    if(!window.confirm(`Aplicar ${d > 0 ? '+1' : '−1'} em "${nd[1]}" a ${hub.bulkPick.length} personagem(ns)?`)) return;
+    const names = [];
+    for(const id of hub.bulkPick){
+      const h = holderById(id); if(!h) continue;
+      const card = JSON.parse(JSON.stringify(ensureCard(id)));
+      card.needs = card.needs || {};
+      card.needs[nd[0]] = Math.min(4, Math.max(0, (card.needs[nd[0]] || 0) + d));
+      await DB.set(`${scopedKey(KEY_CHARS)}/${id}`, card);
+      names.push(h.name);
+    }
+    logEvent(`${nd[1]} ${d > 0 ? '+1' : '−1'}: ${names.join(', ')}`);
+    hub.bulkPick = []; toast('Ajuste aplicado.'); renderHub();
+  }
+  // ---------- backup e restauração ----------
+  const BACKUP_KEYS = [KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG, KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ];
+  async function buildBackup(){
+    const data = {};
+    for(const k of BACKUP_KEYS){ try{ const v = await readScoped(activeCampaignId, k); if(v != null) data[k] = v; }catch(e){ /* sem permissão: segue */ } }
+    return { format:'tau-volantis-backup', formatVersion:1, dataSchema:DATA_SCHEMA, exportedAt:new Date().toISOString(),
+      campaign:{ id:activeCampaignId, name:campaignMeta ? campaignMeta.name : '', system:campaignMeta ? campaignMeta.system || '' : '', config:(campaignMeta && campaignMeta.config) || null },
+      sessions, data };
+  }
+  function downloadJson(obj, name){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 1)], { type:'application/json' }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  }
+  function backupName(){ return 'tau-volantis-' + String((campaignMeta && campaignMeta.name) || 'campanha').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-' + todayStr() + '.json'; }
+  async function exportBackup(){ if(!isMaster()) return; downloadJson(await buildBackup(), backupName()); hub.backupMsg = 'Backup gerado e baixado.'; renderHub(); }
+  // confere o arquivo e conta problemas ANTES de gravar qualquer coisa
+  function checkBackup(b){
+    const issues = [];
+    if(!b || b.format !== 'tau-volantis-backup') return { fatal:'O arquivo não é um backup do Tau Volantis.' };
+    if(!b.formatVersion || b.formatVersion > 1) return { fatal:'Versão de backup desconhecida (mais nova que este app).' };
+    if(!b.data || typeof b.data !== 'object') return { fatal:'Backup sem dados.' };
+    Object.keys(b.data).forEach(k => { if(!BACKUP_KEYS.includes(k)) issues.push('Chave ignorada: ' + k); });
+    const inv = b.data[KEY_INV] || {};
+    let bad = 0, total = 0;
+    Object.keys(inv).forEach(h => Object.keys(inv[h] || {}).filter(isItemKey).forEach(u => { total++; const i = inv[h][u]; if(!i || !i.uid || i.itemId == null || !i.name) bad++; }));
+    if(bad) issues.push(`${bad} de ${total} item(ns) de inventário estão malformados e serão restaurados como estão.`);
+    return { issues, fatal:null, total };
+  }
+  async function importBackup(){
+    if(!isMaster()) return;
+    const fi = document.getElementById('backup-file'), file = fi && fi.files && fi.files[0];
+    if(!file){ toast('Escolha o arquivo de backup primeiro.', true); return; }
+    let b; try{ b = JSON.parse(await file.text()); }catch(e){ toast('Arquivo ilegível (JSON inválido).', true); return; }
+    const chk = checkBackup(b);
+    if(chk.fatal){ toast(chk.fatal, true); return; }
+    const typed = window.prompt(`Restaurar "${(b.campaign && b.campaign.name) || 'backup'}" (${b.exportedAt || '?'}) sobre a campanha ATUAL "${campaignMeta ? campaignMeta.name : ''}"?\n${chk.issues.join('\n')}\nUm backup do estado atual será baixado antes.\nDigite RESTAURAR para confirmar:`);
+    if(typed == null || typed.trim() !== 'RESTAURAR'){ if(typed != null) toast('Nada foi alterado.', true); return; }
+    downloadJson(await buildBackup(), 'ANTES-DA-RESTAURACAO-' + backupName());
+    const failed = [];
+    for(const k of Object.keys(b.data)){
+      if(!BACKUP_KEYS.includes(k)) continue;
+      try{ await writeScoped(activeCampaignId, k, b.data[k]); }catch(e){ console.error('Falha ao restaurar', k, e); failed.push(k); }
+    }
+    if(b.sessions){ try{ await DB.set('campaign-sessions/' + activeCampaignId, b.sessions); }catch(e){ failed.push('sessões'); } }
+    if(b.campaign && b.campaign.config){ try{ await DB.set(`campaign-meta/${activeCampaignId}/config`, b.campaign.config); }catch(e){ failed.push('configuração'); } }
+    hub.backupMsg = failed.length ? 'Restauração parcial. Falharam: ' + failed.join(', ') + '.' : 'Restauração concluída.';
+    toast(hub.backupMsg, !!failed.length);
+    if(!firebaseReady) activateCampaign(activeCampaignId);
+    renderHub();
+  }
+  function renderFichaExtras(h, card, dis){
+    const res = cfg().resources;
+    let html = '';
+    if(res.length) html += `<div class="hub-label">Recursos</div>` + res.map(r => `<div class="need-row"><span>${esc(r.label)}</span>
+      <button type="button" class="die-btn" data-act="res" data-k="${esc(r.key)}" data-d="-1" ${dis} aria-label="Reduzir ${esc(r.label)}">−</button><b class="need-v">${resVal(card, r)}${r.max ? ' / ' + r.max : ''}</b>
+      <button type="button" class="die-btn" data-act="res" data-k="${esc(r.key)}" data-d="1" ${dis} aria-label="Aumentar ${esc(r.label)}">+</button></div>`).join('');
+    return html;
+  }
+
   // ---------- eventos do painel ----------
   function bindRoot(name){
-    return { rollUI, hub, sf:hub.sessionForm, nc:hub.newCampaign, cd:hub.cfgDraft, rf:hub.recipeForm, card:characters[hub.charToken] || null }[name] || null;
+    return { rollUI, hub, sf:hub.sessionForm, nc:hub.newCampaign, cd:hub.cfgDraft, rf:hub.recipeForm, card:characters[hub.charToken] || null,
+      jf:hub.jf, gv:hub.give, rs:hub.resDraft, sl:hub.slotDraft }[name] || null;
   }
   function bindSet(path, value){
     const ps = path.split('.'), root = bindRoot(ps[0]);
@@ -4732,6 +5453,13 @@
       setPinExplore(t.dataset.pin, t.dataset.field, v);
       return;
     }
+    if(t.dataset && t.dataset.ctn){
+      let v = t.type === 'checkbox' ? t.checked : t.value;
+      if(['min', 'max', 'cap'].includes(t.dataset.f)) v = v === '' ? (t.dataset.f === 'cap' ? null : 0) : Math.max(0, parseInt(v, 10) || 0);
+      setContainerCfg(t.dataset.ctn, { [t.dataset.f]: v });
+      return;
+    }
+    if(t.dataset && t.dataset.act === 'bulk-pick'){ hubAction('bulk-pick', t); return; }
     if(t.dataset && t.dataset.act === 'present'){
       const arr = hub.sessionForm.present, n = t.dataset.name, i = arr.indexOf(n);
       if(t.checked && i < 0) arr.push(n);
@@ -4799,9 +5527,45 @@
       case 'recipe-seed': seedRecipes(); break;
       case 'ing-add': hub.recipeForm.ingredients.push({ name:'', qty:1 }); renderHub(); break;
       case 'ing-del': hub.recipeForm.ingredients.splice(+D.i, 1); renderHub(); break;
+      case 'close-hub': closeHub(); break;
+      case 'weather-open': closeHub(); openWeatherPopover(); break;
+      case 'grp-sheet': hub.charToken = D.id; hub.tab = 'ficha'; renderHub(); break;
+      case 'dj-add': {
+        const f = hub.jf;
+        if(!(f.text || '').trim() && !(f.title || '').trim()){ toast('Escreva algo para salvar.', true); break; }
+        addJournal({ type:f.type, title:(f.title || '').trim(), text:(f.text || '').trim(), vis:isMaster() ? f.vis : 'grupo', status:f.type === 'objetivo' ? 'aberto' : undefined })
+          .then(ok => { if(ok){ hub.jf.title = ''; hub.jf.text = ''; toast('Salvo no diário.'); renderHub(); } });
+        break;
+      }
+      case 'dj-del': { const e = (D.vis === 'mestre' ? gmJournal : journal)[D.id]; if(e) removeJournal(e); break; }
+      case 'obj-set': { const e = (D.vis === 'mestre' ? gmJournal : journal)[D.id]; if(e && canEditEntry(e)) DB.set(scopedKey(D.vis === 'mestre' ? KEY_GMJ : KEY_JOURNAL) + '/' + D.id + '/status', D.s); break; }
+      case 'res': { const r = cfg().resources.find(x => x.key === D.k); if(!r) break; const c = ensureCard(hub.charToken); c.res = c.res || {};
+        let v = resVal(c, r) + (+D.d); v = Math.max(0, r.max ? Math.min(r.max, v) : v); c.res[r.key] = v; scheduleSaveCard(); renderHub(); break; }
+      case 'res-add': hub.resDraft.push({ key:'', label:'', max:0 }); renderHub(); break;
+      case 'res-del': hub.resDraft.splice(+D.i, 1); renderHub(); break;
+      case 'res-seed': [['pv', 'PV'], ['pe', 'PE'], ['san', 'Sanidade']].forEach(x => { if(!hub.resDraft.some(r => r.key === x[0])) hub.resDraft.push({ key:x[0], label:x[1], max:0 }); }); renderHub(); break;
+      case 'res-save': saveResources(); break;
+      case 'slots-save': saveSlots(); break;
+      case 'give': giveItem(); break;
+      case 'bulk-apply': bulkNeeds(); break;
+      case 'bulk-pick': { const i = hub.bulkPick.indexOf(D.id); if(el.checked && i < 0) hub.bulkPick.push(D.id); if(!el.checked && i >= 0) hub.bulkPick.splice(i, 1); break; }
+      case 'backup-export': exportBackup(); break;
+      case 'backup-import': importBackup(); break;
     }
   }
 
+  // ---------- navegação por áreas (menu "Áreas") ----------
+  // Mundo = mapa + clima/locais · Personagem = ficha · Inventário · Expedição = saque/pesca/contêineres
+  // Diário · Grupo · Mestre (só aparece para quem é mestre). Cada botão faz uma ação real.
+  function closeAllPanels(){ closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); }
+  const AREA_HUB_TAB = { mundo:'mundo', personagem:'ficha', diario:'diario', grupo:'grupo', mestre:'mestre' };
+  document.querySelectorAll('[data-area]').forEach(b => b.addEventListener('click', () => {
+    const a = b.dataset.area;
+    if(AREA_HUB_TAB[a]){
+      if(a === 'personagem' && charSelect.value) hub.charToken = charSelect.value;
+      openHub(AREA_HUB_TAB[a]);
+    }
+  }));
   document.getElementById('hub-drawer-close-btn').addEventListener('click', closeHub);
   hubBackdrop.addEventListener('click', closeHub);
   document.getElementById('hub-toggle-btn').addEventListener('click', () => { hubIsOpen() ? closeHub() : openHub('dados'); });
