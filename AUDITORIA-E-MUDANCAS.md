@@ -88,7 +88,7 @@ Chromium no celular (360–420 px) com os CDNs servidos localmente: inventário 
 ## 7. Revisão de UX e acessibilidade (menu Áreas e mapa tático)
 Revisei com critérios de acessibilidade (WCAG 2.1 A/AA), as 10 heurísticas de usabilidade e regras de acabamento visual. O que mudou:
 - **Mover sem arrastar**: botões direcionais (8 direções, 1 casa por toque) no painel do token e setas do teclado com o token em foco. Em celular, arrastar com casas pequenas é impreciso; antes só havia arrasto.
-- **Desfazer**: botão "Desfazer" na barra restaura a posição e o movimento do último deslocamento.
+- **Desfazer**: restaura a posição e o movimento do último deslocamento.
 - **Teclado e leitor de tela**: tokens focáveis, com nome falado (nome, tipo, coluna e linha, se está oculto ou na vez); o foco volta ao token depois de mover; avisos (toasts), barra de turno e régua são anunciados.
 - **Alvos de toque** de pelo menos 44 px em todos os botões e campos do tático; foco visível em todos os controles.
 - **Texto mínimo de 11 px** (antes havia textos de 9 a 10 px) e números alinhados nos contadores.
@@ -97,3 +97,11 @@ Revisei com critérios de acessibilidade (WCAG 2.1 A/AA), as 10 heurísticas de 
 - Contrastes medidos: texto de apoio 5,4:1, texto principal 14:1, bordas de campo 3,4:1, inimigo 4,7:1 (todos acima do mínimo).
 
 Ainda pendente (não mexi): ler as telas antigas (inventário, hub) com o mesmo critério; textos de 10 px existentes nelas continuam.
+
+## 8. Melhorias de interface aplicadas (a partir do design)
+- **Aviso de cena ativa** no mapa do mundo: quando o mestre ativa uma cena tática, aparece uma faixa "Cena tática ativa · nome" com o botão **Abrir** e um **×** para dispensar (volta a aparecer quando a cena ativa mudar).
+- **Menu Áreas**: o botão Tático mostra o nome da cena ativa e o selo **Ao vivo**; **Dados** agora é um botão do menu (antes era um botão solto na lateral).
+- **Barra do tático com 6 botões** (Régua, Centro, Token, Combate, Cena, Dados). "Cenas" e "Grade" viraram um só botão **Cena**; dentro dele há **Ajustar grade** para a cena em exibição.
+- **Desfazer movimento** virou uma pílula flutuante no canto do mapa, só aparece depois de um movimento.
+- **Painel do token**: contador grande "x/y casas", quadradinhos de movimento, metros usados e as setas de direção ao lado; ícones em vez de emojis.
+- Testado em 360, 390 e 420 px: sem rolagem horizontal, alvos de pelo menos 44 px, faixa de aviso acima da barra de abas. Não testado em aparelho físico nem no Firebase real.

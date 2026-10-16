@@ -179,17 +179,17 @@
       <div class="vs-group-label">Áreas</div>
       <div class="area-grid">
         <button type="button" class="area-btn" data-area="mundo"><span class="area-ic">🗺</span><b>Mundo</b><small>Mapa, clima, locais</small></button>
-        <button type="button" class="area-btn" id="area-tatico"><span class="area-ic">⚔️</span><b>Tático</b><small>Cena, grade, turnos</small></button>
+        <button type="button" class="area-btn" id="area-tatico"><span class="area-ic">⚔️</span><b>Tático</b><small id="area-tatico-sub">Cena, grade, turnos</small><span class="area-live" id="area-tatico-live" hidden>Ao vivo</span></button>
         <button type="button" class="area-btn" data-area="personagem"><span class="area-ic">📇</span><b>Personagem</b><small>Ficha, recursos, equipamento</small></button>
         <button type="button" class="area-btn" id="inv-toggle-btn"><span class="area-ic">🎒</span><b>Inventário</b><small>Itens, carga, contêineres</small></button>
         <button type="button" class="area-btn" id="drawer-toggle-btn"><span class="area-ic">🧭</span><b>Expedição</b><small>Saque, pesca, ofício</small></button>
         <button type="button" class="area-btn" data-area="diario"><span class="area-ic">📓</span><b>Diário</b><small>Pistas, objetivos, linha do tempo</small></button>
         <button type="button" class="area-btn" data-area="grupo"><span class="area-ic">👥</span><b>Grupo</b><small>Sessão e personagens</small></button>
+        <button type="button" class="area-btn" id="hub-toggle-btn"><span class="area-ic">🎲</span><b>Dados</b><small>Rolagens e mesa</small></button>
         <button type="button" class="area-btn area-master" id="area-mestre" data-area="mestre" hidden><span class="area-ic">🧰</span><b>Mestre</b><small>Contêineres, recursos, backup</small></button>
       </div>
       <div class="toolbar-divider" style="width:auto;height:1px;margin:0.5rem 0;"></div>
       <div class="toolbar-group">
-        <button class="tool-btn" id="hub-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Dados e mesa</button>
         <button class="tool-btn" id="nav-drawer-toggle-btn"><span class="dot" style="background:var(--ice-300)"></span>Lista do mapa</button>
         <button class="tool-btn" id="token-select-toggle-btn"><span class="dot" style="background:var(--frost)"></span>Selecionar Tokens</button>
       </div>
@@ -338,9 +338,16 @@
       <div id="tac-map"></div>
       <div id="tac-empty" hidden></div>
       <div id="tac-chip" hidden role="status" aria-live="polite"></div>
+      <button type="button" id="tac-undo" data-tac="undo" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>Desfazer movimento</button>
     </div>
     <div id="tac-bar"></div>
     <div id="tac-sheet" hidden></div>
+  </div>
+
+  <div id="tac-banner" hidden role="status" aria-live="polite">
+    <div class="tb-txt"><small>Cena tática ativa</small><b id="tac-banner-name"></b></div>
+    <button type="button" id="tac-banner-open">Abrir</button>
+    <button type="button" id="tac-banner-x" aria-label="Dispensar aviso">&times;</button>
   </div>
 
   <div class="drawer-backdrop" id="inv-drawer-backdrop"></div>

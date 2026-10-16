@@ -5576,7 +5576,7 @@
   const TAC_DIAG = [['cheb', 'Diagonal custa 1 casa'], ['alt', 'Diagonal alterna 1 e 2 casas'], ['eucl', 'Linha reta (arredonda para cima)']];
   const TAC_LIMIT = [['warn', 'Só avisar ao passar do limite'], ['block', 'Bloquear jogadores além do limite'], ['off', 'Sem limite']];
   const TAC_DEF = { size:64, mpc:1.5, diag:'cheb', limit:'warn', speed:6, cols:14, rows:10 };
-  const tacUI = { open:false, sid:null, sel:null, panel:'', ruler:false, pts:[], gd:null, drag:false, dirty:false, seen:false, nfSrc:'blank', imgCache:{}, last:null, focusTok:null, markers:{} };
+  const tacUI = { open:false, sid:null, sel:null, panel:'', ruler:false, pts:[], gd:null, drag:false, dirty:false, seen:false, nfSrc:'blank', imgCache:{}, last:null, focusTok:null, markers:{}, bannerOff:null };
   let tacMap = null, tacBase = null, tacGridLayer = null, tacTokLayer = null, tacRulerLayer = null, tacBuiltKey = '';
   const tacEl = id => document.getElementById(id);
   // escapa também aspas (usado dentro de atributos) e preserva o número 0
@@ -5584,7 +5584,8 @@
   function tacPath(){ return scopedKey(KEY_TAC); }
   function tacReset(){
     tac = { active:null, scenes:{} }; gmTac = {};
-    tacUI.sid = null; tacUI.sel = null; tacUI.panel = ''; tacUI.ruler = false; tacUI.pts = []; tacUI.gd = null; tacUI.seen = false; tacUI.imgCache = {}; tacUI.last = null; tacBuiltKey = '';
+    tacUI.sid = null; tacUI.sel = null; tacUI.panel = ''; tacUI.ruler = false; tacUI.pts = []; tacUI.gd = null; tacUI.seen = false; tacUI.imgCache = {}; tacUI.last = null; tacBuiltKey = ''; tacUI.bannerOff = null;
+    tacRenderArea();
     if(tacUI.open){ tacRender(); tacBuild(true); }
   }
   function tacNum(v, d){ const n = parseFloat(v); return isFinite(n) ? n : d; }
@@ -5773,7 +5774,7 @@
       const label = tacX(String(t.em || t.name || '?').slice(0, 2).toUpperCase());
       const cls = 'tac-tok' + (t.hidden ? ' hid' : '') + (tacUI.sel === t.id ? ' sel' : '') + (cur === t.id ? ' turn' : '') + (over ? ' over' : '');
       const icon = L.divIcon({ className:'', iconSize:[px, px], iconAnchor:[px / 2 - off, px / 2 - off],
-        html:`<div class="${cls}" style="width:${px}px;height:${px}px;--tc:${tacX(col)};font-size:${Math.round(px * 0.36)}px"><span>${label}</span></div><span class="tac-nm">${tacX(String(t.name || '').split(/\s+/)[0])}${t.hidden ? ' 🙈' : ''}</span>` });
+        html:`<div class="${cls}" style="width:${px}px;height:${px}px;--tc:${tacX(col)};font-size:${Math.round(px * 0.36)}px"><span>${label}</span></div><span class="tac-nm">${tacX(String(t.name || '').split(/\s+/)[0])}${t.hidden ? ' · oculto' : ''}</span>` });
       const kname = (TAC_KINDS[t.kind] || TAC_KINDS.obj)[0], aria = `${t.name || 'Token'}, ${kname}${t.hidden ? ', oculto' : ''}${cur === t.id ? ', vez atual' : ''}, coluna ${c + 1}, linha ${r + 1}`;
       const m = L.marker(tacCenter(sc, c, r), { icon, draggable:tacCanMove(t), keyboard:true, title:aria, zIndexOffset:cur === t.id ? 500 : (tacUI.sel === t.id ? 300 : 0) });
       m.on('click', ev => { L.DomEvent.stopPropagation(ev); if(tacUI.ruler){ tacRulerPoint(m.getLatLng()); return; } tacSelect(t.id); });
@@ -5867,14 +5868,37 @@
     tacEl('tac-title').textContent = sc ? (sc.name || 'Cena') : 'Mapa tático';
     tacEl('tac-sub').textContent = !sc ? '' : (tac.active === sid ? 'Cena ativa para o grupo' : 'Prévia: o grupo não está vendo esta cena');
   }
+  const tacSvg = p => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+  const TAC_IC = {
+    ruler:'<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>',
+    center:'<circle cx="12" cy="12" r="3"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/>',
+    add:'<path d="M12 5v14M5 12h14"/>',
+    combat:'<path d="M4 20L16 8M14 4h6v6M20 20L8 8M10 4H4v6"/>',
+    scene:'<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+    dice:'<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/>',
+    arrow:'<path d="M12 19V5M5 12l7-7 7 7"/>'
+  };
   function tacRenderBar(){
-    const m = isMaster(), b = (a, ic, lb, on) => `<button type="button" class="tac-b${on ? ' on' : ''}" data-tac="${a}"><span>${ic}</span>${lb}</button>`;
-    const pn = tacUI.panel;
-    let h = b('ruler', '📏', 'Régua', tacUI.ruler) + b('center', '🎯', 'Centro') + b('panel-add', '➕', m ? 'Token' : 'Meu token', pn === 'add');
-    if(m) h += b('panel-scenes', '🗺', 'Cenas', pn === 'scenes' || pn === 'new') + b('panel-grid', '🔲', 'Grade', pn === 'grid') + b('panel-combat', '⚔', 'Combate', pn === 'combat');
-    if(tacUI.last && tacCurId() === tacUI.last.sid) h += b('undo', '↩', 'Desfazer');
-    h += b('dice', '🎲', 'Dados');
+    const m = isMaster(), pn = tacUI.panel;
+    const b = (a, ic, lb, on, pressed) => `<button type="button" class="tac-b${on ? ' on' : ''}" data-tac="${a}"${pressed ? ` aria-pressed="${!!on}"` : ''}>${tacSvg(TAC_IC[ic])}${lb}</button>`;
+    let h = b('ruler', 'ruler', 'Régua', tacUI.ruler, true) + b('center', 'center', 'Centro') + b('panel-add', 'add', m ? 'Token' : 'Meu token', pn === 'add');
+    if(m) h += b('panel-combat', 'combat', 'Combate', pn === 'combat') + b('panel-scenes', 'scene', 'Cena', pn === 'scenes' || pn === 'new' || pn === 'grid');
+    h += b('dice', 'dice', 'Dados');
     tacEl('tac-bar').innerHTML = h;
+    const u = tacEl('tac-undo');
+    if(u) u.hidden = !(tacUI.last && tacCurId() === tacUI.last.sid);
+  }
+  // atalho do menu Áreas e aviso de cena ativa na tela do mapa
+  function tacRenderArea(){
+    const sc = tac.active && tac.scenes[tac.active] ? tac.scenes[tac.active] : null;
+    const sub = tacEl('area-tatico-sub'), live = tacEl('area-tatico-live');
+    if(sub) sub.textContent = sc ? 'Cena ativa: ' + (sc.name || 'Cena') : 'Cena, grade, turnos';
+    if(live) live.hidden = !sc;
+    const bn = tacEl('tac-banner');
+    if(!bn) return;
+    const show = !!sc && !tacUI.open && tacUI.bannerOff !== tac.active;
+    bn.hidden = !show;
+    if(show) tacEl('tac-banner-name').textContent = sc.name || 'Cena';
   }
   function tacRenderTurn(){
     const el = tacEl('tac-turn'), sid = tacCurId(), sc = tacScene(sid);
@@ -5913,15 +5937,18 @@
   function tacPanelToken(sid, sc){
     const t = tacTokensOf(sid).find(x => x.id === tacUI.sel), m = isMaster(), mine = tacCanMove(t);
     const kinfo = TAC_KINDS[t.kind] || TAC_KINDS.obj;
-    let h = tacSh(t.name || 'Token', kinfo[0] + (t.hidden ? ' · 🙈 oculto (só você vê)' : ''));
+    let h = tacSh(t.name || 'Token', `${kinfo[0]} · coluna ${Math.round(+t.c) + 1}, linha ${Math.round(+t.r) + 1}` + (t.hidden ? ' · oculto (só você vê)' : ''));
+    const sp = tacSpeed(sc, t), used = +t.mv || 0, over = sc.rule.limit !== 'off' && used > sp;
+    const pips = (sp > 0 && sp <= 12) ? `<div class="tac-pips" aria-hidden="true">${Array.from({ length:sp }, (_, i) => `<span class="${i < used ? 'on' : ''}"></span>`).join('')}</div>` : '';
+    const info = `<div class="tac-moveinfo"><div class="tac-lbl">Movimento neste turno</div><div class="tac-big${over ? ' over' : ''}">${tacX(tacMoveTxt(sc, t))}</div>${pips}
+      <div class="tac-sub">${fmtNum(used * sc.grid.mpc)} m de ${fmtNum(sp * sc.grid.mpc)} m${over ? ' · acima do limite' : ''}${t.ini != null && t.ini !== '' ? ' · iniciativa ' + tacX(t.ini) : ''}</div>
+      ${mine ? '<p class="hub-hint">Arraste o token ou toque numa seta para andar 1 casa.</p>' : ''}</div>`;
     if(mine){
-      const dp = [[-1, -1, '↖'], [0, -1, '↑'], [1, -1, '↗'], [-1, 0, '←'], [0, 0, ''], [1, 0, '→'], [-1, 1, '↙'], [0, 1, '↓'], [1, 1, '↘']];
+      const dp = [[-1, -1], [0, -1], [1, -1], [-1, 0], null, [1, 0], [-1, 1], [0, 1], [1, 1]];
       const names = { '-1,-1':'noroeste', '0,-1':'norte', '1,-1':'nordeste', '-1,0':'oeste', '1,0':'leste', '-1,1':'sudoeste', '0,1':'sul', '1,1':'sudeste' };
-      h += `<div class="tac-move"><div class="tac-dpad" role="group" aria-label="Mover uma casa">${dp.map(x => x[2] ? `<button type="button" class="tac-dp" data-tac="tok-step" data-dc="${x[0]}" data-dr="${x[1]}" aria-label="Mover 1 casa para ${names[x[0] + ',' + x[1]]}">${x[2]}</button>` : '<span></span>').join('')}</div>
-        <p class="hub-hint">Arraste o token ou use as setas para mover 1 casa de cada vez (no teclado: setas com o token em foco).</p></div>`;
-    }
-    h += `<div class="tac-row"><span>Movimento neste turno</span><b>${tacX(tacMoveTxt(sc, t))} · ${fmtNum((+t.mv || 0) * sc.grid.mpc)} de ${fmtNum(tacSpeed(sc, t) * sc.grid.mpc)} m</b></div>`;
-    if(t.ini != null && t.ini !== '') h += `<div class="tac-row"><span>Iniciativa</span><b>${tacX(t.ini)}</b></div>`;
+      const rot = { '-1,-1':315, '0,-1':0, '1,-1':45, '-1,0':270, '1,0':90, '-1,1':225, '0,1':180, '1,1':135 };
+      h += `<div class="tac-move">${info}<div class="tac-dpad" role="group" aria-label="Mover uma casa">${dp.map(x => { if(!x) return '<span class="tac-dc" aria-hidden="true"></span>'; const k = x[0] + ',' + x[1]; return `<button type="button" class="tac-dp" data-tac="tok-step" data-dc="${x[0]}" data-dr="${x[1]}" aria-label="Mover 1 casa para ${names[k]}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate(${rot[k]}deg)">${TAC_IC.arrow}</svg></button>`; }).join('')}</div></div>`;
+    } else h += info;
     if(m){
       h += `<div class="tac-form"><label>Nome<input type="text" id="tt-name" value="${tacX(t.name || '')}" maxlength="40"></label>
         <label>Tipo${tacSel('tt-kind', Object.keys(TAC_KINDS).map(k => [k, TAC_KINDS[k][0]]), t.kind || 'obj')}</label>
@@ -5930,7 +5957,7 @@
         <label>Cor<input type="color" id="tt-color" value="${tacX(/^#[0-9a-f]{6}$/i.test(t.color || '') ? t.color : kinfo[1])}"></label></div>
         <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-tac="tok-save">Salvar</button>
         <button type="button" class="inv-mini-btn" data-tac="tok-mv0">Zerar movimento</button>
-        <button type="button" class="inv-mini-btn" data-tac="tok-hide">${t.hidden ? '👁 Revelar ao grupo' : '🙈 Ocultar do grupo'}</button>
+        <button type="button" class="inv-mini-btn" data-tac="tok-hide">${t.hidden ? 'Revelar ao grupo' : 'Ocultar do grupo'}</button>
         <button type="button" class="inv-mini-btn danger" data-tac="tok-del">Remover</button></div>`;
     } else {
       h += `<div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-tac="tok-center">Centralizar</button>${mine ? '<button type="button" class="inv-mini-btn danger" data-tac="tok-del">Tirar do mapa</button>' : ''}</div>`;
@@ -5958,10 +5985,12 @@
   }
   function tacPanelScenes(){
     const ids = Object.keys(tac.scenes).sort((a, b) => (tac.scenes[a].createdAt || 0) - (tac.scenes[b].createdAt || 0));
-    let h = tacSh('Cenas', 'Só o mestre vê esta lista');
+    let h = tacSh('Cena', 'Só o mestre vê este painel');
+    const cur = tacScene(tacCurId());
+    if(cur) h += `<div class="tac-item"><div><b>Em exibição: ${tacX(cur.name || 'Cena')}</b><small>Casa de ${tacX(cur.grid.size)} px · ${tacX(fmtNum(cur.grid.mpc))} m por casa</small></div><div class="tac-acts"><button type="button" class="inv-mini-btn" data-tac="panel-grid">Ajustar grade</button></div></div>`;
     h += ids.length ? ids.map(id => {
-      const s = tac.scenes[id], n = Object.keys(s.tokens || {}).length + Object.keys(gmTac[id] || {}).length, cur = tacCurId() === id;
-      return `<div class="tac-item"><div><b>${tacX(s.name || 'Cena')}</b><small>${tac.active === id ? '● ativa para o grupo · ' : ''}${cur ? 'em exibição · ' : ''}${n} token${n === 1 ? '' : 's'}</small></div>
+      const s = tac.scenes[id], n = Object.keys(s.tokens || {}).length + Object.keys(gmTac[id] || {}).length, isCur = tacCurId() === id;
+      return `<div class="tac-item"><div><b>${tacX(s.name || 'Cena')}</b><small>${tac.active === id ? '● ativa para o grupo · ' : ''}${isCur ? 'em exibição · ' : ''}${n} token${n === 1 ? '' : 's'}</small></div>
         <div class="tac-acts"><button type="button" class="inv-mini-btn primary" data-tac="sc-activate" data-id="${tacX(id)}"${tac.active === id ? ' disabled' : ''}>Ativar</button>
         <button type="button" class="inv-mini-btn" data-tac="sc-view" data-id="${tacX(id)}">Ver</button>
         <button type="button" class="inv-mini-btn danger" data-tac="sc-del" data-id="${tacX(id)}">Excluir</button></div></div>`;
@@ -6220,6 +6249,7 @@
     tac = { active:(v && v.active) || null, scenes:(v && v.scenes) || {} };
     if(tacUI.seen && tac.active && tac.active !== prev && !tacUI.open && !isMaster() && tac.scenes[tac.active]) toast('Cena tática ativa: ' + (tac.scenes[tac.active].name || 'Cena') + ' (menu Áreas ▸ Tático)');
     tacUI.seen = true;
+    tacRenderArea();
     tacChanged();
   }
   function tacChanged(){
@@ -6234,12 +6264,13 @@
     closeHub(); closeDrawer(); closeNavDrawer(); closeInventory();
     tacUI.open = true;
     tacEl('tac').hidden = false;
+    tacRenderArea();
     tacInitMap();
     tacRender();
     requestAnimationFrame(() => { tacMap.invalidateSize(); tacBuild(true); const bk = root0(); if(bk) bk.focus({ preventScroll:true }); });
   }
   function root0(){ return document.querySelector('#tac .tac-back'); }
-  function tacClose(){ tacUI.open = false; tacUI.ruler = false; tacUI.pts = []; tacEl('tac').hidden = true; const f = document.getElementById('fab-system'); if(f) f.focus({ preventScroll:true }); }
+  function tacClose(){ tacUI.open = false; tacUI.ruler = false; tacUI.pts = []; tacEl('tac').hidden = true; tacRenderArea(); const f = document.getElementById('fab-system'); if(f) f.focus({ preventScroll:true }); }
   (function tacWire(){
     const root = tacEl('tac');
     if(!root) return;
@@ -6251,6 +6282,9 @@
     document.addEventListener('keydown', e => { if(e.key === 'Escape' && tacUI.open && !hubIsOpen()) tacClose(); });
     const ab = tacEl('area-tatico');
     if(ab) ab.addEventListener('click', tacOpen);
+    const bo = tacEl('tac-banner-open'), bx = tacEl('tac-banner-x');
+    if(bo) bo.addEventListener('click', tacOpen);
+    if(bx) bx.addEventListener('click', () => { tacUI.bannerOff = tac.active; tacRenderArea(); });
   })();
 
   // ---------- navegação por áreas (menu "Áreas") ----------
