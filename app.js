@@ -115,6 +115,7 @@
     }
     return {
       getLocal,
+      lastError:'',
       async get(path){
         if(firebaseReady){
           try{ return (await firebaseDb.ref('tau-volantis/' + path).once('value')).val(); }
@@ -125,7 +126,7 @@
       async set(path, val){
         if(firebaseReady){
           try{ await firebaseDb.ref('tau-volantis/' + path).set(val); return true; }
-          catch(e){ console.error('Falha ao gravar', path, e); return false; }
+          catch(e){ this.lastError = String((e && (e.code || e.message)) || e); console.error('Falha ao gravar', path, e); return false; }
         }
         setLocal(path, val); persist(); notify(path);
         return true;
@@ -133,7 +134,7 @@
       async update(map){
         if(firebaseReady){
           try{ await firebaseDb.ref('tau-volantis').update(map); return true; }
-          catch(e){ console.error('Falha ao gravar', e); return false; }
+          catch(e){ this.lastError = String((e && (e.code || e.message)) || e); console.error('Falha ao gravar', e); return false; }
         }
         Object.keys(map).forEach(p => setLocal(p, map[p]));
         persist();
@@ -4134,6 +4135,18 @@
     let s = ''; for(let i = 0; i < 6; i++) s += abc[Math.floor(Math.random() * abc.length)];
     return s;
   }
+  // código que ainda não pertence a nenhuma campanha conhecida
+  function uniqueCode(){
+    const used = new Set(Object.keys(campaigns).map(k => campaigns[k] && campaigns[k].joinCode).filter(Boolean));
+    let c = newCode(), n = 0;
+    while(used.has(c) && n++ < 50) c = newCode();
+    return c;
+  }
+  // mensagem clara quando o banco recusa uma gravação (antes falhava em silêncio)
+  function dbFailMsg(what){
+    const e = DB.lastError || '';
+    return what + ' não foi salvo.' + (/permission|denied/i.test(e) ? ' O Firebase recusou a gravação: confira se as regras publicadas são as de firebase-rules.SUGESTAO-v3.json.' : (e ? ' (' + e + ')' : ''));
+  }
   function todayStr(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
   // ---------- ligar/desligar tudo de uma campanha ----------
@@ -4177,17 +4190,37 @@
     if(legacyBooted) return;
     legacyBooted = true;
     const ts = DB.ts();
-    DB.update({
-      'campaign-meta/legacy': { id:'legacy', name:'Campanha atual', system:'Ordem Paranormal — Sobrevivendo ao Horror (adaptado)',
-        masterId:null, masterName:null, createdAt:ts, archived:false, joinCode:newCode(), activeSessionId:'inaugural',
-        note:'Criada a partir dos dados que já existiam. Nada foi movido.' },
-      'campaign-sessions/legacy/inaugural': { id:'inaugural', title:'Sessão inaugural', date:todayStr(), present:[], summary:'', createdAt:ts, closed:false }
-    });
+    // A campanha e a sessão vão em gravações separadas: as regras só deixam gravar
+    // a sessão depois que a campanha existe (e, na original, só depois de ter mestre).
+    DB.set('campaign-meta/legacy', { id:'legacy', name:'Campanha atual', system:'Ordem Paranormal — Sobrevivendo ao Horror (adaptado)',
+      masterId:null, masterName:null, createdAt:ts, archived:false, joinCode:newCode(), activeSessionId:'inaugural',
+      note:'Criada a partir dos dados que já existiam. Nada foi movido.' }).then(ok => { if(ok) ensureLegacySession(); });
+  }
+  function ensureLegacySession(){
+    if(!campaigns.legacy || sessions.inaugural || activeCampaignId !== 'legacy') return;
+    if(firebaseReady && !(currentUser && campaigns.legacy.masterId === currentUser.uid)) return; // sem mestre, as regras não permitem
+    DB.set('campaign-sessions/legacy/inaugural', { id:'inaugural', title:'Sessão inaugural', date:todayStr(), present:[], summary:'', createdAt:DB.ts(), closed:false });
+  }
+  // registros antigos da campanha original podem ter ficado sem id/data/sessão ativa
+  let legacyRepaired = false;
+  function repairLegacyMeta(noId){
+    const m = campaigns.legacy;
+    if(legacyRepaired || !m) return;
+    if(!noId && m.createdAt && m.activeSessionId) return;
+    if(firebaseReady && !(currentUser && (!m.masterId || m.masterId === currentUser.uid))) return;
+    legacyRepaired = true;
+    const up = {};
+    up['campaign-meta/legacy/id'] = 'legacy';
+    if(!m.createdAt) up['campaign-meta/legacy/createdAt'] = DB.ts();
+    if(!m.activeSessionId) up['campaign-meta/legacy/activeSessionId'] = 'inaugural';
+    DB.update(up).then(() => ensureLegacySession());
   }
   function startMetaSync(){
     DB.on('campaign-meta', v => {
       campaigns = v || {};
-      if(!campaigns.legacy) bootstrapLegacy();
+      const legacyNoId = !!(campaigns.legacy && !campaigns.legacy.id);
+      Object.keys(campaigns).forEach(k => { if(campaigns[k] && typeof campaigns[k] === 'object') campaigns[k].id = k; });
+      if(!campaigns.legacy) bootstrapLegacy(); else repairLegacyMeta(legacyNoId);
       const m = campaigns[activeCampaignId];
       if(!m && activeCampaignId !== 'legacy' && campaigns.legacy){ activateCampaign('legacy'); return; }
       const wasMaster = campaignMeta ? campaignMeta.masterId : undefined;
@@ -4207,9 +4240,15 @@
     const a = actorFields();
     const src = campaigns[f.source] || null;
     const meta = { id, name, system:(f.system || '').trim(), masterId:a.actorId, masterName:a.actorName, createdAt:DB.ts(),
-      archived:false, joinCode:newCode(), activeSessionId:'s1' };
+      archived:false, joinCode:uniqueCode(), activeSessionId:'s1' };
     if(a.actorId) meta.members = { [a.actorId]: { name:a.actorName, role:'master' } };
     if(f.mode === 'duplicar' && src && src.config) meta.config = JSON.parse(JSON.stringify(src.config));
+    // 1) a campanha primeiro: as regras só liberam sessão e dados depois que ela existe
+    if(!(await DB.set('campaign-meta/' + id, meta))){ toast(dbFailMsg('A campanha'), true); return; }
+    // 2) a primeira sessão
+    const sessOk = await DB.set('campaign-sessions/' + id + '/s1', { id:'s1', title:'Sessão 1', date:todayStr(), present:[], summary:'', createdAt:DB.ts(), closed:false });
+    // 3) dados copiados (modelo/duplicar)
+    let copyOk = true;
     if(f.mode === 'modelo' || f.mode === 'duplicar'){
       const keys = [KEY_PINS, KEY_SHAPES, KEY_ROUTES];
       if(f.mode === 'duplicar'){
@@ -4220,19 +4259,34 @@
         if(f.copyWeather) keys.push(KEY_WEATHER);
       }
       for(const k of keys){
-        let v = await readScoped(f.source, k);
-        if(v == null) continue;
-        if(f.mode === 'modelo' && k === KEY_PINS && Array.isArray(v)) v = v.map(p => { const c = Object.assign({}, p); delete c.explore; return c; });
-        await writeScoped(id, k, v);
+        try{
+          let v = await readScoped(f.source, k);
+          if(v == null) continue;
+          if(f.mode === 'modelo' && k === KEY_PINS && Array.isArray(v)) v = v.map(p => { const c = Object.assign({}, p); delete c.explore; return c; });
+          await writeScoped(id, k, v);
+        }catch(e){ copyOk = false; console.error('Falha ao copiar', k, e); }
       }
     }
-    await DB.update({
-      ['campaign-meta/' + id]: meta,
-      ['campaign-sessions/' + id + '/s1']: { id:'s1', title:'Sessão 1', date:todayStr(), present:[], summary:'', createdAt:DB.ts(), closed:false }
-    });
     hub.newCampaign.name = ''; hub.newCampaign.system = '';
     renderHub();
+    if(!sessOk || !copyOk) toast('A campanha foi criada, mas ' + (!sessOk ? 'a primeira sessão' : 'parte dos dados copiados') + ' não pôde ser salva. Você pode abrir uma nova sessão depois.', true);
     if(window.confirm(`Campanha "${name}" criada. Abrir agora? (a campanha atual é salva e continua intacta)`)) activateCampaign(id);
+  }
+  // gerar ou trocar o código de convite (só o mestre da campanha)
+  async function setJoinCode(id, replace){
+    const m = campaigns[id];
+    if(!m || !isMasterOf(m)){ toast('Só o mestre da campanha gera o código.', true); return; }
+    if(firebaseReady && !currentUser){ toast('Entre com sua conta para gerar o código.', true); return; }
+    if(replace && m.joinCode && !window.confirm(`Trocar o código de "${m.name}"? O código antigo (${m.joinCode}) deixa de funcionar para novos jogadores. Quem já entrou continua na campanha.`)) return;
+    const code = uniqueCode();
+    const ok = await DB.update({ ['campaign-meta/' + id + '/joinCode']: code, ['campaign-meta/' + id + '/id']: id });
+    if(!ok){ toast(dbFailMsg('O código'), true); return; }
+    toast(`Código de convite: ${code}`);
+  }
+  async function copyJoinCode(id){
+    const m = campaigns[id]; if(!m || !m.joinCode) return;
+    try{ await navigator.clipboard.writeText(m.joinCode); toast('Código copiado: ' + m.joinCode); }
+    catch(e){ toast('Código: ' + m.joinCode + ' (copie manualmente)'); }
   }
   function switchCampaign(id){
     if(id === activeCampaignId) return;
@@ -4263,7 +4317,7 @@
     if(!currentUser){ toast('Entre com sua conta para usar um código.', true); return; }
     const m = Object.keys(campaigns).map(k => campaigns[k]).find(x => x && x.joinCode === code);
     if(!m){ toast('Código não encontrado.', true); return; }
-    await DB.set(`campaign-meta/${m.id}/members/${currentUser.uid}`, { name:actorFields().actorName, role:'player' });
+    if(!(await DB.set(`campaign-meta/${m.id}/members/${currentUser.uid}`, { name:actorFields().actorName, role:'player' }))){ toast(dbFailMsg('A entrada na campanha'), true); return; }
     hub.joinCode = '';
     toast(`Você entrou em "${m.name}".`);
   }
@@ -4271,12 +4325,14 @@
     if(!currentUser){ toast('Entre com sua conta para assumir como mestre.', true); return; }
     if(!isUnclaimed()){ return; }
     const a = actorFields();
-    await DB.update({
+    const ok = await DB.update({
       [`campaign-meta/${activeCampaignId}/masterId`]: a.actorId,
       [`campaign-meta/${activeCampaignId}/masterName`]: a.actorName,
       [`campaign-meta/${activeCampaignId}/members/${a.actorId}`]: { name:a.actorName, role:'master' }
     });
+    if(!ok){ toast(dbFailMsg('A troca de mestre'), true); return; }
     toast('Você agora é o mestre desta campanha.');
+    legacyRepaired = false; setTimeout(() => { repairLegacyMeta(false); ensureLegacySession(); }, 400);
   }
   async function saveConfig(){
     if(!isMaster()){ toast('Só o mestre altera a configuração.', true); return; }
@@ -5079,8 +5135,8 @@
     const list = visibleCampaigns(), master = isMaster();
     const act = list.filter(m => !m.archived), arch = list.filter(m => m.archived);
     const row = m => `<div class="inv-item"><div class="inv-item-name">${esc(m.name)}${m.id === activeCampaignId ? ' <span class="log-badge guardar">ativa</span>' : ''}</div>
-      <div class="inv-item-util">${esc(m.system || 'sem sistema definido')}${m.masterName ? ' · mestre: ' + esc(m.masterName) : ''}${isMasterOf(m) && m.joinCode ? '<br>Código de convite: <b>' + esc(m.joinCode) + '</b>' : ''}</div>
-      <div class="inv-item-actions">${m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn primary" data-act="camp-open" data-id="${esc(m.id)}">Abrir</button>` : ''}
+      <div class="inv-item-util">${esc(m.system || 'sem sistema definido')}${m.masterName ? ' · mestre: ' + esc(m.masterName) : ''}${isMasterOf(m) ? (m.joinCode ? '<br>Código de convite: <b>' + esc(m.joinCode) + '</b>' : '<br>Sem código de convite ainda.') : ''}</div>
+      <div class="inv-item-actions">${isMasterOf(m) ? (m.joinCode ? `<button type="button" class="inv-mini-btn" data-act="camp-code-copy" data-id="${esc(m.id)}">Copiar código</button><button type="button" class="inv-mini-btn" data-act="camp-code-new" data-id="${esc(m.id)}">Trocar código</button>` : `<button type="button" class="inv-mini-btn primary" data-act="camp-code-gen" data-id="${esc(m.id)}">Gerar código</button>`) : ''}${m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn primary" data-act="camp-open" data-id="${esc(m.id)}">Abrir</button>` : ''}
       ${isMasterOf(m) && m.id !== 'legacy' ? (m.archived ? `<button type="button" class="inv-mini-btn" data-act="camp-reopen" data-id="${esc(m.id)}">Reabrir</button>` : (m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn" data-act="camp-archive" data-id="${esc(m.id)}">Arquivar</button>` : '')) : ''}
       ${isMasterOf(m) && m.id !== 'legacy' && m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn danger" data-act="camp-delete" data-id="${esc(m.id)}">Excluir</button>` : ''}</div></div>`;
     const nc = hub.newCampaign;
@@ -5525,6 +5581,9 @@
       case 'camp-delete': deleteCampaign(D.id); break;
       case 'camp-create': createCampaign(hub.newCampaign); break;
       case 'camp-join': joinCampaign(hub.joinCode); break;
+      case 'camp-code-gen': setJoinCode(D.id, false); break;
+      case 'camp-code-new': setJoinCode(D.id, true); break;
+      case 'camp-code-copy': copyJoinCode(D.id); break;
       case 'claim': claimMaster(); break;
       case 'cfg-save': saveConfig(); break;
       case 'clock': advanceClock(+D.m); break;

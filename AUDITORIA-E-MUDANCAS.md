@@ -105,3 +105,16 @@ Ainda pendente (não mexi): ler as telas antigas (inventário, hub) com o mesmo 
 - **Desfazer movimento** virou uma pílula flutuante no canto do mapa, só aparece depois de um movimento.
 - **Painel do token**: contador grande "x/y casas", quadradinhos de movimento, metros usados e as setas de direção ao lado; ícones em vez de emojis.
 - Testado em 360, 390 e 420 px: sem rolagem horizontal, alvos de pelo menos 44 px, faixa de aviso acima da barra de abas. Não testado em aparelho físico nem no Firebase real.
+
+## 9. Correção: campanha nova que sumia + código de convite
+**O que acontecia.** Ao criar uma campanha, o app gravava a campanha e a sessão dela numa gravação só. As regras do Firebase (`campaign-sessions`) só deixam gravar a sessão depois que a campanha já existe, então o Firebase recusava a gravação inteira. O app mostrava a campanha por um instante (cópia local), depois ela sumia, e o aviso "Abrir agora?" aparecia mesmo assim, porque a falha não era conferida. O mesmo problema impedia a campanha original de ser gravada por completo (ficava sem código de convite e sem a marca "ativa").
+
+**O que mudou (só no `app.js`; as regras não foram alteradas).**
+- A campanha é gravada primeiro, depois a sessão, depois os dados copiados. Cada etapa é conferida.
+- Se o Firebase recusar, aparece um aviso claro ("A campanha não foi salva. O Firebase recusou a gravação…") e o app não pergunta se quer abrir.
+- A campanha original passa a ser gravada em duas etapas, e o registro incompleto que já existe no banco é consertado sozinho (id, data de criação, sessão ativa), quando você é o mestre.
+- Novos botões na lista de campanhas, só para o mestre: **Gerar código** (quando não há), **Copiar código** e **Trocar código** (pede confirmação; o código antigo deixa de funcionar para novos jogadores, e quem já entrou continua na campanha).
+- Os códigos não se repetem entre campanhas; entrar com o código aceita letras minúsculas.
+- Entrar na campanha e assumir como mestre também avisam quando a gravação falha.
+
+**Como testei.** Simulei no teste a regra do Firebase que recusa a gravação (e reproduzi o sumiço antes da correção). Depois da correção, testei criar campanha (vazia e com mapa-modelo), recarregar a página, gerar/trocar/copiar código, um jogador entrando pelo código, o código antigo sendo recusado e o aviso quando o Firebase recusa. Não testei no Firebase real.
