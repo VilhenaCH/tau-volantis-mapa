@@ -179,6 +179,7 @@
       <div class="vs-group-label">Áreas</div>
       <div class="area-grid">
         <button type="button" class="area-btn" data-area="mundo"><span class="area-ic">🗺</span><b>Mundo</b><small>Mapa, clima, locais</small></button>
+        <button type="button" class="area-btn" id="area-tatico"><span class="area-ic">⚔️</span><b>Tático</b><small>Cena, grade, turnos</small></button>
         <button type="button" class="area-btn" data-area="personagem"><span class="area-ic">📇</span><b>Personagem</b><small>Ficha, recursos, equipamento</small></button>
         <button type="button" class="area-btn" id="inv-toggle-btn"><span class="area-ic">🎒</span><b>Inventário</b><small>Itens, carga, contêineres</small></button>
         <button type="button" class="area-btn" id="drawer-toggle-btn"><span class="area-ic">🧭</span><b>Expedição</b><small>Saque, pesca, ofício</small></button>
@@ -325,6 +326,21 @@
       </h2>
     </div>
     <div class="drawer-body" id="hub-body"></div>
+  </div>
+
+  <div id="tac" hidden role="dialog" aria-label="Mapa tático">
+    <div id="tac-top">
+      <button type="button" class="tac-back" data-tac="back" aria-label="Voltar ao mapa">←</button>
+      <div class="tac-ttl"><b id="tac-title">Mapa tático</b><small id="tac-sub"></small></div>
+    </div>
+    <div id="tac-turn" hidden role="status" aria-live="polite"></div>
+    <div id="tac-mapwrap">
+      <div id="tac-map"></div>
+      <div id="tac-empty" hidden></div>
+      <div id="tac-chip" hidden role="status" aria-live="polite"></div>
+    </div>
+    <div id="tac-bar"></div>
+    <div id="tac-sheet" hidden></div>
   </div>
 
   <div class="drawer-backdrop" id="inv-drawer-backdrop"></div>

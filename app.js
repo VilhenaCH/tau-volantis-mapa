@@ -53,7 +53,10 @@
   const KEY_SHORTCUTS = 'tv-map:shortcuts';
   const KEY_JOURNAL = 'tv-map:journal';       // diário público (membros da campanha)
   const KEY_GMJ = 'tv-map:gm-journal';        // diário privado do mestre
-  const DB_KEYS = new Set([KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ]);
+  const KEY_TAC = 'tv-map:tactical';          // mapa tático: cenas, grade, regras, tokens públicos
+  const KEY_TACIMG = 'tv-map:tactical-img';   // imagens de cena enviadas do celular (lidas só ao abrir a cena)
+  const KEY_GMTAC = 'tv-map:gm-tactical';     // tokens ocultos do mestre
+  const DB_KEYS = new Set([KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC]);
   const SCOPED_KEYS = new Set([KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG].concat(Array.from(DB_KEYS)));
 
   // ---------- campanhas: todo dado de jogo pertence a uma campanha ----------
@@ -2892,6 +2895,7 @@
   function toast(msg, isErr){
     const el = document.createElement('div');
     el.className = 'inv-toast' + (isErr ? ' err' : '');
+    el.setAttribute('role', isErr ? 'alert' : 'status');
     el.textContent = msg;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 2800);
@@ -4043,6 +4047,9 @@
   let journal = {};
   let gmJournal = {};
   let gmOff = null;
+  let tac = { active:null, scenes:{} };   // mapa tático (público)
+  let gmTac = {};                          // tokens ocultos (só o mestre recebe)
+  let tacGmOff = null;
   let personalShortcuts = {};
   let personalSubUid = '__none__';
   let personalOff = null;
@@ -4135,6 +4142,7 @@
     weather = { state:'calmo', updatedAt:null, updatedBy:null };
     inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {}; journal = {}; gmJournal = {};
     hub.resDraft = null; hub.slotDraft = null; hub.cfgDraft = null;
+    tacReset();
     lootHistory = []; fishHistory = [];
     renderPins(); renderTokens(); renderShapes(); renderRoutes(); applyWeatherVisual();
     renderLootResults(); renderFishResults();
@@ -4148,7 +4156,8 @@
     on(KEY_SHORTCUTS, v => { campShortcuts = v || {}; hubChanged(); });
     syncOff.push(DB.on('campaign-sessions/' + activeCampaignId, v => { sessions = v || {}; updateHud(); hubChanged(); }));
     on(KEY_JOURNAL, v => { journal = v || {}; hubChanged(); }, 300);
-    syncOff.push(() => { if(gmOff){ gmOff(); gmOff = null; } });
+    on(KEY_TAC, v => tacOnData(v));
+    syncOff.push(() => { if(gmOff){ gmOff(); gmOff = null; } if(tacGmOff){ tacGmOff(); tacGmOff = null; } });
     syncGm();
   }
   function activateCampaign(id){
@@ -5195,6 +5204,9 @@
     if(gmOff){ gmOff(); gmOff = null; }
     gmJournal = {};
     if(isMaster() && (!firebaseReady || currentUser)) gmOff = DB.on(scopedKey(KEY_GMJ), v => { gmJournal = v || {}; hubChanged(); }, 300);
+    if(tacGmOff){ tacGmOff(); tacGmOff = null; }
+    gmTac = {};
+    if(isMaster() && (!firebaseReady || currentUser)) tacGmOff = DB.on(scopedKey(KEY_GMTAC), v => { gmTac = v || {}; tacChanged(); });
   }
   async function addJournal(e){
     const gm = e.vis === 'mestre';
@@ -5362,7 +5374,7 @@
     hub.bulkPick = []; toast('Ajuste aplicado.'); renderHub();
   }
   // ---------- backup e restauração ----------
-  const BACKUP_KEYS = [KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG, KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ];
+  const BACKUP_KEYS = [KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG, KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC];
   async function buildBackup(){
     const data = {};
     for(const k of BACKUP_KEYS){ try{ const v = await readScoped(activeCampaignId, k); if(v != null) data[k] = v; }catch(e){ /* sem permissão: segue */ } }
@@ -5553,6 +5565,693 @@
       case 'backup-import': importBackup(); break;
     }
   }
+
+  // ---------- mapa tático ----------
+  // Uma cena é uma imagem (ou uma grade em branco) com tokens que andam de casa em casa.
+  // Dados: KEY_TAC (cenas + tokens públicos), KEY_TACIMG (imagens enviadas do celular, lidas só
+  // ao abrir a cena) e KEY_GMTAC (tokens ocultos: só o mestre recebe, se as regras v3 estiverem publicadas).
+  // Valores de regra (metros por casa, deslocamento, diagonal) são padrões PROVISÓRIOS e configuráveis:
+  // nada aqui afirma uma regra oficial; confirme com a sua mesa.
+  const TAC_KINDS = { pc:['Personagem', '#8fd7e8'], npc:['Aliado / NPC', '#7fb98a'], enemy:['Inimigo', '#d3572a'], obj:['Objeto', '#c9a15a'] };
+  const TAC_DIAG = [['cheb', 'Diagonal custa 1 casa'], ['alt', 'Diagonal alterna 1 e 2 casas'], ['eucl', 'Linha reta (arredonda para cima)']];
+  const TAC_LIMIT = [['warn', 'Só avisar ao passar do limite'], ['block', 'Bloquear jogadores além do limite'], ['off', 'Sem limite']];
+  const TAC_DEF = { size:64, mpc:1.5, diag:'cheb', limit:'warn', speed:6, cols:14, rows:10 };
+  const tacUI = { open:false, sid:null, sel:null, panel:'', ruler:false, pts:[], gd:null, drag:false, dirty:false, seen:false, nfSrc:'blank', imgCache:{}, last:null, focusTok:null, markers:{} };
+  let tacMap = null, tacBase = null, tacGridLayer = null, tacTokLayer = null, tacRulerLayer = null, tacBuiltKey = '';
+  const tacEl = id => document.getElementById(id);
+  // escapa também aspas (usado dentro de atributos) e preserva o número 0
+  function tacX(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
+  function tacPath(){ return scopedKey(KEY_TAC); }
+  function tacReset(){
+    tac = { active:null, scenes:{} }; gmTac = {};
+    tacUI.sid = null; tacUI.sel = null; tacUI.panel = ''; tacUI.ruler = false; tacUI.pts = []; tacUI.gd = null; tacUI.seen = false; tacUI.imgCache = {}; tacUI.last = null; tacBuiltKey = '';
+    if(tacUI.open){ tacRender(); tacBuild(true); }
+  }
+  function tacNum(v, d){ const n = parseFloat(v); return isFinite(n) ? n : d; }
+  // cena com padrões aplicados (não grava nada)
+  function tacScene(sid){
+    const s = sid && tac.scenes ? tac.scenes[sid] : null;
+    if(!s) return null;
+    const g = Object.assign({ size:TAC_DEF.size, mpc:TAC_DEF.mpc, ox:0, oy:0, diag:TAC_DEF.diag, show:true }, s.grid || {});
+    g.size = Math.max(4, tacNum(g.size, TAC_DEF.size)); g.mpc = tacNum(g.mpc, TAC_DEF.mpc); g.ox = tacNum(g.ox, 0); g.oy = tacNum(g.oy, 0);
+    const r = Object.assign({ limit:TAC_DEF.limit, speed:TAC_DEF.speed, lock:false }, s.rule || {});
+    r.speed = Math.max(0, tacNum(r.speed, TAC_DEF.speed));
+    const t = s.turn || {};
+    const order = Array.isArray(t.order) ? t.order : (t.order && typeof t.order === 'object' ? Object.keys(t.order).map(k => t.order[k]) : []);
+    return Object.assign({}, s, { id:sid, w:tacNum(s.w, 1000), h:tacNum(s.h, 800), grid:g, rule:r, turn:{ on:!!t.on, order:order.filter(Boolean), i:Math.max(0, parseInt(t.i, 10) || 0), round:Math.max(1, parseInt(t.round, 10) || 1) } });
+  }
+  function tacCurId(){
+    if(isMaster() && tacUI.sid && tac.scenes[tacUI.sid]) return tacUI.sid;
+    if(tac.active && tac.scenes[tac.active]) return tac.active;
+    return isMaster() ? (Object.keys(tac.scenes)[0] || null) : null;
+  }
+  function tacTokensOf(sid){
+    const s = tac.scenes[sid] || {}, out = [];
+    const pub = s.tokens || {};
+    Object.keys(pub).forEach(k => { if(pub[k] && pub[k].c != null) out.push(Object.assign({}, pub[k], { id:k, hidden:false })); });
+    if(isMaster()){ const h = gmTac[sid] || {}; Object.keys(h).forEach(k => { if(h[k] && h[k].c != null) out.push(Object.assign({}, h[k], { id:k, hidden:true })); }); }
+    return out;
+  }
+  function tacTokPath(sid, t){ return (t.hidden ? scopedKey(KEY_GMTAC) + '/' + sid : tacPath() + '/scenes/' + sid + '/tokens') + '/' + t.id; }
+  function tacCanMove(t){ return isMaster() || (!!currentUser && t.owner === currentUser.uid); }
+  function tacSpeed(sc, t){ return (t && t.speed != null && t.speed !== '' && isFinite(+t.speed)) ? +t.speed : sc.rule.speed; }
+  function tacTurnId(sc){ return sc && sc.turn.on && sc.turn.order.length ? sc.turn.order[sc.turn.i % sc.turn.order.length] : null; }
+  function tacMoveTxt(sc, t){ return (+t.mv || 0) + '/' + tacSpeed(sc, t) + ' casas'; }
+  function tacDist(c1, r1, c2, r2, mode){
+    const dx = Math.abs(c2 - c1), dy = Math.abs(r2 - r1), mx = Math.max(dx, dy), mn = Math.min(dx, dy);
+    if(mode === 'alt') return mx + Math.floor(mn / 2);
+    if(mode === 'eucl') return Math.ceil(Math.sqrt(dx * dx + dy * dy));
+    return mx;
+  }
+  // geometria: a cena usa pixels da imagem (x → direita, y → baixo); o Leaflet usa [lat=h−y, lng=x]
+  function tacCenter(sc, c, r){ const g = sc.grid; return L.latLng(sc.h - (g.oy + (r + 0.5) * g.size), g.ox + (c + 0.5) * g.size); }
+  function tacClampCell(sc, c, r, g){
+    g = g || sc.grid;
+    const cMin = Math.ceil(-g.ox / g.size - 0.5), cMax = Math.floor((sc.w - g.ox) / g.size - 0.5);
+    const rMin = Math.ceil(-g.oy / g.size - 0.5), rMax = Math.floor((sc.h - g.oy) / g.size - 0.5);
+    return { c:Math.min(Math.max(cMin, cMax), Math.max(cMin, c)), r:Math.min(Math.max(rMin, rMax), Math.max(rMin, r)) };
+  }
+  function tacCellAt(sc, ll, g){
+    g = g || sc.grid;
+    return tacClampCell(sc, Math.floor((ll.lng - g.ox) / g.size), Math.floor((sc.h - ll.lat - g.oy) / g.size), g);
+  }
+  function tacFreeCell(sid, sc, used){
+    let c0 = 0, r0 = 0;
+    if(tacMap){ const cc = tacCellAt(sc, tacMap.getCenter()); c0 = cc.c; r0 = cc.r; }
+    for(let d = 0; d < 14; d++) for(let dc = -d; dc <= d; dc++) for(let dr = -d; dr <= d; dr++){
+      if(Math.max(Math.abs(dc), Math.abs(dr)) !== d) continue;
+      const cell = tacClampCell(sc, c0 + dc, r0 + dr);
+      if(!used.has(cell.c + ',' + cell.r)) return cell;
+    }
+    return tacClampCell(sc, c0, r0);
+  }
+
+  // ---------- imagens ----------
+  function tacLoadImg(url){
+    return new Promise((res, rej) => { const i = new Image(); i.onload = () => res({ w:i.naturalWidth, h:i.naturalHeight }); i.onerror = () => rej(new Error('Não consegui abrir a imagem desse endereço.')); i.src = url; });
+  }
+  // reduz a foto do celular (lado maior ≤ 1600 px, JPEG) para caber no banco sem pesar
+  function tacFileToData(file){
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(new Error('Não consegui ler o arquivo.'));
+      fr.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('Esse arquivo não parece ser uma imagem.'));
+        img.onload = () => {
+          let max = 1600, q = 0.78, out = '', w = 0, h = 0;
+          for(let n = 0; n < 6; n++){
+            const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+            w = Math.max(1, Math.round(img.naturalWidth * k)); h = Math.max(1, Math.round(img.naturalHeight * k));
+            const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+            const cx = cv.getContext('2d'); cx.fillStyle = '#0f1a22'; cx.fillRect(0, 0, w, h); cx.drawImage(img, 0, 0, w, h);
+            out = cv.toDataURL('image/jpeg', q);
+            if(out.length < 1100000) break;
+            max = Math.round(max * 0.8); q = Math.max(0.5, q - 0.06);
+          }
+          resolve({ data:out, w, h });
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+  async function tacImageUrl(sid, sc){
+    if(!sc.src || sc.src.kind === 'blank' || !sc.src.kind) return null;
+    if(sc.src.kind === 'url') return sc.src.url || null;
+    if(tacUI.imgCache[sid]) return tacUI.imgCache[sid];
+    const d = await DB.get(scopedKey(KEY_TACIMG) + '/' + sid + '/d');
+    if(d) tacUI.imgCache[sid] = d;
+    return d || null;
+  }
+
+  // ---------- mapa (Leaflet em coordenadas simples) ----------
+  function tacInitMap(){
+    if(tacMap) return;
+    tacMap = L.map('tac-map', { crs:L.CRS.Simple, zoomSnap:0.25, zoomDelta:0.5, minZoom:-4, maxZoom:3, attributionControl:false, zoomControl:false, doubleClickZoom:false });
+    tacMap.createPane('tacBase').style.zIndex = 200;
+    L.control.zoom({ position:'topright', zoomInText:'+', zoomOutText:'−' }).addTo(tacMap);
+    tacGridLayer = L.layerGroup().addTo(tacMap);
+    tacRulerLayer = L.layerGroup().addTo(tacMap);
+    tacTokLayer = L.layerGroup().addTo(tacMap);
+    tacMap.on('zoomend', () => tacDrawTokens());
+    tacMap.on('click', e => {
+      if(tacUI.ruler){ tacRulerPoint(e.latlng); return; }
+      if(tacUI.sel){ tacUI.sel = null; if(tacUI.panel === 'token') tacUI.panel = ''; tacDrawTokens(); tacRenderSheet(); }
+    });
+  }
+  function tacClearBase(){
+    if(tacBase && tacMap){ tacMap.removeLayer(tacBase); }
+    tacBase = null;
+  }
+  async function tacBuild(force){
+    if(!tacUI.open || !tacMap) return;
+    const sid = tacCurId(), sc = tacScene(sid), empty = tacEl('tac-empty');
+    if(!sc){
+      tacClearBase(); tacBuiltKey = '';
+      tacGridLayer.clearLayers(); tacTokLayer.clearLayers(); tacRulerLayer.clearLayers();
+      empty.hidden = false;
+      empty.textContent = isMaster() ? 'Nenhuma cena ainda. Toque em “Cenas” para criar a primeira.' : 'O mestre ainda não ativou uma cena tática.';
+      return;
+    }
+    empty.hidden = true;
+    const key = sid + '|' + JSON.stringify(sc.src || {}) + '|' + sc.w + 'x' + sc.h;
+    if(force || key !== tacBuiltKey){
+      tacBuiltKey = key;
+      tacClearBase();
+      if(sc.src && sc.src.kind && sc.src.kind !== 'blank'){ empty.hidden = false; empty.textContent = 'Carregando a cena…'; }
+      const bounds = L.latLngBounds([[0, 0], [sc.h, sc.w]]);
+      let url = null;
+      try{ url = await tacImageUrl(sid, sc); }catch(e){ url = null; }
+      if(tacBuiltKey !== key || !tacUI.open) return;      // a cena mudou enquanto a imagem carregava
+      empty.hidden = true;
+      if(url) tacBase = L.imageOverlay(url, bounds, { pane:'tacBase', interactive:false }).addTo(tacMap);
+      else {
+        tacBase = L.rectangle(bounds, { pane:'tacBase', color:'#26333d', weight:2, fillColor:'#0f1a22', fillOpacity:1, interactive:false }).addTo(tacMap);
+        if(sc.src && sc.src.kind && sc.src.kind !== 'blank') toast('Não foi possível carregar a imagem da cena. Mostrando só a grade.', true);
+      }
+      tacMap.invalidateSize();
+      tacMap.setMaxBounds(bounds.pad(0.6));
+      tacMap.fitBounds(bounds, { animate:false });
+      tacMap.setMinZoom(tacMap.getZoom() - 1.5);
+      tacUI.pts = []; tacRulerLayer.clearLayers();
+    }
+    tacDrawGrid(); tacDrawTokens(); tacRenderTurn(); tacRenderTitle();
+  }
+  function tacDrawGrid(){
+    if(!tacGridLayer) return;
+    tacGridLayer.clearLayers();
+    const sc = tacScene(tacCurId());
+    if(!sc) return;
+    const editing = tacUI.panel === 'grid' && tacUI.gd;
+    const g = editing ? Object.assign({}, sc.grid, tacUI.gd) : sc.grid;
+    if(g.show === false && !editing) return;
+    const sz = Math.max(4, tacNum(g.size, 64)), ox = ((tacNum(g.ox, 0) % sz) + sz) % sz, oy = ((tacNum(g.oy, 0) % sz) + sz) % sz;
+    if(sc.w / sz > 400 || sc.h / sz > 400) return;
+    const lines = [];
+    for(let x = ox; x <= sc.w + 0.01; x += sz) lines.push([[0, x], [sc.h, x]]);
+    for(let y = oy; y <= sc.h + 0.01; y += sz) lines.push([[sc.h - y, 0], [sc.h - y, sc.w]]);
+    L.polyline(lines, { color:'#8fd7e8', weight:1, opacity:editing ? 0.75 : 0.32, interactive:false, noClip:true }).addTo(tacGridLayer);
+  }
+  function tacDrawTokens(){
+    if(!tacTokLayer) return;
+    if(tacUI.drag){ tacUI.dirty = true; return; }
+    // o redesenho recria os marcadores: devolve o foco ao token que o tinha (teclado e leitor de tela)
+    const fe0 = document.activeElement;
+    if(fe0 && !tacUI.focusTok){ const fid = Object.keys(tacUI.markers).find(k => tacUI.markers[k].getElement() === fe0); if(fid) tacUI.focusTok = fid; }
+    tacTokLayer.clearLayers();
+    tacUI.markers = {};
+    tacUI.dirty = false;
+    const sid = tacCurId(), sc = tacScene(sid);
+    if(!sc) return;
+    const px = Math.max(30, Math.round(sc.grid.size * Math.pow(2, tacMap.getZoom()) * 0.92));
+    const cur = tacTurnId(sc), seen = {};
+    tacTokensOf(sid).forEach(t => {
+      const c = Math.round(+t.c), r = Math.round(+t.r), k = c + ',' + r, n = (seen[k] = (seen[k] || 0) + 1), off = (n - 1) * 9;
+      const col = t.color || (TAC_KINDS[t.kind] || TAC_KINDS.obj)[1];
+      const over = sc.rule.limit !== 'off' && (+t.mv || 0) > tacSpeed(sc, t);
+      const label = tacX(String(t.em || t.name || '?').slice(0, 2).toUpperCase());
+      const cls = 'tac-tok' + (t.hidden ? ' hid' : '') + (tacUI.sel === t.id ? ' sel' : '') + (cur === t.id ? ' turn' : '') + (over ? ' over' : '');
+      const icon = L.divIcon({ className:'', iconSize:[px, px], iconAnchor:[px / 2 - off, px / 2 - off],
+        html:`<div class="${cls}" style="width:${px}px;height:${px}px;--tc:${tacX(col)};font-size:${Math.round(px * 0.36)}px"><span>${label}</span></div><span class="tac-nm">${tacX(String(t.name || '').split(/\s+/)[0])}${t.hidden ? ' 🙈' : ''}</span>` });
+      const kname = (TAC_KINDS[t.kind] || TAC_KINDS.obj)[0], aria = `${t.name || 'Token'}, ${kname}${t.hidden ? ', oculto' : ''}${cur === t.id ? ', vez atual' : ''}, coluna ${c + 1}, linha ${r + 1}`;
+      const m = L.marker(tacCenter(sc, c, r), { icon, draggable:tacCanMove(t), keyboard:true, title:aria, zIndexOffset:cur === t.id ? 500 : (tacUI.sel === t.id ? 300 : 0) });
+      m.on('click', ev => { L.DomEvent.stopPropagation(ev); if(tacUI.ruler){ tacRulerPoint(m.getLatLng()); return; } tacSelect(t.id); });
+      m.on('dragstart', () => { tacUI.drag = true; });
+      m.on('dragend', ev => { tacUI.drag = false; tacDrop(sid, t, ev.target.getLatLng()); });
+      m.addTo(tacTokLayer);
+      tacUI.markers[t.id] = m;
+      const el = m.getElement();
+      if(el){
+        el.setAttribute('aria-label', aria);
+        el.addEventListener('keydown', ev => {
+          if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); ev.stopPropagation(); tacSelect(t.id); return; }
+          const dir = { ArrowLeft:[-1, 0], ArrowRight:[1, 0], ArrowUp:[0, -1], ArrowDown:[0, 1] }[ev.key];
+          if(!dir) return;
+          ev.preventDefault(); ev.stopPropagation();
+          if(tacCanMove(t)){ tacUI.focusTok = t.id; tacMoveTo(sid, t, { c:Math.round(+t.c) + dir[0], r:Math.round(+t.r) + dir[1] }).then(ok => { if(!ok) tacUI.focusTok = null; }); }
+        });
+      }
+    });
+    if(tacUI.focusTok && tacUI.markers[tacUI.focusTok]){ const fe = tacUI.markers[tacUI.focusTok].getElement(); if(fe) fe.focus({ preventScroll:true }); }
+    tacUI.focusTok = null;
+  }
+  // move um token para uma célula, aplicando as regras de deslocamento; devolve true se gravou
+  async function tacMoveTo(sid, t, cell){
+    const sc = tacScene(sid);
+    if(!sc) return false;
+    cell = tacClampCell(sc, cell.c, cell.r);
+    const c0 = Math.round(+t.c), r0 = Math.round(+t.r);
+    const d = tacDist(c0, r0, cell.c, cell.r, sc.grid.diag);
+    if(!d) return false;
+    const master = isMaster(), used = (+t.mv || 0) + d, sp = tacSpeed(sc, t);
+    if(!master && sc.turn.on && sc.rule.lock && tacTurnId(sc) !== t.id){ toast('Ainda não é a vez deste token.', true); return false; }
+    if(!master && sc.rule.limit === 'block' && used > sp){ toast(`Passa do deslocamento: ${used} de ${sp} casas.`, true); return false; }
+    if(sc.rule.limit !== 'off' && used > sp) toast(`Deslocamento acima do limite: ${used} de ${sp} casas.`, true);
+    const p = tacTokPath(sid, t);
+    tacUI.last = { sid, id:t.id, c:c0, r:r0, mv:+t.mv || 0 };
+    const ok = await DB.update({ [p + '/c']:cell.c, [p + '/r']:cell.r, [p + '/mv']:used });
+    if(!ok){ tacUI.last = null; toast(master ? 'Não foi possível mover (as regras do Firebase v3 já foram publicadas?).' : 'Não foi possível mover. Avise o mestre.', true); }
+    tacRenderBar();
+    return ok;
+  }
+  async function tacDrop(sid, t, ll){
+    const sc = tacScene(sid);
+    if(sc) await tacMoveTo(sid, t, tacCellAt(sc, ll));
+    tacDrawTokens();
+  }
+  async function tacUndo(){
+    const l = tacUI.last, t = l && tacTokensOf(l.sid).find(x => x.id === l.id);
+    if(!l || !t || !tacCanMove(t)){ tacUI.last = null; tacRenderBar(); return; }
+    const p = tacTokPath(l.sid, t);
+    tacUI.last = null;
+    const ok = await DB.update({ [p + '/c']:l.c, [p + '/r']:l.r, [p + '/mv']:l.mv });
+    toast(ok ? 'Movimento desfeito.' : 'Não foi possível desfazer.', !ok);
+    tacRenderBar(); tacDrawTokens();
+  }
+  function tacSelect(id){ tacUI.sel = id; tacUI.panel = 'token'; tacDrawTokens(); tacRenderSheet(); }
+
+  // ---------- régua (só local: não é gravada) ----------
+  function tacRulerPoint(ll){
+    const sc = tacScene(tacCurId());
+    if(!sc) return;
+    if(tacUI.pts.length >= 2) tacUI.pts = [];
+    tacUI.pts.push(tacCellAt(sc, ll));
+    tacDrawRuler();
+  }
+  function tacRulerText(){
+    const sc = tacScene(tacCurId());
+    if(!sc || !tacUI.ruler) return '';
+    const p = tacUI.pts;
+    if(p.length < 2) return p.length ? 'Régua: toque no ponto final' : 'Régua: toque no ponto inicial';
+    const d = tacDist(p[0].c, p[0].r, p[1].c, p[1].r, sc.grid.diag);
+    return `Régua: ${d} casa${d === 1 ? '' : 's'} · ${fmtNum(d * sc.grid.mpc)} m`;
+  }
+  function tacDrawRuler(){
+    if(!tacRulerLayer) return;
+    tacRulerLayer.clearLayers();
+    const sc = tacScene(tacCurId());
+    if(sc && tacUI.ruler){
+      const ll = tacUI.pts.map(p => tacCenter(sc, p.c, p.r));
+      ll.forEach(x => L.circleMarker(x, { radius:6, color:'#e0c23c', weight:2, fillOpacity:0.7, interactive:false }).addTo(tacRulerLayer));
+      if(ll.length === 2) L.polyline(ll, { color:'#e0c23c', weight:3, dashArray:'6 6', interactive:false }).addTo(tacRulerLayer);
+    }
+    const chip = tacEl('tac-chip'), txt = tacRulerText();
+    chip.hidden = !txt; chip.textContent = txt;
+  }
+
+  // ---------- telas ----------
+  function tacRender(){ tacRenderTitle(); tacRenderBar(); tacRenderTurn(); tacRenderSheet(); }
+  function tacRenderTitle(){
+    const sid = tacCurId(), sc = tacScene(sid);
+    tacEl('tac-title').textContent = sc ? (sc.name || 'Cena') : 'Mapa tático';
+    tacEl('tac-sub').textContent = !sc ? '' : (tac.active === sid ? 'Cena ativa para o grupo' : 'Prévia: o grupo não está vendo esta cena');
+  }
+  function tacRenderBar(){
+    const m = isMaster(), b = (a, ic, lb, on) => `<button type="button" class="tac-b${on ? ' on' : ''}" data-tac="${a}"><span>${ic}</span>${lb}</button>`;
+    const pn = tacUI.panel;
+    let h = b('ruler', '📏', 'Régua', tacUI.ruler) + b('center', '🎯', 'Centro') + b('panel-add', '➕', m ? 'Token' : 'Meu token', pn === 'add');
+    if(m) h += b('panel-scenes', '🗺', 'Cenas', pn === 'scenes' || pn === 'new') + b('panel-grid', '🔲', 'Grade', pn === 'grid') + b('panel-combat', '⚔', 'Combate', pn === 'combat');
+    if(tacUI.last && tacCurId() === tacUI.last.sid) h += b('undo', '↩', 'Desfazer');
+    h += b('dice', '🎲', 'Dados');
+    tacEl('tac-bar').innerHTML = h;
+  }
+  function tacRenderTurn(){
+    const el = tacEl('tac-turn'), sid = tacCurId(), sc = tacScene(sid);
+    if(!sc || !sc.turn.on){ el.hidden = true; return; }
+    const id = tacTurnId(sc), t = tacTokensOf(sid).find(x => x.id === id);
+    el.hidden = false;
+    el.innerHTML = `<span>⚔ Rodada <b>${sc.turn.round}</b> · Vez de <b>${tacX(t ? t.name : '—')}</b>${t ? ' · ' + tacX(tacMoveTxt(sc, t)) : ''}</span>` + (isMaster() ? '<button type="button" class="inv-mini-btn primary" data-tac="next">Próximo ▶</button>' : '');
+  }
+  function tacSh(title, sub){ return `<div class="tac-sh"><div><b>${tacX(title)}</b>${sub ? `<small>${tacX(sub)}</small>` : ''}</div><button type="button" class="tac-x" data-tac="close-sheet" aria-label="Fechar painel">×</button></div>`; }
+  function tacStep(label, k, v, ds){
+    return `<div class="tac-step"><span>${label}</span><div>${ds.slice().reverse().map(d => `<button type="button" class="inv-mini-btn" data-tac="g-step" data-k="${k}" data-d="${-d}">−${d}</button>`).join('')}<input type="number" id="tg-${k}" data-tac-ch="g" value="${tacX(v)}">${ds.map(d => `<button type="button" class="inv-mini-btn" data-tac="g-step" data-k="${k}" data-d="${d}">+${d}</button>`).join('')}</div></div>`;
+  }
+  function tacSel(id, list, cur, ch){ return `<select id="${id}"${ch ? ` data-tac-ch="${ch}"` : ''}>${list.map(x => opt(x[0], x[1], cur)).join('')}</select>`; }
+  function tacRenderSheet(){
+    const sh = tacEl('tac-sheet');
+    if(!sh) return;
+    const sid = tacCurId(), sc = tacScene(sid), m = isMaster();
+    let p = tacUI.panel;
+    if(['scenes', 'new', 'grid', 'combat'].includes(p) && !m) p = tacUI.panel = '';
+    if(p === 'token' && !(sc && tacTokensOf(sid).some(t => t.id === tacUI.sel))) p = tacUI.panel = '';
+    if(!p){ sh.hidden = true; sh.innerHTML = ''; return; }
+    let h = '';
+    if(p === 'scenes') h = tacPanelScenes();
+    else if(p === 'new') h = tacPanelNew();
+    else if(!sc) h = tacSh('Mapa tático') + '<div class="inv-empty">Crie ou ative uma cena primeiro.</div>';
+    else if(p === 'token') h = tacPanelToken(sid, sc);
+    else if(p === 'add') h = tacPanelAdd(sid, sc);
+    else if(p === 'grid') h = tacPanelGrid(sid, sc);
+    else if(p === 'combat') h = tacPanelCombat(sid, sc);
+    const ae = document.activeElement;
+    let fk = null;
+    if(ae && sh.contains(ae) && ae.dataset && ae.dataset.tac) fk = { a:ae.dataset.tac, dc:ae.dataset.dc, dr:ae.dataset.dr, id:ae.dataset.id };
+    sh.innerHTML = h; sh.hidden = false; sh.dataset.p = p;
+    if(fk){ const nb = Array.from(sh.querySelectorAll('[data-tac]')).find(x => x.dataset.tac === fk.a && x.dataset.dc === fk.dc && x.dataset.dr === fk.dr && x.dataset.id === fk.id); if(nb) nb.focus({ preventScroll:true }); }
+  }
+  function tacPanelToken(sid, sc){
+    const t = tacTokensOf(sid).find(x => x.id === tacUI.sel), m = isMaster(), mine = tacCanMove(t);
+    const kinfo = TAC_KINDS[t.kind] || TAC_KINDS.obj;
+    let h = tacSh(t.name || 'Token', kinfo[0] + (t.hidden ? ' · 🙈 oculto (só você vê)' : ''));
+    if(mine){
+      const dp = [[-1, -1, '↖'], [0, -1, '↑'], [1, -1, '↗'], [-1, 0, '←'], [0, 0, ''], [1, 0, '→'], [-1, 1, '↙'], [0, 1, '↓'], [1, 1, '↘']];
+      const names = { '-1,-1':'noroeste', '0,-1':'norte', '1,-1':'nordeste', '-1,0':'oeste', '1,0':'leste', '-1,1':'sudoeste', '0,1':'sul', '1,1':'sudeste' };
+      h += `<div class="tac-move"><div class="tac-dpad" role="group" aria-label="Mover uma casa">${dp.map(x => x[2] ? `<button type="button" class="tac-dp" data-tac="tok-step" data-dc="${x[0]}" data-dr="${x[1]}" aria-label="Mover 1 casa para ${names[x[0] + ',' + x[1]]}">${x[2]}</button>` : '<span></span>').join('')}</div>
+        <p class="hub-hint">Arraste o token ou use as setas para mover 1 casa de cada vez (no teclado: setas com o token em foco).</p></div>`;
+    }
+    h += `<div class="tac-row"><span>Movimento neste turno</span><b>${tacX(tacMoveTxt(sc, t))} · ${fmtNum((+t.mv || 0) * sc.grid.mpc)} de ${fmtNum(tacSpeed(sc, t) * sc.grid.mpc)} m</b></div>`;
+    if(t.ini != null && t.ini !== '') h += `<div class="tac-row"><span>Iniciativa</span><b>${tacX(t.ini)}</b></div>`;
+    if(m){
+      h += `<div class="tac-form"><label>Nome<input type="text" id="tt-name" value="${tacX(t.name || '')}" maxlength="40"></label>
+        <label>Tipo${tacSel('tt-kind', Object.keys(TAC_KINDS).map(k => [k, TAC_KINDS[k][0]]), t.kind || 'obj')}</label>
+        <label>Deslocamento (casas)<input type="number" id="tt-speed" min="0" max="99" value="${t.speed != null ? tacX(t.speed) : ''}" placeholder="padrão ${sc.rule.speed}"></label>
+        <label>Iniciativa<input type="number" id="tt-ini" value="${t.ini != null ? tacX(t.ini) : ''}" placeholder="—"></label>
+        <label>Cor<input type="color" id="tt-color" value="${tacX(/^#[0-9a-f]{6}$/i.test(t.color || '') ? t.color : kinfo[1])}"></label></div>
+        <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-tac="tok-save">Salvar</button>
+        <button type="button" class="inv-mini-btn" data-tac="tok-mv0">Zerar movimento</button>
+        <button type="button" class="inv-mini-btn" data-tac="tok-hide">${t.hidden ? '👁 Revelar ao grupo' : '🙈 Ocultar do grupo'}</button>
+        <button type="button" class="inv-mini-btn danger" data-tac="tok-del">Remover</button></div>`;
+    } else {
+      h += `<div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-tac="tok-center">Centralizar</button>${mine ? '<button type="button" class="inv-mini-btn danger" data-tac="tok-del">Tirar do mapa</button>' : ''}</div>`;
+      if(mine) h += '<p class="hub-hint">O limite de deslocamento e a ordem de turnos são um apoio de mesa definido pelo mestre.</p>';
+    }
+    return h;
+  }
+  function tacPanelAdd(sid, sc){
+    const m = isMaster(), inScene = new Set(tacTokensOf(sid).map(t => t.mapTokenId).filter(Boolean));
+    const cand = tokens.filter(t => !inScene.has(t.id) && (m || (currentUser && t.ownerId === currentUser.uid)));
+    let h = tacSh(m ? 'Adicionar à cena' : 'Colocar meu token');
+    h += cand.length ? `<div class="hub-label">${m ? 'Personagens do mapa' : 'Seus personagens'}</div>` + cand.map(t => `<div class="tac-item"><div><b>${tacX(t.label || 'Token')}</b></div><div class="tac-acts"><button type="button" class="inv-mini-btn primary" data-tac="add-pc" data-id="${tacX(t.id)}">Colocar</button></div></div>`).join('')
+      + (m && cand.length > 1 ? '<div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-tac="add-all">Colocar todos</button></div>' : '')
+      : `<div class="inv-empty">${m ? 'Todos os personagens do mapa já estão na cena.' : 'Você não tem personagem livre para colocar nesta cena.'}</div>`;
+    if(m){
+      h += `<div class="hub-label">Criar inimigo, aliado ou objeto</div><div class="tac-form">
+        <label>Nome<input type="text" id="ta-name" maxlength="40" placeholder="Ex.: Lobo-de-gelo"></label>
+        <label>Tipo${tacSel('ta-kind', Object.keys(TAC_KINDS).filter(k => k !== 'pc').map(k => [k, TAC_KINDS[k][0]]), 'enemy')}</label>
+        <label>Quantidade<input type="number" id="ta-qty" min="1" max="12" value="1"></label>
+        <label>Deslocamento (casas)<input type="number" id="ta-speed" min="0" max="99" placeholder="padrão ${sc.rule.speed}"></label>
+        <label class="check-row"><input type="checkbox" id="ta-hid"> Começa oculto (só o mestre vê)</label></div>
+        <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-tac="add-custom">Criar</button></div>`;
+    }
+    return h;
+  }
+  function tacPanelScenes(){
+    const ids = Object.keys(tac.scenes).sort((a, b) => (tac.scenes[a].createdAt || 0) - (tac.scenes[b].createdAt || 0));
+    let h = tacSh('Cenas', 'Só o mestre vê esta lista');
+    h += ids.length ? ids.map(id => {
+      const s = tac.scenes[id], n = Object.keys(s.tokens || {}).length + Object.keys(gmTac[id] || {}).length, cur = tacCurId() === id;
+      return `<div class="tac-item"><div><b>${tacX(s.name || 'Cena')}</b><small>${tac.active === id ? '● ativa para o grupo · ' : ''}${cur ? 'em exibição · ' : ''}${n} token${n === 1 ? '' : 's'}</small></div>
+        <div class="tac-acts"><button type="button" class="inv-mini-btn primary" data-tac="sc-activate" data-id="${tacX(id)}"${tac.active === id ? ' disabled' : ''}>Ativar</button>
+        <button type="button" class="inv-mini-btn" data-tac="sc-view" data-id="${tacX(id)}">Ver</button>
+        <button type="button" class="inv-mini-btn danger" data-tac="sc-del" data-id="${tacX(id)}">Excluir</button></div></div>`;
+    }).join('') : '<div class="inv-empty">Nenhuma cena ainda.</div>';
+    h += '<div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-tac="panel-new">＋ Nova cena</button></div>';
+    h += '<p class="hub-hint">“Ativar” faz o grupo inteiro passar a ver essa cena. “Ver” é só uma prévia para você.</p>';
+    return h;
+  }
+  function tacPanelNew(){
+    const s = tacUI.nfSrc, chip = (v, l) => `<button type="button" class="tac-chip-b${s === v ? ' on' : ''}" data-tac="nf-src" data-v="${v}">${l}</button>`;
+    let h = tacSh('Nova cena');
+    h += `<div class="tac-form"><label>Nome<input type="text" id="tn-name" maxlength="60" placeholder="Ex.: Posto de combustível"></label></div>
+      <div class="hub-label">Fundo da cena</div><div class="tac-chips">${chip('blank', 'Grade em branco')}${chip('file', 'Foto do celular')}${chip('url', 'Endereço da imagem')}</div>`;
+    if(s === 'blank') h += `<div class="tac-form"><label>Colunas<input type="number" id="tn-cols" min="5" max="60" value="${TAC_DEF.cols}"></label><label>Linhas<input type="number" id="tn-rows" min="5" max="60" value="${TAC_DEF.rows}"></label></div>`;
+    if(s === 'file') h += '<div class="tac-form"><label>Imagem<input type="file" id="tn-file" accept="image/*"></label></div><p class="hub-hint">A imagem é reduzida (até 1600 px) e guardada no banco da campanha. Ela não é secreta: quem abrir a cena a vê inteira.</p>';
+    if(s === 'url') h += '<div class="tac-form"><label>Endereço<input type="text" id="tn-url" placeholder="https://… ou cenas/posto.jpg"></label></div><p class="hub-hint">Dica: suba a imagem na pasta <b>cenas</b> do seu repositório do GitHub e use <b>cenas/nome.jpg</b>.</p>';
+    h += '<p class="hub-hint">Depois de criar, use “Grade” para alinhar as casas com a imagem.</p>';
+    h += '<div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-tac="sc-create">Criar cena</button><button type="button" class="inv-mini-btn" data-tac="panel-scenes">Voltar</button></div>';
+    return h;
+  }
+  function tacPanelGrid(sid, sc){
+    if(!tacUI.gd) tacUI.gd = { size:sc.grid.size, ox:sc.grid.ox, oy:sc.grid.oy, mpc:sc.grid.mpc, diag:sc.grid.diag, show:sc.grid.show !== false };
+    const g = tacUI.gd;
+    let h = tacSh('Grade da cena', 'Ajuste até as linhas casarem com a imagem');
+    h += tacStep('Tamanho da casa (px)', 'size', g.size, [1, 5]) + tacStep('Deslocar na horizontal (px)', 'ox', g.ox, [1, 5]) + tacStep('Deslocar na vertical (px)', 'oy', g.oy, [1, 5]);
+    h += `<div class="tac-form"><label>Metros por casa<input type="number" id="tg-mpc" data-tac-ch="g" step="0.1" min="0.1" value="${tacX(g.mpc)}"></label>
+      <label>Contagem na diagonal${tacSel('tg-diag', TAC_DIAG, g.diag, 'g')}</label>
+      <label class="check-row"><input type="checkbox" id="tg-show" data-tac-ch="g" ${g.show ? 'checked' : ''}> Mostrar a grade para o grupo</label></div>`;
+    h += '<p class="hub-hint">Padrões provisórios: 1,5 m por casa e diagonal = 1 casa. Troque pelo que a sua mesa usar.</p>';
+    h += '<div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-tac="g-save">Salvar grade</button><button type="button" class="inv-mini-btn" data-tac="g-cancel">Cancelar</button></div>';
+    return h;
+  }
+  function tacPanelCombat(sid, sc){
+    const tk = tacTokensOf(sid), byId = {}; tk.forEach(t => { byId[t.id] = t; });
+    let h = tacSh('Combate e deslocamento', sc.turn.on ? `Rodada ${sc.turn.round}` : 'Sem combate em andamento');
+    h += '<div class="inv-item-actions">' + (sc.turn.on
+      ? '<button type="button" class="inv-mini-btn primary" data-tac="next">Próximo turno ▶</button><button type="button" class="inv-mini-btn" data-tac="c-rebuild">Refazer ordem</button><button type="button" class="inv-mini-btn danger" data-tac="c-end">Encerrar combate</button>'
+      : '<button type="button" class="inv-mini-btn primary" data-tac="c-start">Iniciar combate</button>') + '<button type="button" class="inv-mini-btn" data-tac="c-reset-mv">Zerar movimento de todos</button></div>';
+    const pubIds = tk.filter(t => !t.hidden);
+    h += `<div class="hub-label">Iniciativa (maior age primeiro)</div>` + (pubIds.length ? pubIds.slice().sort((a, b) => {
+      const ia = sc.turn.order.indexOf(a.id), ib = sc.turn.order.indexOf(b.id);
+      return sc.turn.on ? ((ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)) : (tacNum(b.ini, -999) - tacNum(a.ini, -999));
+    }).map(t => `<div class="tac-item"><div><b>${sc.turn.on && tacTurnId(sc) === t.id ? '▶ ' : ''}${tacX(t.name)}</b><small>${tacX(tacMoveTxt(sc, t))}</small></div><div class="tac-acts"><input type="number" class="tac-ini" data-tac-ch="ini" data-id="${tacX(t.id)}" value="${t.ini != null ? tacX(t.ini) : ''}" placeholder="ini" aria-label="Iniciativa de ${tacX(t.name)}"></div></div>`).join('') : '<div class="inv-empty">Sem tokens visíveis na cena.</div>');
+    h += '<p class="hub-hint">Tokens ocultos ficam fora da ordem; revele-os para entrarem. Role a iniciativa em “Dados” e anote o valor aqui.</p>';
+    h += `<div class="hub-label">Regras de deslocamento desta cena</div><div class="tac-form">
+      <label>Limite${tacSel('tc-limit', TAC_LIMIT, sc.rule.limit)}</label>
+      <label>Deslocamento padrão (casas)<input type="number" id="tc-speed" min="0" max="99" value="${tacX(sc.rule.speed)}"></label>
+      <label class="check-row"><input type="checkbox" id="tc-lock" ${sc.rule.lock ? 'checked' : ''}> Jogadores só movem na vez do próprio token</label></div>
+      <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-tac="r-save">Salvar regras</button></div>
+      <p class="hub-hint">Padrão provisório de 6 casas por turno: confirme com a sua mesa. O app só avisa ou bloqueia o deslocamento; não aplica nenhuma outra regra sozinho. O limite é um apoio de mesa (não impede quem editar o banco por fora).</p>`;
+    return h;
+  }
+
+  // ---------- ações ----------
+  function tacF(id){ const e = document.getElementById(id); return e ? e.value : ''; }
+  function tacOrderFrom(sid, sc){
+    const tk = tacTokensOf(sid).filter(t => !t.hidden);
+    return tk.slice().sort((a, b) => (tacNum(b.ini, -999) - tacNum(a.ini, -999)) || String(a.name).localeCompare(String(b.name))).map(t => t.id);
+  }
+  function tacWithoutFromOrder(sc, id){
+    const o = sc.turn.order, ix = o.indexOf(id);
+    if(ix < 0) return null;
+    const order = o.filter(x => x !== id);
+    let i = sc.turn.i % Math.max(1, o.length);
+    if(ix < i) i--; if(i >= order.length) i = 0;
+    return { order, i:Math.max(0, i) };
+  }
+  async function tacSetTurn(sid, patch, extra){
+    const base = tacPath() + '/scenes/' + sid + '/turn', upd = Object.assign({}, extra || {});
+    Object.keys(patch).forEach(k => { upd[base + '/' + k] = patch[k]; });
+    const ok = await DB.update(upd);
+    if(!ok) toast('Não foi possível gravar o combate (regras v3 publicadas?).', true);
+    return ok;
+  }
+  async function tacMakeTokens(sid, sc, list, hidden){
+    const used = new Set(tacTokensOf(sid).map(t => t.c + ',' + t.r)), upd = {};
+    const base = hidden ? scopedKey(KEY_GMTAC) + '/' + sid : tacPath() + '/scenes/' + sid + '/tokens';
+    list.forEach(d => {
+      const cell = tacFreeCell(sid, sc, used); used.add(cell.c + ',' + cell.r);
+      upd[base + '/' + DB.newId(base)] = JSON.parse(JSON.stringify(Object.assign({ mv:0, v:1 }, d, { c:cell.c, r:cell.r })));
+    });
+    const ok = await DB.update(upd);
+    if(!ok) toast('Não foi possível gravar (as regras do Firebase v3 já foram publicadas?).', true);
+    return ok;
+  }
+  function tacPcRec(t){ return { name:t.label || 'Token', kind:'pc', owner:t.ownerId || null, mapTokenId:t.id, color:/^#[0-9a-f]{6}$/i.test(t.color || '') ? t.color : undefined }; }
+  async function tacCreateScene(){
+    if(!isMaster()) return;
+    const name = tacF('tn-name').trim() || 'Nova cena', src = tacUI.nfSrc, sid = DB.newId(tacPath() + '/scenes');
+    const sc = { id:sid, name, v:1, createdAt:DB.ts(), grid:{ size:TAC_DEF.size, mpc:TAC_DEF.mpc, ox:0, oy:0, diag:TAC_DEF.diag, show:true }, rule:{ limit:TAC_DEF.limit, speed:TAC_DEF.speed, lock:false } };
+    try{
+      if(src === 'blank'){
+        const cols = Math.min(60, Math.max(5, parseInt(tacF('tn-cols'), 10) || TAC_DEF.cols)), rows = Math.min(60, Math.max(5, parseInt(tacF('tn-rows'), 10) || TAC_DEF.rows));
+        sc.src = { kind:'blank' }; sc.w = cols * TAC_DEF.size; sc.h = rows * TAC_DEF.size;
+      } else if(src === 'url'){
+        const url = tacF('tn-url').trim();
+        if(!url){ toast('Cole o endereço da imagem.', true); return; }
+        const im = await tacLoadImg(url);
+        sc.src = { kind:'url', url }; sc.w = im.w; sc.h = im.h;
+      } else {
+        const f = (tacEl('tn-file') || {}).files && tacEl('tn-file').files[0];
+        if(!f){ toast('Escolha uma imagem.', true); return; }
+        const r = await tacFileToData(f);
+        const okImg = await DB.set(scopedKey(KEY_TACIMG) + '/' + sid, { d:r.data });
+        if(!okImg){ toast('Não consegui guardar a imagem (regras do Firebase v3 publicadas? Imagem muito grande?).', true); return; }
+        tacUI.imgCache[sid] = r.data;
+        sc.src = { kind:'data' }; sc.w = r.w; sc.h = r.h;
+      }
+    }catch(e){ toast(e && e.message ? e.message : 'Não foi possível criar a cena.', true); return; }
+    const upd = { [tacPath() + '/scenes/' + sid]:sc };
+    if(!tac.active) upd[tacPath() + '/active'] = sid;
+    const ok = await DB.update(upd);
+    if(!ok){ toast('Não foi possível gravar a cena (regras do Firebase v3 publicadas?).', true); return; }
+    tacUI.sid = sid; tacUI.gd = null; tacUI.panel = (src === 'blank') ? 'scenes' : 'grid';
+    toast('Cena criada.');
+    tacRender(); tacBuild(true);
+  }
+  async function tacAction(a, el){
+    const sid = tacCurId(), sc = tacScene(sid), D = el ? el.dataset : {}, m = isMaster();
+    const tk = sid ? tacTokensOf(sid) : [], sel = tk.find(t => t.id === tacUI.sel);
+    switch(a){
+      case 'back': tacClose(); return;
+      case 'close-sheet': tacUI.panel = ''; tacUI.gd = null; tacDrawGrid(); tacRenderBar(); tacRenderSheet(); return;
+      case 'ruler': tacUI.ruler = !tacUI.ruler; tacUI.pts = []; tacDrawRuler(); tacRenderBar(); return;
+      case 'center': if(tacMap && sc) tacMap.fitBounds(L.latLngBounds([[0, 0], [sc.h, sc.w]]), { animate:false }); return;
+      case 'dice': openHub('dados'); return;
+      case 'undo': tacUndo(); return;
+      case 'tok-step': if(sel && tacCanMove(sel)){ tacUI.focusTok = null; tacMoveTo(sid, sel, { c:Math.round(+sel.c) + (+D.dc), r:Math.round(+sel.r) + (+D.dr) }).then(() => tacDrawTokens()); } return;
+      case 'panel-add': case 'panel-scenes': case 'panel-grid': case 'panel-combat': case 'panel-new': {
+        const p = a.slice(6);
+        tacUI.panel = tacUI.panel === p && p !== 'new' ? '' : p;
+        tacUI.gd = null; tacDrawGrid(); tacRenderBar(); tacRenderSheet(); return;
+      }
+      case 'nf-src': { const nm = tacF('tn-name'); tacUI.nfSrc = D.v; tacRenderSheet(); if(tacEl('tn-name')) tacEl('tn-name').value = nm; return; }
+      case 'sc-create': tacCreateScene(); return;
+      case 'sc-activate': if(m && tac.scenes[D.id]){ await DB.set(tacPath() + '/active', D.id); tacUI.sid = null; toast('Cena ativada para o grupo.'); } return;
+      case 'sc-view': tacUI.sid = D.id; tacUI.sel = null; tacUI.gd = null; tacRender(); tacBuild(true); return;
+      case 'sc-del': {
+        if(!m || !tac.scenes[D.id]) return;
+        if(!window.confirm('Excluir a cena “' + (tac.scenes[D.id].name || 'Cena') + '” e todos os tokens dela?')) return;
+        const upd = { [tacPath() + '/scenes/' + D.id]:null, [scopedKey(KEY_GMTAC) + '/' + D.id]:null, [scopedKey(KEY_TACIMG) + '/' + D.id]:null };
+        if(tac.active === D.id) upd[tacPath() + '/active'] = null;
+        delete tacUI.imgCache[D.id]; if(tacUI.sid === D.id) tacUI.sid = null;
+        await DB.update(upd); tacRender(); tacBuild(true); return;
+      }
+      case 'g-step': {
+        if(!tacUI.gd) return;
+        const k = D.k, v = tacNum(tacF('tg-' + k), tacUI.gd[k]) + (+D.d);
+        tacUI.gd[k] = k === 'size' ? Math.max(4, Math.min(400, v)) : v;
+        if(tacEl('tg-' + k)) tacEl('tg-' + k).value = tacUI.gd[k];
+        tacDrawGrid(); return;
+      }
+      case 'g-save': {
+        if(!m || !sc || !tacUI.gd) return;
+        const g = tacUI.gd;
+        const ok = await DB.set(tacPath() + '/scenes/' + sid + '/grid', { size:Math.max(4, tacNum(g.size, 64)), ox:tacNum(g.ox, 0), oy:tacNum(g.oy, 0), mpc:Math.max(0.1, tacNum(g.mpc, 1.5)), diag:g.diag || 'cheb', show:g.show !== false });
+        if(ok){ toast('Grade salva.'); tacUI.gd = null; tacUI.panel = ''; tacRender(); tacDrawGrid(); tacDrawTokens(); }
+        else toast('Não foi possível salvar a grade.', true);
+        return;
+      }
+      case 'g-cancel': tacUI.gd = null; tacUI.panel = ''; tacDrawGrid(); tacRender(); return;
+      case 'add-pc': {
+        if(!sc) return;
+        const t = tokens.find(x => x.id === D.id); if(!t) return;
+        if(!m && !(currentUser && t.ownerId === currentUser.uid)) { toast('Esse personagem não é seu.', true); return; }
+        await tacMakeTokens(sid, sc, [tacPcRec(t)], false); tacRenderSheet(); return;
+      }
+      case 'add-all': {
+        if(!sc || !m) return;
+        const inScene = new Set(tk.map(t => t.mapTokenId).filter(Boolean));
+        await tacMakeTokens(sid, sc, tokens.filter(t => !inScene.has(t.id)).map(tacPcRec), false); tacRenderSheet(); return;
+      }
+      case 'add-custom': {
+        if(!sc || !m) return;
+        const name = tacF('ta-name').trim() || 'Token', kind = tacF('ta-kind') || 'enemy', qty = Math.min(12, Math.max(1, parseInt(tacF('ta-qty'), 10) || 1));
+        const sp = tacF('ta-speed') === '' ? undefined : Math.max(0, Math.min(99, parseInt(tacF('ta-speed'), 10) || 0));
+        const hid = !!(tacEl('ta-hid') && tacEl('ta-hid').checked);
+        const list = Array.from({ length:qty }, (_, i) => ({ name:qty > 1 ? name + ' ' + (i + 1) : name, kind, speed:sp }));
+        if(await tacMakeTokens(sid, sc, list, hid)){ toast(qty > 1 ? qty + ' tokens criados.' : 'Token criado.'); tacUI.panel = ''; tacRender(); }
+        return;
+      }
+      case 'tok-center': if(sel && sc && tacMap) tacMap.setView(tacCenter(sc, sel.c, sel.r), Math.max(tacMap.getZoom(), 0), { animate:false }); return;
+      case 'tok-save': {
+        if(!m || !sel) return;
+        const p = tacTokPath(sid, sel), sp = tacF('tt-speed'), ini = tacF('tt-ini');
+        const ok = await DB.update({ [p + '/name']:tacF('tt-name').trim() || 'Token', [p + '/kind']:tacF('tt-kind') || 'obj', [p + '/color']:tacF('tt-color') || null,
+          [p + '/speed']:sp === '' ? null : Math.max(0, Math.min(99, parseInt(sp, 10) || 0)), [p + '/ini']:ini === '' ? null : tacNum(ini, null) });
+        if(ok) toast('Token salvo.'); else toast('Não foi possível salvar o token.', true);
+        return;
+      }
+      case 'tok-mv0': if(m && sel) await DB.set(tacTokPath(sid, sel) + '/mv', 0); return;
+      case 'tok-hide': {
+        if(!m || !sel || !sc) return;
+        const rec = JSON.parse(JSON.stringify(sel)); delete rec.hidden; delete rec.id;
+        const from = tacTokPath(sid, sel), to = tacTokPath(sid, Object.assign({}, sel, { hidden:!sel.hidden })), upd = { [from]:null, [to]:rec };
+        if(!sel.hidden && sc.turn.on){ const w = tacWithoutFromOrder(sc, sel.id); if(w){ upd[tacPath() + '/scenes/' + sid + '/turn/order'] = w.order; upd[tacPath() + '/scenes/' + sid + '/turn/i'] = w.i; } }
+        const ok = await DB.update(upd);
+        toast(!ok ? 'Não foi possível alterar a visibilidade (regras v3 publicadas?).' : (sel.hidden ? 'Token revelado ao grupo.' : 'Token oculto: só você o vê.'), !ok);
+        return;
+      }
+      case 'tok-del': {
+        if(!sel || !sc || !tacCanMove(sel)) return;
+        if(!window.confirm('Remover “' + (sel.name || 'token') + '” da cena?')) return;
+        const upd = { [tacTokPath(sid, sel)]:null };
+        if(sc.turn.on){ const w = tacWithoutFromOrder(sc, sel.id); if(w){ upd[tacPath() + '/scenes/' + sid + '/turn/order'] = w.order; upd[tacPath() + '/scenes/' + sid + '/turn/i'] = w.i; } }
+        tacUI.sel = null; tacUI.panel = '';
+        await DB.update(upd); tacRender(); tacDrawTokens(); return;
+      }
+      case 'c-start': {
+        if(!m || !sc) return;
+        const order = tacOrderFrom(sid, sc), upd = {};
+        if(!order.length){ toast('Coloque tokens visíveis na cena antes de iniciar.', true); return; }
+        tk.filter(t => !t.hidden).forEach(t => { upd[tacTokPath(sid, t) + '/mv'] = 0; });
+        await tacSetTurn(sid, { on:true, order, i:0, round:1 }, upd); return;
+      }
+      case 'c-rebuild': {
+        if(!m || !sc) return;
+        const cur = tacTurnId(sc), order = tacOrderFrom(sid, sc), i = Math.max(0, order.indexOf(cur));
+        await tacSetTurn(sid, { order, i }); return;
+      }
+      case 'c-end': if(m && window.confirm('Encerrar o combate? A ordem e a rodada atuais serão perdidas.')) await tacSetTurn(sid, { on:false }); return;
+      case 'c-reset-mv': { if(!m || !sc) return; const upd = {}; tk.forEach(t => { upd[tacTokPath(sid, t) + '/mv'] = 0; }); await DB.update(upd); toast('Movimento zerado.'); return; }
+      case 'next': {
+        if(!m || !sc || !sc.turn.on) return;
+        const ids = new Set(tk.filter(t => !t.hidden).map(t => t.id)), order = sc.turn.order.filter(x => ids.has(x));
+        if(!order.length) return;
+        let i = sc.turn.i % sc.turn.order.length + 1, round = sc.turn.round;
+        // avança até o próximo token que ainda existe
+        const full = sc.turn.order; let guard = 0;
+        while(guard++ <= full.length){ if(i >= full.length){ i = 0; round++; } if(ids.has(full[i % full.length])) break; i++; }
+        const nid = full[i % full.length], t = tk.find(x => x.id === nid), upd = {};
+        if(t) upd[tacTokPath(sid, t) + '/mv'] = 0;
+        await tacSetTurn(sid, { i, round }, upd); return;
+      }
+      case 'r-save': {
+        if(!m || !sc) return;
+        const ok = await DB.set(tacPath() + '/scenes/' + sid + '/rule', { limit:tacF('tc-limit') || 'warn', speed:Math.max(0, Math.min(99, parseInt(tacF('tc-speed'), 10) || TAC_DEF.speed)), lock:!!(tacEl('tc-lock') && tacEl('tc-lock').checked) });
+        toast(ok ? 'Regras salvas.' : 'Não foi possível salvar as regras.', !ok); return;
+      }
+    }
+  }
+  function tacChange(el){
+    const k = el.dataset.tacCh;
+    if(k === 'g' && tacUI.gd){
+      const g = tacUI.gd;
+      g.size = Math.max(4, Math.min(400, tacNum(tacF('tg-size'), g.size))); g.ox = tacNum(tacF('tg-ox'), g.ox); g.oy = tacNum(tacF('tg-oy'), g.oy);
+      g.mpc = tacNum(tacF('tg-mpc'), g.mpc); g.diag = tacF('tg-diag') || g.diag; g.show = !!(tacEl('tg-show') && tacEl('tg-show').checked);
+      tacDrawGrid();
+    } else if(k === 'ini' && isMaster()){
+      const sid = tacCurId(), t = sid && tacTokensOf(sid).find(x => x.id === el.dataset.id);
+      if(t) DB.set(tacTokPath(sid, t) + '/ini', el.value === '' ? null : tacNum(el.value, null));
+    }
+  }
+  function tacOnData(v){
+    const prev = tac.active;
+    tac = { active:(v && v.active) || null, scenes:(v && v.scenes) || {} };
+    if(tacUI.seen && tac.active && tac.active !== prev && !tacUI.open && !isMaster() && tac.scenes[tac.active]) toast('Cena tática ativa: ' + (tac.scenes[tac.active].name || 'Cena') + ' (menu Áreas ▸ Tático)');
+    tacUI.seen = true;
+    tacChanged();
+  }
+  function tacChanged(){
+    if(!tacUI.open) return;
+    tacRenderBar(); tacRenderTurn(); tacRenderTitle();
+    tacBuild(false);
+    const ae = document.activeElement, sh = tacEl('tac-sheet');
+    if(ae && sh && sh.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+    tacRenderSheet();
+  }
+  function tacOpen(){
+    closeHub(); closeDrawer(); closeNavDrawer(); closeInventory();
+    tacUI.open = true;
+    tacEl('tac').hidden = false;
+    tacInitMap();
+    tacRender();
+    requestAnimationFrame(() => { tacMap.invalidateSize(); tacBuild(true); const bk = root0(); if(bk) bk.focus({ preventScroll:true }); });
+  }
+  function root0(){ return document.querySelector('#tac .tac-back'); }
+  function tacClose(){ tacUI.open = false; tacUI.ruler = false; tacUI.pts = []; tacEl('tac').hidden = true; const f = document.getElementById('fab-system'); if(f) f.focus({ preventScroll:true }); }
+  (function tacWire(){
+    const root = tacEl('tac');
+    if(!root) return;
+    root.addEventListener('click', e => { const b = e.target.closest('[data-tac]'); if(b && root.contains(b)) tacAction(b.dataset.tac, b); });
+    root.addEventListener('change', e => { if(e.target && e.target.dataset && e.target.dataset.tacCh) tacChange(e.target); });
+    root.addEventListener('input', e => { if(e.target && e.target.dataset && e.target.dataset.tacCh === 'g') tacChange(e.target); });
+    window.addEventListener('resize', () => { if(tacUI.open && tacMap) tacMap.invalidateSize(); });
+    if(window.ResizeObserver) new ResizeObserver(() => { if(tacUI.open && tacMap) tacMap.invalidateSize({ animate:false }); }).observe(tacEl('tac-mapwrap'));
+    document.addEventListener('keydown', e => { if(e.key === 'Escape' && tacUI.open && !hubIsOpen()) tacClose(); });
+    const ab = tacEl('area-tatico');
+    if(ab) ab.addEventListener('click', tacOpen);
+  })();
 
   // ---------- navegação por áreas (menu "Áreas") ----------
   // Mundo = mapa + clima/locais · Personagem = ficha · Inventário · Expedição = saque/pesca/contêineres
