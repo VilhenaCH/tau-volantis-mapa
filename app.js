@@ -18,6 +18,58 @@
     nota:         '<path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3"/><path d="M9 12h6M9 16h6"/>',
     pin:          '<path d="M12 21s-7-7.2-7-12a7 7 0 0 1 14 0c0 4.8-7 12-7 12Z"/><circle cx="12" cy="9" r="2.4"/>'
   };
+  // Ícones de interface (SVG de traço, 24x24). Usados no dock, índice, feed, ficha e clima no lugar de emojis.
+  const UI_IC = {
+    trash:'<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/>',
+    fish:'<path d="M3 12c3-5 9-6 14-2l4-3v10l-4-3c-5 4-11 3-14-2z"/><circle cx="8" cy="11" r="0.8"/>',
+    download:'<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>',
+    cut:'<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8 8l12 10M8 16L20 6"/>',
+    dice:'<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/>',
+    compass:'<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+    bag:'<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+    swords:'<path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6M16 16l4 4M19 21l2-2"/><path d="M14.5 6.5L18 3h3v3l-3.5 3.5"/><path d="M5 14l4 4M7 17l-3 3M3 19l2 2"/>',
+    more:'<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
+    search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+    box:'<path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v9l9 5V13"/><path d="M21 8v9l-9 5"/>',
+    book:'<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/>',
+    users:'<circle cx="9" cy="8" r="3"/><path d="M3 20c.5-3.5 3-5 6-5s5.5 1.5 6 5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14.5c2.3.2 3.8 1.5 4 4.5"/>',
+    list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+    plus:'<path d="M12 5v14M5 12h14"/>',
+    minus:'<path d="M5 12h14"/>',
+    tool:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/>',
+    close:'<path d="M6 6l12 12M18 6L6 18"/>',
+    heart:'<path d="M12 21s-8-5.5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.5-8 11-8 11z"/>',
+    bolt:'<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+    target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>',
+    alert:'<path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v5"/><path d="M12 18h.01"/>',
+    snow:'<path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/>',
+    fog:'<path d="M5 8h14M3 12h18M5 16h14M8 20h8"/>',
+    wind:'<path d="M9.6 4.6A2 2 0 1 1 11 8H2M12.6 19.4A2 2 0 1 0 14 16H2M17.7 7.7A2.5 2.5 0 1 1 19.5 12H2"/>',
+    storm:'<path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/><path d="M13 11l-4 6h6l-4 6"/>',
+    sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    layers:'<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+    route:'<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8"/>',
+    pin:'<path d="M12 21s-7-7.2-7-12a7 7 0 0 1 14 0c0 4.8-7 12-7 12Z"/><circle cx="12" cy="9" r="2.4"/>',
+    note:'<path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3"/><path d="M9 12h6M9 16h6"/>',
+    shape:'<path d="M4 7l8-4 8 4v10l-8 4-8-4z"/>',
+    map:'<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+    user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/>',
+    sliders:'<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+    rain:'<path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"/><path d="M8 19v2M12 17v4M16 19v2"/>',
+    back:'<path d="M15 5l-7 7 7 7"/>',
+    chev:'<path d="M9 5l7 7-7 7"/>',
+    check:'<path d="M5 12l5 5 9-10"/>',
+    skull:'<path d="M12 2a8 8 0 0 0-8 8c0 3 1.6 5 3 6.1V19a1 1 0 0 0 1 1h1v-2.2h2V20h2v-2.2h2V20h1a1 1 0 0 0 1-1v-2.9c1.4-1.1 3-3.1 3-6.1a8 8 0 0 0-8-8Z"/><circle cx="9" cy="10" r="1.3"/><circle cx="15" cy="10" r="1.3"/>',
+    drop:'<path d="M12 2.5s6.5 7.2 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 9.7 12 2.5 12 2.5Z"/>',
+    copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+    lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    unlock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/>'
+  };
+  function ic(name, size){
+    const s = size || 20;
+    return `<svg class="ui-ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${UI_IC[name] || ''}</svg>`;
+  }
   const PIN_TYPES = [
     { id:'saque',        label:'Saque',        color:'var(--frost)' },
     { id:'perigo',       label:'Perigo',       color:'var(--hazard)' },
@@ -38,6 +90,9 @@
     { id:'pin',          label:'Pino',         color:'var(--neutral)' }
   ];
   const PING_TYPES = ['perigo', 'radiacao', 'ameaca', 'armadilha'];
+  // Filtros do mapa (chips do topo): a que categoria pertence cada coisa desenhada.
+  //  tokens = tokens + NPCs · perigos = pins de perigo/ameaça/radiação/armadilha + áreas · notas = pins de nota · pins = o resto
+  const mapfCat = type => type === 'nota' ? 'notas' : (type === 'npc' ? 'tokens' : (PING_TYPES.includes(type) ? 'perigos' : 'pins'));
   const KEY_PINS = 'tv-map:pins';
   const KEY_TOKENS = 'tv-map:tokens';
   const KEY_SHAPES = 'tv-map:shapes';
@@ -178,11 +233,36 @@
     else localStorage.setItem(localKey(key, cid), JSON.stringify(val));
   }
 
+  // Estados do clima. Os três originais (calmo, nevasca, espectral) continuam iguais; os novos trazem
+  // efeitos mecânicos das regras de Ordem Paranormal. Nada é automático: só vale o estado que o mestre escolher.
+  //  eff   = linhas de efeito mostradas na mesa; mods = modificadores aplicados nas rolagens da ficha
+  //  (percepcao: perícia Percepção; ranged: ataques à distância = perícia Pontaria); difficult = deslocamento ×2;
+  //  lightning = chance de raio por rodada; emoji = só para a mensagem enviada ao Discord.
   const WEATHER_STATES = {
-    calmo: { label: 'Calmo', desc: 'Céu claro, visibilidade normal.', emoji: '🌤️' },
-    nevasca: { label: 'Nevasca', desc: 'Neve pesada reduz visibilidade e castiga quem está exposto.', emoji: '🌨️' },
-    espectral: { label: 'Nevasca Espectral', desc: 'Algo se move dentro da nevasca. Perigo ativo — considere convocar um evento.', emoji: '👁️' }
+    calmo: { label: 'Calmo', desc: 'Céu claro, visibilidade normal.', icon: 'sun', emoji: '🌤️', eff: [] },
+    neblina: { label: 'Neblina', desc: 'Névoa densa cobre o terreno.', icon: 'fog', emoji: '🌫️',
+      eff: ['−5 em Percepção', 'Camuflagem total além de 9 m'], mods: { percepcao: -5 } },
+    vento: { label: 'Vento Forte', desc: 'Rajadas constantes dificultam tiros e apagam chamas.', icon: 'wind', emoji: '💨',
+      eff: ['−2 em ataques à distância', '50% por rodada de apagar chamas ou dissipar névoa'], mods: { ranged: -2 } },
+    vendaval: { label: 'Vendaval', desc: 'Vento violento: ninguém mira direito e nada queima.', icon: 'wind', emoji: '🌪️',
+      eff: ['−5 em ataques à distância', 'Apaga chamas e dissipa névoas'], mods: { ranged: -5 } },
+    tempestade: { label: 'Tempestade', desc: 'Chuva pesada, vento de vendaval e raios.', icon: 'storm', emoji: '⛈️',
+      eff: ['−5 em Percepção', '−5 em ataques à distância; apaga chamas e dissipa névoas', '10% de raio por rodada (8d12 de dano de eletricidade)'],
+      mods: { percepcao: -5, ranged: -5 }, lightning: { chance: 10, dice: '8d12' } },
+    nevasca: { label: 'Nevasca', desc: 'Neve pesada reduz visibilidade e castiga quem está exposto.', icon: 'snow', emoji: '🌨️', eff: [] },
+    nevasca_forte: { label: 'Nevasca Forte', desc: 'Neve cega e o chão some sob os pés.', icon: 'snow', emoji: '❄️',
+      eff: ['−5 em Percepção', 'Terreno difícil: deslocamento custa o dobro'], mods: { percepcao: -5 }, difficult: true },
+    espectral: { label: 'Nevasca Espectral', desc: 'Algo se move dentro da nevasca. Perigo ativo — considere convocar um evento.', icon: 'eye', emoji: '👁️', eff: [] }
   };
+  function weatherDef(){ return WEATHER_STATES[weather.state] || WEATHER_STATES.calmo; }
+  // modificadores do clima atual para um teste da ficha (entram na conta como as condições, com o nome do clima)
+  function weatherMods(kind, skillKey){
+    const w = weatherDef(), m = w.mods || {}, out = [];
+    if(skillKey === 'percepcao' && m.percepcao) out.push({ label:'Clima: ' + w.label, value:m.percepcao, cond:true, weather:true });
+    if(kind === 'attack' && skillKey === 'pontaria' && m.ranged) out.push({ label:'Clima: ' + w.label, value:m.ranged, cond:true, weather:true });
+    return out;
+  }
+  const weatherTerrainFactor = () => weatherDef().difficult ? 2 : 1;
 
   const SP_CENTER = [-23.5505, -46.6333];
   const SHAPE_STYLE = { color: 'var(--hazard)', weight: 2, fillColor: 'var(--hazard)', fillOpacity: 0.1, dashArray: '6 4' };
@@ -191,6 +271,8 @@
   function shapeStyleFor(shape){ return Object.assign({}, SHAPE_STYLE); }
 
   let pins = [];
+  let hudReady = false;     // o módulo do HUD (dock, feed...) liga no fim do arquivo
+  let mapEntitiesHook = null; // o mapa tático se registra aqui para acompanhar mudanças nos tokens/pins
   let tokens = [];
   let shapes = [];
   let routes = [];
@@ -383,6 +465,7 @@
     auth.onAuthStateChanged(async (user) => {
       currentUser = user;
       if(typeof syncGm === 'function') setTimeout(syncGm, 0);
+      setTimeout(() => { hudMiniChanged(); hudFeedChanged(); hudQRChanged(); }, 0);
       if(user){
         const existing = await loadPlayerProfile(user.uid);
         if(existing && existing.playerName){
@@ -524,19 +607,7 @@
   document.getElementById('layer-topo').addEventListener('click', () => setLayer('topo'));
   document.getElementById('layer-sat').addEventListener('click', () => setLayer('sat'));
 
-  // ---------- painel de camadas: colapsar/expandir, com estado lembrado ----------
-  const HUD_LAYER_COLLAPSED_KEY = 'tv-map:hud-layer-collapsed';
-  const hudLayerPanel = document.getElementById('hud-layer');
-  const hudLayerToggleBtn = document.getElementById('hud-layer-toggle');
-  function setHudLayerCollapsed(collapsed){
-    hudLayerPanel.classList.toggle('collapsed', collapsed);
-    hudLayerToggleBtn.setAttribute('aria-expanded', String(!collapsed));
-    try{ localStorage.setItem(HUD_LAYER_COLLAPSED_KEY, collapsed ? '1' : '0'); }catch(e){}
-  }
-  hudLayerToggleBtn.addEventListener('click', () => {
-    setHudLayerCollapsed(!hudLayerPanel.classList.contains('collapsed'));
-  });
-  try{ setHudLayerCollapsed(localStorage.getItem(HUD_LAYER_COLLAPSED_KEY) === '1'); }catch(e){}
+  try{ localStorage.removeItem('tv-map:hud-layer-collapsed'); }catch(e){}   // o antigo painel recolhível de camadas virou a folha "Camadas"
 
   const ALL_BASE_LAYERS = [streetsLayer, topoLayer, satLayer, satLabelsLayer];
   function activeLayerBtnId(){
@@ -652,9 +723,6 @@
     registerAppPopover('menu-toggle-btn', 'menu-popover', 'menu-backdrop'),
     registerAppPopover('search-toggle-btn', 'hud-search', 'search-backdrop'),
     registerAppPopover('account-toggle-btn', 'account-popover', 'account-backdrop'),
-    registerAppPopover('fab-add', 'add-popover', 'add-backdrop'),
-    registerAppPopover('fab-tools', 'tools-popover', 'tools-backdrop'),
-    registerAppPopover('fab-system', 'system-popover', 'system-backdrop'),
   ].filter(Boolean);
 
   // abrir um fecha os outros, pra nunca empilhar dois de uma vez na tela
@@ -674,15 +742,7 @@
     });
   }
 
-  // ações (adicionar/ferramentas) fecham o próprio painel assim que uma
-  // ferramenta é escolhida — igual um bottom sheet: escolheu, some.
-  ['add-popover', 'tools-popover', 'system-popover'].forEach(id => {
-    const entry = appPopovers.find(p => p.popover.id === id);
-    if(!entry) return;
-    entry.popover.querySelectorAll('.tool-btn, .area-btn').forEach(btn => {
-      btn.addEventListener('click', () => setTimeout(entry.close, 120));
-    });
-  });
+  // (as ferramentas de "Adicionar ao mapa" agora ficam no Índice, que se fecha sozinho ao escolher uma: ver o módulo do dock)
 
   // mantém o avatar do header sincronizado com o estado de login (o próprio
   // renderAccountPanel, definido mais abaixo, também chama isto)
@@ -737,11 +797,11 @@
     // tokens: só a primeira palavra do nome, pra não tampar o mapa
     const npcNameTag = isNpc ? `<span class="pin-name-tag">${escapeHtml((pin.title || 'NPC').trim().split(/\s+/)[0])}</span>` : '';
     return L.divIcon({
-      className: '',
+      className: 'mk-' + mapfCat(typeId),
       html: `<div class="pin-wrap${lockCls}${sizeCls}">${ping}${occupancyBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
-      iconSize: isBig ? [44,44] : [30,30],
-      iconAnchor: isBig ? [22,38] : [15,26],
-      popupAnchor: isBig ? [0,-35] : [0,-24]
+      iconSize: isBig ? [36,36] : [26,26],
+      iconAnchor: isBig ? [18,31] : [13,23],
+      popupAnchor: isBig ? [0,-29] : [0,-21]
     });
   }
   // ícone de um "empilhamento" liderado por um NPC (sem jogador na pilha) —
@@ -763,11 +823,11 @@
     const npcShortName = escapeHtml((pin.title || 'NPC').trim().split(/\s+/)[0]);
     const npcNameTag = `<span class="pin-name-tag">${stackCount && stackCount > 1 ? `${npcShortName} +${stackCount - 1}` : npcShortName}</span>`;
     return L.divIcon({
-      className: '',
+      className: 'mk-tokens',
       html: `<div class="pin-wrap pin-wrap-npc">${stackBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
-      iconSize: [44,44],
-      iconAnchor: [22,38],
-      popupAnchor: [0,-35]
+      iconSize: [36,36],
+      iconAnchor: [18,31],
+      popupAnchor: [0,-29]
     });
   }
   function tokenIcon(token, stackCount){
@@ -786,13 +846,13 @@
     const stackAttrs = isStack ? ` data-count="${stackCount}"` : '';
     const nameLabel = isStack ? `${shortName} +${stackCount - 1}` : shortName;
     return L.divIcon({
-      className: '',
+      className: 'mk-tokens',
       html: `<div class="token-wrap">
                <div class="token-icon${isSelected ? ' selected' : ''}${isStack ? ' is-stack' : ''}"${stackAttrs} style="border-color:${escapeHtml(borderColor)}; color:${escapeHtml(borderColor)}">${inner}</div>
                <span class="token-name-tag">${nameLabel}</span>
              </div>`,
-      iconSize: [44,64],
-      iconAnchor: [22,22]
+      iconSize: [36,56],
+      iconAnchor: [18,18]
     });
   }
 
@@ -831,13 +891,14 @@
           ${pin.image ? '<button type="button" class="pin-image-clear">Remover imagem</button>' : ''}
         </div>
       </div>` : ''}
-      ${isNpc ? `<button type="button" class="inv-open-btn">🎒 Inventário (${capTxt(pin.id)})</button>` : ''}
-      ${isContainerPin(pin) ? `<button type="button" class="inv-open-btn">📦 Abrir contêiner · ${escapeHtml(CONT_STATE_LABELS[containerState(pin.id)] || '')}</button>` : ''}
+      ${isNpc ? `<button type="button" class="inv-open-btn">${ic('bag', 14)} Inventário (${capTxt(pin.id)})</button>` : ''}
+      ${isContainerPin(pin) ? `<button type="button" class="inv-open-btn">${ic('box', 16)} Abrir contêiner · ${escapeHtml(CONT_STATE_LABELS[containerState(pin.id)] || '')}</button>` : ''}
+      ${canSearchPin(pin) ? `<button type="button" class="inv-open-btn pin-search-btn">${ic('search', 16)} Vasculhar</button>` : ''}
       <div class="icon-picker-label">Alterar ícone</div>
       <div class="icon-picker icon-picker-inline">${buildIconPickerHtml(pin.type)}</div>
       <div class="popup-actions">
         <button class="save">Salvar</button>
-        <button class="lock">${pin.locked ? '🔓 Destravar' : '🔒 Travar'}</button>
+        <button class="lock">${ic(pin.locked ? 'unlock' : 'lock', 14)} ${pin.locked ? 'Destravar' : 'Travar'}</button>
         <button class="del">Excluir</button>
       </div>
     `;
@@ -899,6 +960,8 @@
     }
     const pinInvBtn = container.querySelector('.inv-open-btn');
     if(pinInvBtn) pinInvBtn.addEventListener('click', () => { map.closePopup(); openInventory(pin.id); });
+    const pinSearchBtn = container.querySelector('.pin-search-btn');
+    if(pinSearchBtn) pinSearchBtn.addEventListener('click', async () => { pinSearchBtn.disabled = true; const ok = await generateContainer(pin.id, false); map.closePopup(); if(ok) openInventory(pin.id); });
     container.querySelector('.lock').addEventListener('click', async () => {
       pin.locked = !pin.locked;
       await saveKey(KEY_PINS, pins);
@@ -1009,8 +1072,8 @@
           ${token.image ? '<button type="button" class="token-image-clear">Remover imagem</button>' : ''}
         </div>
       </div>
-      <button type="button" class="inv-open-btn">🎒 Inventário (${capTxt(token.id)})</button>
-      <button type="button" class="inv-open-btn ficha-open-btn">📇 Ficha e dados</button>
+      <button type="button" class="inv-open-btn">${ic('bag', 14)} Inventário (${capTxt(token.id)})</button>
+      <button type="button" class="inv-open-btn ficha-open-btn">${ic('user', 14)} Ficha e dados</button>
       <div class="popup-actions">
         <button class="save">Salvar</button>
         <button class="del">Remover</button>
@@ -1121,9 +1184,11 @@
     const cfg = WEATHER_STATES[weather.state] || WEATHER_STATES.calmo;
     overlay.className = 'state-' + weather.state;
     badge.className = 'weather-badge state-' + weather.state;
-    emojiEl.textContent = cfg.emoji;
+    emojiEl.innerHTML = ic(cfg.icon, 16);
     labelEl.textContent = cfg.label;
+    badge.title = cfg.eff.length ? cfg.label + ': ' + cfg.eff.join('; ') : cfg.label;
     if(document.getElementById('weather-popover').classList.contains('open')) renderWeatherOptions();
+    if(hudReady){ hubChanged(); hudMiniChanged(); hudQRChanged(); if(tacUI.open) tacChanged(); }   // totais da ficha e terreno do tático acompanham o clima
   }
 
   function renderWeatherOptions(){
@@ -1134,10 +1199,11 @@
       const isCurrent = key === weather.state;
       return `
         <button type="button" class="weather-option-btn${isCurrent ? ' current' : ''}" data-state="${key}">
-          <span class="weather-option-emoji">${cfg.emoji}</span>
+          <span class="weather-option-emoji">${ic(cfg.icon, 20)}</span>
           <span class="weather-option-text">
             <span class="weather-option-title">${escapeHtml(cfg.label)}${isCurrent ? ' (atual)' : ''}</span>
             <span class="weather-option-desc">${escapeHtml(cfg.desc)}</span>
+            ${cfg.eff.length ? `<span class="weather-option-eff">${cfg.eff.map(x => '<i>' + escapeHtml(x) + '</i>').join('')}</span>` : ''}
           </span>
         </button>
       `;
@@ -1145,8 +1211,22 @@
     wrap.querySelectorAll('.weather-option-btn').forEach(btn => {
       btn.addEventListener('click', () => setWeatherState(btn.dataset.state));
     });
+    if(isMaster() && weatherDef().lightning){
+      wrap.insertAdjacentHTML('beforeend', `<button type="button" class="inv-mini-btn weather-lightning" id="weather-lightning">${ic('bolt', 16)} Testar o raio desta rodada (${weatherDef().lightning.chance}%)</button>`);
+      document.getElementById('weather-lightning').addEventListener('click', weatherLightning);
+    }
     const metaEl = document.getElementById('weather-meta-line');
-    if(metaEl) metaEl.textContent = weather.updatedBy ? `Definido por ${weather.updatedBy}` : '';
+    if(metaEl) metaEl.textContent = (weather.updatedBy ? `Definido por ${weather.updatedBy}` : '') + (!isMaster() ? (weather.updatedBy ? ' · ' : '') + 'Só o mestre muda o clima.' : '');
+  }
+  // raio da Tempestade: o mestre testa a cada rodada (10%); se cair, rola 8d12 de eletricidade. Tudo vai para o feed.
+  async function weatherLightning(){
+    const w = weatherDef(); if(!isMaster() || !w.lightning) return;
+    const t = rollTerm({ sign:1, n:1, sides:100 }, makeSource(null)), hit = t.dice[0].v <= w.lightning.chance;
+    await opRecord(null, `Raio da ${w.label} (${w.lightning.chance}%): ${hit ? 'CAIU' : 'não caiu'}`, [t], [], { kind:'weather', hit });
+    if(hit){
+      const pe = parseExpr(w.lightning.dice), res = pe.terms.map(x => rollTerm(x, makeSource(null)));
+      await opRecord(null, `Raio · ${w.lightning.dice} de eletricidade`, res, [], { kind:'weather', damage:true });
+    }
   }
 
   async function setWeatherState(newState){
@@ -1159,7 +1239,7 @@
     closeWeatherPopover();
     await saveKey(KEY_WEATHER, weather);
     sendWeatherNarrationToDiscord(prevState, newState);
-    logEvent(`Clima: ${WEATHER_STATES[prevState].label} → ${WEATHER_STATES[newState].label}`);
+    logEvent(`Clima: ${WEATHER_STATES[prevState].label} → ${WEATHER_STATES[newState].label}` + (WEATHER_STATES[newState].eff.length ? ' (' + WEATHER_STATES[newState].eff.join('; ') + ')' : ''), 'clima', { wx:newState });
   }
 
   async function sendWeatherNarrationToDiscord(prevState, newState){
@@ -1170,8 +1250,8 @@
       username: "Tau Volantis — Registro de Saque",
       embeds: [{
         title: `${cfg.emoji} Clima: ${cfg.label}`,
-        description: cfg.desc,
-        color: newState === 'espectral' ? 0xc9433f : (newState === 'nevasca' ? 0x3f8fd1 : 0x7d909b),
+        description: cfg.desc + (cfg.eff.length ? '\n' + cfg.eff.map(x => '• ' + x).join('\n') : ''),
+        color: newState === 'espectral' ? 0xc9433f : (/nevasca/.test(newState) ? 0x3f8fd1 : (newState === 'tempestade' ? 0x6a5fba : 0x7d909b)),
         footer: { text: "Tau Volantis: Ano 0" },
         timestamp: new Date().toISOString()
       }]
@@ -1199,7 +1279,8 @@
   // é atualizado (posição/ícone) quando o próprio dado daquele pin muda —
   // nunca quando outro pin qualquer muda. Isso é o que permite que o mapa
   // continue "vivo" pra todo mundo mesmo com alguém editando uma nota.
-  function renderPins(){
+  function renderPins(){ renderPinsCore(); if(mapEntitiesHook) mapEntitiesHook(); }
+  function renderPinsCore(){
     // NPCs (pins) que estão "dentro" de um veículo/abrigo, ou empilhados junto
     // com um token/outro NPC no mesmo ponto, não aparecem soltos no mapa —
     // eles já são representados pelo marcador do container ou da pilha.
@@ -1257,6 +1338,7 @@
       }
     });
     document.getElementById('stat-pins').textContent = pins.length;
+    mapfRender();
     if(typeof renderNavList === 'function') renderNavList();
   }
   // ---------- exclusões (usadas pelos popups e pela lista de navegação) ----------
@@ -1489,7 +1571,8 @@
     return container;
   }
 
-  function renderTokens(){
+  function renderTokens(){ renderTokensCore(); if(mapEntitiesHook) mapEntitiesHook(); hudMiniChanged(); mapfRender(); }
+  function renderTokensCore(){
     tokensLayer.clearLayers();
     Object.keys(tokenMarkers).forEach(k => delete tokenMarkers[k]);
 
@@ -1665,6 +1748,7 @@
         console.warn('Área não pôde ser desenhada:', shape && shape.id, err && err.message);
       }
     });
+    mapfRender();
     if(typeof renderNavList === 'function') renderNavList();
   }
 
@@ -1681,6 +1765,7 @@
       layer.addTo(routesLayer);
     });
     document.getElementById('stat-routes').textContent = routes.length;
+    mapfRender();
     if(typeof renderNavList === 'function') renderNavList();
   }
 
@@ -1700,14 +1785,14 @@
   }
 
   // ---------- nav drawer: lists every pin/token/área/rota for fast travel ----------
-  const navDrawer = document.getElementById('nav-drawer');
-  const navDrawerBackdrop = document.getElementById('nav-drawer-backdrop');
+  // (antes era uma gaveta lateral; agora é a folha "Camadas": mapa-base + filtros + esta lista)
+  const navDrawer = document.getElementById('lay-sheet');
+  const navDrawerBackdrop = document.getElementById('lay-backdrop');
   const navSearchInput = document.getElementById('nav-search-input');
   function openNavDrawer(){
     closeDrawerIfOpen();
     renderNavList();
-    navDrawer.classList.add('open');
-    navDrawerBackdrop.classList.add('open');
+    hudOpenSheet('lay-sheet');
   }
   function closeNavDrawer(){
     navDrawer.classList.remove('open');
@@ -1721,11 +1806,6 @@
     if(typeof closeInventory === 'function') closeInventory();
     if(typeof closeHub === 'function') closeHub();
   }
-  document.getElementById('nav-drawer-toggle-btn').addEventListener('click', () => {
-    navDrawer.classList.contains('open') ? closeNavDrawer() : openNavDrawer();
-  });
-  document.getElementById('nav-drawer-close-btn').addEventListener('click', closeNavDrawer);
-  navDrawerBackdrop.addEventListener('click', closeNavDrawer);
   navSearchInput.addEventListener('input', renderNavList);
 
   document.getElementById('token-select-toggle-btn').addEventListener('click', () => {
@@ -1767,7 +1847,7 @@
           const del = document.createElement('button');
           del.type = 'button';
           del.className = 'nav-del';
-          del.textContent = '🗑';
+          del.innerHTML = ic('trash', 16); del.setAttribute('aria-label', del.getAttribute('aria-label') || 'Excluir');
           del.title = 'Excluir';
           del.setAttribute('aria-label', 'Excluir ' + it.name);
           del.addEventListener('click', (ev) => { ev.stopPropagation(); it.remove(); });
@@ -1782,9 +1862,9 @@
       return {
         name,
         color: (PIN_TYPES.find(t=>t.id===p.type)||{}).color || 'var(--ice-100)',
-        typeLabel: p.locked ? 'Pin 🔒' : 'Pin',
+        typeLabel: p.locked ? 'Pin (travado)' : 'Pin',
         go: () => {
-          closeNavDrawer();
+          closeNavDrawer(); mapfReveal(mapfCat(p.type), true);
           map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 16));
           setTimeout(() => openPinPopupById(p.id), 400);
         },
@@ -1804,7 +1884,7 @@
         color: t.color || '#8fd7e8',
         typeLabel: 'Token',
         go: () => {
-          closeNavDrawer();
+          closeNavDrawer(); mapfReveal('tokens', true);
           map.flyTo([t.lat, t.lng], Math.max(map.getZoom(), 16));
           setTimeout(() => openTokenPopupById(t.id), 400);
         },
@@ -1830,10 +1910,10 @@
       shapeItems.push({
         name,
         color: 'var(--hazard)',
-        typeLabel: problem ? '⚠ sem forma' : 'Área',
+        typeLabel: problem ? 'Área (sem forma)' : 'Área',
         bad: !!problem,
         go: (center && !problem) ? () => {
-          closeNavDrawer();
+          closeNavDrawer(); mapfReveal('perigos', true);
           map.flyTo(center, Math.max(map.getZoom(), 15));
           setTimeout(() => openShapePopupById(s.id), 400);
         } : null,
@@ -1841,7 +1921,7 @@
       });
     });
     fill(listShapes, shapeItems, 'Nenhuma área marcada ainda.', brokenShapes
-      ? `<div class="nav-warning">⚠ ${brokenShapes} área(s) não aparecem no mapa. <button type="button" class="nav-bulk">Excluir essas ${brokenShapes}</button></div>` : '');
+      ? `<div class="nav-warning">${ic('alert', 14)} ${brokenShapes} área(s) não aparecem no mapa. <button type="button" class="nav-bulk">Excluir essas ${brokenShapes}</button></div>` : '');
     const bulk = listShapes.querySelector('.nav-bulk');
     if(bulk) bulk.addEventListener('click', deleteBrokenShapes);
 
@@ -1853,10 +1933,10 @@
       routeItems.push({
         name,
         color: 'var(--frost)',
-        typeLabel: hasPts ? 'Rota' : '⚠ sem pontos',
+        typeLabel: hasPts ? 'Rota' : 'Rota (sem pontos)',
         bad: !hasPts,
         go: hasPts ? () => {
-          closeNavDrawer();
+          closeNavDrawer(); mapfReveal('rotas', true);
           map.flyTo(mid, Math.max(map.getZoom(), 15));
           setTimeout(() => openRoutePopupById(r.id), 400);
         } : null,
@@ -2847,6 +2927,7 @@
   const saqueDrawer = document.getElementById('saque-drawer');
   const drawerBackdrop = document.getElementById('drawer-backdrop');
   function openDrawer(){
+    hudCloseSheets();
     refreshCharacterOptions();
     if(typeof closeNavDrawer === 'function') closeNavDrawer();
     closeInventory();
@@ -2858,9 +2939,6 @@
     saqueDrawer.classList.remove('open');
     drawerBackdrop.classList.remove('open');
   }
-  document.getElementById('drawer-toggle-btn').addEventListener('click', () => {
-    saqueDrawer.classList.contains('open') ? closeDrawer() : openDrawer();
-  });
   document.getElementById('drawer-close-btn').addEventListener('click', closeDrawer);
   drawerBackdrop.addEventListener('click', closeDrawer);
 
@@ -2913,7 +2991,22 @@
   // e o estado de exploração fica em inventories/{pinId}/_meta (chaves com "_"
   // nunca são itens). Assim não é preciso criar nenhum caminho novo no Firebase.
   const DATA_SCHEMA = 2; // itens v1 (sem qty/cond/slot) continuam válidos; v2 só acrescenta campos opcionais
-  function isContainerPin(p){ return !!(p && p.type !== 'npc' && p.container && p.container.enabled); }
+  // Cada tipo de pin que é um local de saque já nasce como contêiner (sem o mestre configurar nada).
+  // Exceções do mestre: p.container.enabled = false desliga; p.container.locKey troca a tabela.
+  const PIN_LOC_MAP = {
+    medico:'farmacias', suprimentos:'mercados', combustivel:'oficinas', veiculo:'veiculos', abrigo:'acampamentos',
+    agua:'rios', saque:'casas', municao:'bases', comunicacao:'bases', extracao:'bases', radiacao:'convergencia'
+  };
+  // configuração efetiva do contêiner de um pin (ou null se o pin não é contêiner)
+  function pinCC(p){
+    if(!p || p.type === 'npc') return null;
+    const c = p.container;
+    if(c && c.enabled) return c;                       // configurado à mão pelo mestre
+    if(c && c.enabled === false) return null;          // desligado pelo mestre
+    const loc = PIN_LOC_MAP[p.type];
+    return loc ? { enabled:true, auto:true, locKey:loc, min:1, max:3, cap:null, access:'aberto' } : null;   // automático pelo tipo
+  }
+  function isContainerPin(p){ return !!pinCC(p); }
   function isHolderPin(p){ return !!p && (p.type === 'npc' || isContainerPin(p)); }
   function containerPin(id){ return pins.find(p => p.id === id && isContainerPin(p)) || null; }
   function isContainerId(id){ return !!containerPin(id); }
@@ -2931,7 +3024,7 @@
   function invUnits(hid){ return invItems(hid).reduce((a, i) => a + instQty(i), 0); }
   function holderCap(hid){
     const p = containerPin(hid);
-    if(p){ const c = parseInt(p.container.cap, 10); return c > 0 ? c : Infinity; }
+    if(p){ const c = parseInt(pinCC(p).cap, 10); return c > 0 ? c : Infinity; }
     return MAX_INV;
   }
   function itemQtyTxt(i){ const q = instQty(i); return q > 1 ? ' ×' + q : ''; }
@@ -3441,7 +3534,7 @@
   // aquele item: se duas pessoas tentarem pegar o mesmo, só a primeira consegue.
   function containerOpenFor(id){
     const p = containerPin(id);
-    return !!p && (p.container.access !== 'bloqueado' || isMaster());
+    return !!p && (pinCC(p).access !== 'bloqueado' || isMaster());
   }
   async function claimFromContainers(pairs){
     const claims = [];
@@ -3474,12 +3567,20 @@
     }
   }
   function containerMeta(id){ const o = inventories[id]; return (o && o._meta) || null; }
-  const CONT_STATE_LABELS = { inexplorado:'❔ Inexplorado', parcial:'◐ Explorado parcialmente', explorado:'✔ Explorado', esgotado:'⛔ Esgotado', bloqueado:'🔒 Bloqueado' };
+  const CONT_STATE_LABELS = { inexplorado:'Inexplorado', parcial:'Explorado parcialmente', explorado:'Explorado', esgotado:'Esgotado', bloqueado:'Bloqueado' };
+  // o botão "Vasculhar" do popup só aparece se há tabela de saque, o contêiner está aberto (ou é o mestre) e ainda não foi vasculhado
+  function canSearchPin(p){
+    const cc = pinCC(p);
+    if(!cc || !cc.locKey || !byLoc[cc.locKey]) return false;
+    const meta = containerMeta(p.id);
+    return !(meta && meta.generatedAt) && (cc.access !== 'bloqueado' || isMaster());
+  }
   function containerState(id){
     const pin = containerPin(id);
     if(!pin) return null;
-    if(pin.container.access === 'bloqueado') return 'bloqueado';
-    const meta = containerMeta(id), n = invCount(id), generative = !!(pin.container.locKey && byLoc[pin.container.locKey]);
+    const cfg0 = pinCC(pin);
+    if(cfg0.access === 'bloqueado') return 'bloqueado';
+    const meta = containerMeta(id), n = invCount(id), generative = !!(cfg0.locKey && byLoc[cfg0.locKey]);
     if(generative && !(meta && meta.generatedAt)) return n > 0 ? 'parcial' : 'inexplorado';
     if(n === 0) return 'esgotado';
     return meta && meta.initial && n < meta.initial ? 'parcial' : 'explorado';
@@ -3498,7 +3599,7 @@
   async function generateContainer(id, force){
     const pin = containerPin(id), holder = holderById(id);
     if(!pin || !holder) return false;
-    const cc = pin.container;
+    const cc = pinCC(pin);
     if(!cc.locKey || !byLoc[cc.locKey]){ toast('Este contêiner não tem tabela de saque. O mestre pode definir uma ou abastecê-lo à mão.', true); return false; }
     if(!containerOpenFor(id)){ toast('Contêiner bloqueado.', true); return false; }
     const cap = holderCap(id), free = cap === Infinity ? 99 : Math.max(0, cap - invCount(id));
@@ -3585,13 +3686,15 @@
   function setContainerCfg(id, patch){
     if(!isMaster()){ toast('Só o mestre configura contêineres.', true); return; }
     const p = pins.find(x => x.id === id); if(!p) return;
-    p.container = Object.assign({ enabled:false, locKey:'', min:1, max:3, cap:null, access:'aberto' }, p.container || {}, patch, { updatedBy:actorFields().actorName });
+    const base = pinCC(p) || p.container || {}; delete base.auto;
+    p.container = Object.assign({ enabled:false, locKey:'', min:1, max:3, cap:null, access:'aberto' }, base, patch, { updatedBy:actorFields().actorName });
     saveKey(KEY_PINS, pins);
     onInvChanged(); hubChanged();
   }
 
   // ---------- gaveta de inventário ----------
   function openInventory(hid){
+    hudCloseSheets();
     closeHub();
     closeDrawer();
     closeNavDrawer();
@@ -3606,10 +3709,6 @@
     invDrawer.classList.remove('open');
     invBackdrop.classList.remove('open');
   }
-  function setInvTab(tab){
-    invUI.tab = tab;
-    renderInvDrawer();
-  }
 
   function slotsHtml(hid){
     const eq = equippedItems(hid), caps = cfg().equipSlots;
@@ -3620,7 +3719,7 @@
     }).join('')}</div><p class="hub-hint">Equipar só organiza o personagem. Nenhum bônus é aplicado sozinho: os efeitos ficam com a mesa.</p></div>`;
   }
   function containerHeaderHtml(h){
-    const pin = containerPin(h.id), st = containerState(h.id), cc = pin.container, master = isMaster(), locked = cc.access === 'bloqueado';
+    const pin = containerPin(h.id), st = containerState(h.id), cc = pinCC(pin), master = isMaster(), locked = cc.access === 'bloqueado';
     const chars = holderList().filter(x => x.type === 'token' && canEditHolder(x));
     if(!chars.some(x => x.id === invUI.takeTo)) invUI.takeTo = (charSelect.value && chars.some(x => x.id === charSelect.value)) ? charSelect.value : (chars[0] ? chars[0].id : null);
     const meta = containerMeta(h.id);
@@ -3628,7 +3727,7 @@
       <div class="inv-item-util">${cc.locKey ? 'Tabela: ' + escapeHtml(LOC_NAMES[cc.locKey] || cc.locKey) : 'Abastecido à mão pelo mestre'}${meta && meta.generatedBy ? ' · vasculhado por ' + escapeHtml(meta.generatedBy) : ''}</div>`;
     if(locked && !master) html += '<p class="hub-hint">Este contêiner está bloqueado. Só o mestre pode abri-lo.</p>';
     else {
-      if(cc.locKey && !(meta && meta.generatedAt)) html += '<button type="button" class="inv-mini-btn primary" data-act="cont-search">🔍 Vasculhar</button>';
+      if(cc.locKey && !(meta && meta.generatedAt)) html += '<button type="button" class="inv-mini-btn primary" data-act="cont-search">' + ic('search', 16) + ' Vasculhar</button>';
       html += chars.length ? `<label class="hub-label">Pegar para</label><select data-role="take-to">${chars.map(x => `<option value="${escapeHtml(x.id)}" ${x.id === invUI.takeTo ? 'selected' : ''}>${escapeHtml(x.name)} (${escapeHtml(capTxt(x.id))})</option>`).join('')}</select>
         <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="cont-take-all" ${invCount(h.id) ? '' : 'disabled'}>Pegar tudo</button>
         <button type="button" class="inv-mini-btn" data-act="cont-deposit-open">Guardar do inventário…</button></div>`
@@ -3643,7 +3742,7 @@
       html += `<div class="hub-label">Mestre</div><div class="inv-item-actions">
         ${cc.locKey ? '<button type="button" class="inv-mini-btn" data-act="cont-refill">Reabastecer</button>' : ''}
         <button type="button" class="inv-mini-btn danger" data-act="cont-clear" ${invCount(h.id) ? '' : 'disabled'}>Esvaziar</button>
-        <button type="button" class="inv-mini-btn" data-act="cont-lock">${locked ? '🔓 Desbloquear' : '🔒 Bloquear'}</button></div>`;
+        <button type="button" class="inv-mini-btn" data-act="cont-lock">${ic(locked ? 'unlock' : 'lock', 14)} ${locked ? 'Desbloquear' : 'Bloquear'}</button></div>`;
     }
     return html + '</div>';
   }
@@ -3655,10 +3754,6 @@
     if(!hl.some(h => h.id === invUI.holderId)) invUI.holderId = hl[0] ? hl[0].id : null;
     hs.value = invUI.holderId || '';
 
-    invDrawer.querySelectorAll('.inv-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === invUI.tab));
-    document.getElementById('inv-pane-inv').style.display = invUI.tab === 'inv' ? '' : 'none';
-    document.getElementById('inv-pane-log').style.display = invUI.tab === 'log' ? '' : 'none';
-    if(invUI.tab === 'log'){ renderInvLog(); return; }
 
     const hid = invUI.holderId, n = invCount(hid), hobj = holderById(hid), isCont = !!hobj && hobj.type === 'container';
     const fill = document.getElementById('inv-cap-fill');
@@ -3701,7 +3796,7 @@
         <div class="inv-item-name">${iconHtml({ id:inv.itemId, name:inv.name, category:inv.category })}${escapeHtml(inv.name)}${instQty(inv) > 1 ? ` <span class="qty-chip">×${instQty(inv)}</span>` : ''}${inv.slot ? ` <span class="eq-chip">${escapeHtml(slotLabel(inv.slot))}</span>` : ''}</div>
         <span class="inv-item-cat">${escapeHtml(inv.category)}</span>${inv.cond != null ? `<span class="inv-item-cat cond-${inv.cond}">${escapeHtml(COND_LEVELS[inv.cond])}</span>` : ''}
         ${ref ? `<div class="inv-item-util">${escapeHtml(ref.utility)}</div>${compatLine(ref)}` : ''}
-        ${inv.foundAt ? `<div class="inv-item-util">📍 Achado em: ${escapeHtml(inv.foundAt)}</div>` : ''}
+        ${inv.foundAt ? `<div class="inv-item-util">${ic('pin', 13)} Achado em: ${escapeHtml(inv.foundAt)}</div>` : ''}
         <div class="inv-item-actions">
           ${isCont ? `<button type="button" class="inv-mini-btn primary" data-act="cont-take" ${containerOpenFor(hid) ? '' : 'disabled'}>Pegar</button>` : `
           <button type="button" class="inv-mini-btn" data-act="use">Usar</button>
@@ -3741,9 +3836,9 @@
     const actions = (okLabel, okCls) => `<div class="inv-inline-actions"><button type="button" class="inv-mini-btn ${okCls || 'primary'}" data-act="ok">${okLabel}</button><button type="button" class="inv-mini-btn" data-act="cancel">Cancelar</button></div>`;
     if(pn.type === 'more'){
       box.innerHTML = `<div class="inv-item-actions">
-        <button type="button" class="inv-mini-btn" data-go="inspect">🔍 Inspecionar</button>
-        ${!isCont && q > 1 ? '<button type="button" class="inv-mini-btn" data-go="split">✂ Dividir pilha</button>' : ''}
-        ${!isCont && hasCondition(inv) ? `<button type="button" class="inv-mini-btn" data-go="cond">🔧 ${inv.cond != null && inv.cond < COND_LEVELS.length - 1 ? 'Reparar / condição' : 'Condição'}</button>` : ''}
+        <button type="button" class="inv-mini-btn" data-go="inspect">${ic('search', 14)} Inspecionar</button>
+        ${!isCont && q > 1 ? `<button type="button" class="inv-mini-btn" data-go="split">${ic('cut', 14)} Dividir pilha</button>` : ''}
+        ${!isCont && hasCondition(inv) ? `<button type="button" class="inv-mini-btn" data-go="cond">${ic('tool', 14)} ${inv.cond != null && inv.cond < COND_LEVELS.length - 1 ? 'Reparar / condição' : 'Condição'}</button>` : ''}
         ${!isCont || isMaster() ? '<button type="button" class="inv-mini-btn danger" data-go="discard">Descartar</button>' : ''}
         <button type="button" class="inv-mini-btn" data-act="cancel">Fechar</button></div>`;
       box.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
@@ -3861,7 +3956,7 @@
     const it = e.item ? `"${escapeHtml(e.item.name)}"${e.item.qty > 1 ? ' ×' + e.item.qty : ''}` : '';
     const src = SOURCE_LABELS[e.source] || e.source || '';
     switch(e.action){
-      case 'saque': return `${who} encontrou ${it}${e.total > 1 ? ' (item ' + e.n + ' de ' + e.total + ')' : ''}${e.locName ? ' em ' + escapeHtml(e.locName) : ''}${e.coord ? ' (📍 ' + escapeHtml(e.coord) + ')' : ''}${e.pinTitle ? ' · local: ' + escapeHtml(e.pinTitle) : ''}`;
+      case 'saque': return `${who} encontrou ${it}${e.total > 1 ? ' (item ' + e.n + ' de ' + e.total + ')' : ''}${e.locName ? ' em ' + escapeHtml(e.locName) : ''}${e.coord ? ' (' + ic('pin', 12) + ' ' + escapeHtml(e.coord) + ')' : ''}${e.pinTitle ? ' · local: ' + escapeHtml(e.pinTitle) : ''}`;
       case 'guardar': return `${who} guardou ${it} no inventário (${escapeHtml(src)}) · ${e.invAfter != null ? fmtCount(e.invAfter) : ''}`;
       case 'recusar': return `${who} não manteve ${it}${e.reason ? ' (' + escapeHtml(e.reason) + ')' : ''}`;
       case 'adicionar': return `${who} recebeu ${it} direto da tabela de itens · ${e.invAfter != null ? fmtCount(e.invAfter) : ''}`;
@@ -3882,35 +3977,6 @@
     if(invUI.logAction && e.action !== invUI.logAction) return false;
     if(invUI.logHolder && e.holderId !== invUI.logHolder && e.counterpartId !== invUI.logHolder) return false;
     return true;
-  }
-  function renderInvLog(){
-    const hsel = document.getElementById('inv-log-holder');
-    const asel = document.getElementById('inv-log-action');
-    const names = {};
-    lootLog.forEach(e => {
-      if(e.holderId) names[e.holderId] = e.holderName;
-      if(e.counterpartId) names[e.counterpartId] = e.counterpartName;
-    });
-    hsel.innerHTML = '<option value="">Todos os personagens</option>' +
-      Object.keys(names).map(id => `<option value="${escapeHtml(id)}">${escapeHtml(names[id] || '?')}</option>`).join('');
-    hsel.value = invUI.logHolder;
-    asel.innerHTML = '<option value="">Todas as ações</option>' +
-      Object.keys(ACTION_LABELS).map(k => `<option value="${k}">${ACTION_LABELS[k]}</option>`).join('');
-    asel.value = invUI.logAction;
-    const rows = lootLog.filter(logMatches).sort((a, b) => (b.ts || 0) - (a.ts || 0) || String(b.id).localeCompare(String(a.id)));
-    const box = document.getElementById('inv-log-list');
-    if(!rows.length){ box.innerHTML = '<div class="inv-empty">Nenhuma transação registrada.</div>'; return; }
-    box.innerHTML = rows.slice(0, 200).map(e => `
-      <div class="log-row">
-        <div class="log-meta">
-          <span class="log-badge ${escapeHtml(e.action)}">${escapeHtml(ACTION_LABELS[e.action] || e.action)}</span>
-          <span>${escapeHtml(fmtTs(e.ts))}</span>
-          <span>por ${escapeHtml(e.actorName || '?')}</span>
-        </div>
-        <div>${logText(e)}</div>
-        ${e.note ? `<div class="log-note">“${escapeHtml(e.note)}”</div>` : ''}
-      </div>`).join('') +
-      (rows.length > 200 ? `<div class="inv-log-note" style="margin-top:0.6rem;">Mostrando as 200 mais recentes de ${rows.length}. O CSV exporta todas as filtradas.</div>` : '');
   }
   function exportLogCsv(){
     const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
@@ -3957,11 +4023,9 @@
     if(invDrawer.classList.contains('open')) renderInvDrawer();
     renderLootResults(); renderFishResults();
     refreshAddDest(); updateSaqueInvCount();
+    hudFeedChanged();
   }
 
-  document.getElementById('inv-toggle-btn').addEventListener('click', () => {
-    invDrawer.classList.contains('open') ? closeInventory() : openInventory(null);
-  });
   document.getElementById('saque-open-inv').addEventListener('click', () => openInventory(charSelect.value || null));
   document.getElementById('inv-drawer-close-btn').addEventListener('click', closeInventory);
   invBackdrop.addEventListener('click', closeInventory);
@@ -3971,7 +4035,6 @@
   document.getElementById('inv-trade-open').addEventListener('click', () => {
     invUI.trade = { otherId:null, give:[], take:[], note:'' }; invUI.panel = null; renderInvDrawer();
   });
-  invDrawer.querySelectorAll('.inv-tab').forEach(b => b.addEventListener('click', () => setInvTab(b.dataset.tab)));
   document.getElementById('inv-filter').addEventListener('input', e => { invUI.filter = e.target.value; renderInvDrawer(); const f = document.getElementById('inv-filter'); f.focus(); try{ f.setSelectionRange(f.value.length, f.value.length); }catch(err){} });
   document.getElementById('inv-cat').addEventListener('change', e => { invUI.cat = e.target.value; renderInvDrawer(); });
   document.getElementById('inv-merge').addEventListener('click', () => { if(invUI.holderId) doMerge(invUI.holderId); });
@@ -3987,14 +4050,11 @@
     else if(a === 'cont-deposit-open'){ invUI.depositOpen = !invUI.depositOpen; renderInvDrawer(); }
     else if(a === 'cont-deposit') containerDeposit(hid, invUI.takeTo, [b.dataset.uid]);
     else if(a === 'cont-clear') containerClear(hid);
-    else if(a === 'cont-lock'){ const p = containerPin(hid); if(p) setContainerCfg(hid, { access:p.container.access === 'bloqueado' ? 'aberto' : 'bloqueado' }); }
+    else if(a === 'cont-lock'){ const p = containerPin(hid); if(p) setContainerCfg(hid, { access:pinCC(p).access === 'bloqueado' ? 'aberto' : 'bloqueado' }); }
   });
   document.getElementById('inv-extra').addEventListener('change', e => {
     if(e.target.dataset && e.target.dataset.role === 'take-to'){ invUI.takeTo = e.target.value; renderInvDrawer(); }
   });
-  document.getElementById('inv-log-holder').addEventListener('change', e => { invUI.logHolder = e.target.value; renderInvLog(); });
-  document.getElementById('inv-log-action').addEventListener('change', e => { invUI.logAction = e.target.value; renderInvLog(); });
-  document.getElementById('inv-log-export').addEventListener('click', exportLogCsv);
   charSelect.addEventListener('change', () => {
     if(charSelect.value) itemAddDest.value = charSelect.value;
     updateSaqueInvCount();
@@ -4031,8 +4091,8 @@
   // ================= CAMPANHAS · SESSÕES · DADOS · FICHA · MUNDO · OFÍCIO =================
   const DIE_SIDES = [4, 6, 8, 10, 12, 20, 100];
   const NEED_LIST = [['fome','Fome'],['sede','Sede'],['fadiga','Fadiga'],['exposicao','Exposição'],['estresse','Estresse'],['ferimentos','Ferimentos']];
-  const NEED_LEVELS = ['Sem marca','▲ Leve','▲▲ Moderado','▲▲▲ Grave','✖ Crítico'];
-  const EXPLORE_STATES = [['desconhecido','❔ Desconhecido'],['conhecido','📍 Conhecido'],['explorado','✔ Explorado'],['esgotado','⛔ Esgotado'],['ameaca','⚠ Sob ameaça'],['bloqueado','🚧 Bloqueado'],['seguro','🛡 Seguro']];
+  const NEED_LEVELS = ['Sem marca','▲ Leve','▲▲ Moderado','▲▲▲ Grave','Crítico'];
+  const EXPLORE_STATES = [['desconhecido','Desconhecido'],['conhecido','Conhecido'],['explorado','Explorado'],['esgotado','Esgotado'],['ameaca','Sob ameaça'],['bloqueado','Bloqueado'],['seguro','Seguro']];
   const CRAFT_FAMILIES = [['primeiros-socorros','Primeiros socorros'],['sobrevivencia','Sobrevivência'],['reparo','Reparo']];
   const DEFAULT_MODULES = { card:true, clock:false, needs:false, explore:false, crafting:false };
   const DEFAULT_CARD_MODULES = { identity:true, skills:true, notes:true, equip:true };
@@ -4084,7 +4144,10 @@
       equipSlots: Object.assign({}, DEFAULT_SLOT_CAP, (c.equipSlots && typeof c.equipSlots === 'object') ? c.equipSlots : {}),
       resources: Array.isArray(c.resources) ? c.resources.filter(r => r && r.key && r.label) : [],
       modules: Object.assign({}, DEFAULT_MODULES, c.modules || {}),
-      cardModules: Object.assign({}, DEFAULT_CARD_MODULES, c.cardModules || {})
+      cardModules: Object.assign({}, DEFAULT_CARD_MODULES, c.cardModules || {}),
+      // sistema fixo: Ordem Paranormal (segundo recurso: PD). Só a progressão é escolha da mesa.
+      systemId: 'ordem',
+      progressionMode: c.progressionMode === 'nex_only' ? 'nex_only' : 'nex_level'
     };
   }
   function applyConfig(){
@@ -4097,7 +4160,7 @@
   function itemWeight(inv){ const w = cfg().weights[catKey(inv.category)]; return typeof w === 'number' ? w : 1; }
   function invWeight(hid){ return invItems(hid).reduce((a, i) => a + itemWeight(i) * instQty(i), 0); }
   function fmtNum(n){ return String(Math.round(n * 100) / 100).replace('.', ','); }
-  function weightBand(w, cap){ const r = w / cap; return r <= 0.5 ? 'leve' : (r <= 1 ? 'carregado' : '⚠ sobrecarregado'); }
+  function weightBand(w, cap){ const r = w / cap; return r <= 0.5 ? 'leve' : (r <= 1 ? 'carregado' : 'sobrecarregado'); }
   function capTxt(hid){
     const c = cfg(), n = invCount(hid);
     if(isContainerId(hid)){ const cap = holderCap(hid); return cap === Infinity ? `${n} itens` : `${n}/${cap}`; }
@@ -4162,13 +4225,13 @@
   }
   function attachModuleSync(){
     const on = (key, cb, limit) => syncOff.push(DB.on(scopedKey(key), cb, limit));
-    on(KEY_CHARS, v => { characters = v || {}; hubChanged(); });
-    on(KEY_ROLLS, v => { rolls = v || {}; hubChanged(); }, 300);
+    on(KEY_CHARS, v => { characters = v || {}; hubChanged(); hudMiniChanged(); hudQRChanged(); });
+    on(KEY_ROLLS, v => { rolls = v || {}; hubChanged(); hudFeedChanged(); }, 300);
     on(KEY_RECIPES, v => { recipes = v || {}; hubChanged(); });
     on(KEY_CLOCK, v => { clock = v; updateHud(); hubChanged(); });
     on(KEY_SHORTCUTS, v => { campShortcuts = v || {}; hubChanged(); });
     syncOff.push(DB.on('campaign-sessions/' + activeCampaignId, v => { sessions = v || {}; updateHud(); hubChanged(); }));
-    on(KEY_JOURNAL, v => { journal = v || {}; hubChanged(); }, 300);
+    on(KEY_JOURNAL, v => { journal = v || {}; hubChanged(); hudFeedChanged(); }, 300);
     on(KEY_TAC, v => tacOnData(v));
     syncOff.push(() => { if(gmOff){ gmOff(); gmOff = null; } if(tacGmOff){ tacGmOff(); tacGmOff = null; } });
     syncGm();
@@ -4181,6 +4244,7 @@
     resetCampaignState();
     campaignMeta = campaigns[id] || null;
     applyConfig();
+    hudCampaignChanged();
     attachMapSync();
     initInventorySync();
     attachModuleSync();
@@ -4302,13 +4366,24 @@
   async function deleteCampaign(id){
     const m = campaigns[id];
     if(!m || id === 'legacy'){ toast('A campanha original não pode ser excluída.', true); return; }
-    if(id === activeCampaignId){ toast('Troque de campanha antes de excluir esta.', true); return; }
     if(!isMasterOf(m)){ toast('Só o mestre da campanha exclui.', true); return; }
-    const typed = window.prompt(`Excluir "${m.name}" apaga mapa, tokens, inventários, fichas e registros dela, sem volta.\nDigite o nome da campanha para confirmar:`);
-    if(typed == null || typed.trim() !== m.name){ if(typed != null) toast('Nome diferente. Nada foi apagado.', true); return; }
-    for(const k of SCOPED_KEYS){ await writeScoped(id, k, null); }
-    await DB.update({ ['campaign-meta/' + id]: null, ['campaign-sessions/' + id]: null });
-    toast('Campanha excluída.');
+    if(firebaseReady && !currentUser){ toast('Entre com sua conta para excluir.', true); return; }
+    const aberta = id === activeCampaignId;
+    const typed = window.prompt(`Excluir "${m.name}" apaga mapa, tokens, inventários, fichas e registros dela, sem volta.${aberta ? '\nEla está aberta agora: você volta para a campanha original.' : ''}\nDigite o nome da campanha para confirmar:`);
+    if(typed == null) return;
+    if(typed.trim().toLowerCase() !== String(m.name || '').trim().toLowerCase()){ toast('Nome diferente. Nada foi apagado.', true); return; }
+    // se estiver aberta, sai dela antes de apagar (os ouvintes dela são desligados)
+    if(aberta) activateCampaign('legacy');
+    // 1) os dados (as regras dependem de a campanha ainda existir, por isso ela é apagada por último).
+    //    Uma chave que o banco recuse não impede o resto.
+    let skipped = 0;
+    for(const k of SCOPED_KEYS){
+      try{ await writeScoped(id, k, null); }catch(e){ skipped++; console.error('Não foi possível apagar', k, e); }
+    }
+    // 2) sessões e a própria campanha
+    const ok = await DB.update({ ['campaign-meta/' + id]: null, ['campaign-sessions/' + id]: null });
+    if(!ok){ toast(dbFailMsg('A exclusão'), true); return; }
+    toast(skipped ? `Campanha excluída. ${skipped} tipo(s) de dado não puderam ser apagados (regras antigas do Firebase); ficam escondidos e sem uso.` : 'Campanha excluída.', false);
   }
   function isMasterOf(m){ return !firebaseReady || !m.masterId || (!!currentUser && m.masterId === currentUser.uid); }
   async function joinCampaign(code){
@@ -4340,14 +4415,15 @@
     const weights = {};
     Object.keys(d.weights || {}).forEach(k => { const n = Number(d.weights[k]); if(!isNaN(n) && n >= 0 && n !== 1) weights[k] = n; });
     if(parseInt(d.lootMax, 10) < parseInt(d.lootMin, 10)){ toast('O máximo de itens por saque não pode ser menor que o mínimo.', true); return; }
-    const config = {
+    const config = Object.assign({}, (campaignMeta && campaignMeta.config) || {}, {
+      systemId:'ordem', progressionMode:d.progressionMode === 'nex_only' ? 'nex_only' : 'nex_level',
       invMode:d.invMode, invLimit:Math.max(1, parseInt(d.invLimit, 10) || 20),
       decimals:Math.min(6, Math.max(0, parseInt(d.decimals, 10) || 0)),
       lootMin:Math.min(8, Math.max(0, parseInt(d.lootMin, 10) || 0)),
       lootMax:Math.min(8, Math.max(1, parseInt(d.lootMax, 10) || 1)),
       weights, modules:d.modules, cardModules:d.cardModules,
       equipSlots:cfg().equipSlots, resources:cfg().resources
-    };
+    });
     await DB.update({
       [`campaign-meta/${activeCampaignId}/name`]: (d.name || '').trim() || 'Campanha',
       [`campaign-meta/${activeCampaignId}/system`]: (d.system || '').trim(),
@@ -4407,9 +4483,9 @@
     const s = activeSession();
     const parts = [campaignMeta ? campaignMeta.name + (campaignMeta.archived ? ' (arquivada)' : '') : 'Campanha', s ? s.title : 'sem sessão'];
     if(cfg().modules.clock && clockText()) parts.push(clockText());
-    chip.textContent = '📖 ' + parts.join(' · ');
+    chip.innerHTML = ic('book', 13) + '<span>' + esc(parts.join(' · ')) + '</span>';
     chip.setAttribute('aria-label', 'Campanha ativa: ' + parts.join(', ') + '. Abrir campanhas e sessões.');
-    const am = document.getElementById('area-mestre'); if(am) am.hidden = !isMaster();
+    hudMiniChanged(); hudFeedChanged();
   }
 
   // ---------- roller ----------
@@ -4726,11 +4802,11 @@
     if(!card.needs) card.needs = {};
     return card;
   }
-  let cardTimer = null;
-  function scheduleSaveCard(){
-    clearTimeout(cardTimer);
-    const id = hub.charToken;
-    cardTimer = setTimeout(() => {
+  const cardTimers = {};
+  function scheduleSaveCard(tokenId){
+    const id = tokenId || hub.charToken;
+    clearTimeout(cardTimers[id]);
+    cardTimers[id] = setTimeout(() => {
       const card = characters[id];
       if(card) DB.set(`${scopedKey(KEY_CHARS)}/${id}`, JSON.parse(JSON.stringify(card)));
     }, 450);
@@ -4789,8 +4865,8 @@
     saveKey(KEY_PINS, pins);
   }
   function coordHtml(e){
-    if(e.lat == null) return e.coord ? `<div class="result-coord">📍 ${escapeHtml(e.coord)}</div>` : '<div class="result-coord">📍 sem localização</div>';
-    return `<div class="result-coord">📍 Local aproximado: ${escapeHtml(e.coord)}
+    if(e.lat == null) return e.coord ? `<div class="result-coord">${ic('pin', 13)} ${escapeHtml(e.coord)}</div>` : `<div class="result-coord">${ic('pin', 13)} sem localização</div>`;
+    return `<div class="result-coord">${ic('pin', 13)} Local aproximado: ${escapeHtml(e.coord)}
       <button type="button" class="coord-btn" data-coord-copy="${escapeHtml(e.coord)}">Copiar</button>
       <button type="button" class="coord-btn" data-coord-go="${e.lat},${e.lng}">Ver no mapa</button></div>`;
   }
@@ -4911,14 +4987,14 @@
   const esc = escapeHtml;
   function hubTabs(){
     const c = cfg().modules;
-    const t = [['mundo','🌍 Mundo'], ['ficha','📇 Personagem'], ['grupo','👥 Grupo'], ['diario','📓 Diário'], ['dados','🎲 Dados'], ['sessao','📖 Sessão']];
-    if(c.crafting) t.push(['oficio','🛠 Ofício']);
-    t.push(['campanhas','🗂 Campanhas']);
-    if(isMaster()) t.push(['mestre','🧰 Mestre']);
+    const t = [['mundo', ic('map', 14) + ' Mundo'], ['ficha', ic('user', 14) + ' Personagem'], ['grupo', ic('users', 14) + ' Grupo'], ['diario', ic('book', 14) + ' Diário'], ['dados', ic('dice', 14) + ' Dados'], ['sessao', ic('list', 14) + ' Sessão']];
+    if(c.crafting) t.push(['oficio', ic('tool', 14) + ' Ofício']);
+    t.push(['campanhas', ic('layers', 14) + ' Campanhas']);
+    if(isMaster()) t.push(['mestre', ic('lock', 14) + ' Mestre']);
     return t;
   }
   function openHub(tab){
-    closeDrawer(); closeNavDrawer(); closeInventory();
+    closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets();
     if(tab) hub.tab = tab;
     if(!hubTabs().some(t => t[0] === hub.tab)) hub.tab = 'mundo';
     ensurePersonalSub();
@@ -4937,14 +5013,14 @@
   function holderSelect(bind, value, withNone){
     const hl = holderList();
     return `<select data-bind="${bind}" data-rerender>${withNone ? '<option value="">— sem personagem —</option>' : ''}${
-      hl.map(h => opt(h.id, (h.type === 'npc' ? '👤 ' : '') + h.name, value)).join('')}</select>`;
+      hl.map(h => opt(h.id, (h.type === 'npc' ? 'NPC · ' : '') + h.name, value)).join('')}</select>`;
   }
   function renderHub(){
     if(!hubBody) return;
     const tabs = hubTabs();
     if(!tabs.some(t => t[0] === hub.tab)) hub.tab = 'dados';
     const ses = activeSession();
-    let html = `<div class="hub-context" role="status">📖 <b>${esc(campaignMeta ? campaignMeta.name : 'Campanha')}</b> · ${esc(ses ? ses.title : 'sem sessão')}${isMaster() ? ' · mestre' : ''}</div>`;
+    let html = `<div class="hub-context" role="status">${ic('book', 14)} <b>${esc(campaignMeta ? campaignMeta.name : 'Campanha')}</b> · ${esc(ses ? ses.title : 'sem sessão')}${isMaster() ? ' · mestre' : ''}</div>`;
     html += '<div class="hub-tabs" role="tablist">' + tabs.map(t => `<button type="button" role="tab" aria-selected="${hub.tab === t[0]}" class="inv-tab${hub.tab === t[0] ? ' active' : ''}" data-act="tab" data-tab="${t[0]}">${t[1]}</button>`).join('') + '</div>';
     const fn = { dados:renderDados, ficha:renderFicha, sessao:renderSessao, campanhas:renderCampanhas, mundo:renderMundo, oficio:renderOficio, diario:renderDiario, grupo:renderGrupo, mestre:renderMestre }[hub.tab];
     html += fn();
@@ -5074,38 +5150,43 @@
     const cm = cfg().cardModules, mods = cfg().modules;
     let html = `<div class="hub-sec"><label class="hub-label">Ficha de</label>${holderSelect('hub.charToken', hub.charToken, false)}
       ${edit ? '' : '<p class="hub-hint">Somente leitura: esta ficha pertence a outra pessoa.</p>'}`;
-    if(cm.identity){
-      html += `<div class="hub-label">Identidade</div>
-        <input type="text" data-bind="card.name" value="${esc(card.name)}" placeholder="Nome do personagem" ${dis}>
-        <input type="text" data-bind="card.player" value="${esc(card.player)}" placeholder="Jogador" ${dis}>
-        <div class="hub-label">Lembretes da mesa (PD, patente, o que o grupo quiser)</div>
-        ${(card.reminders || []).map((r, i) => `<div class="bonus-row"><input type="text" data-bind="card.reminders.${i}.label" value="${esc(r.label)}" placeholder="Campo" ${dis}>
-          <input type="text" data-bind="card.reminders.${i}.value" value="${esc(r.value)}" placeholder="Valor" ${dis}>
-          <button type="button" class="inv-mini-btn danger" data-act="rem-del" data-i="${i}" ${dis} aria-label="Remover lembrete">✕</button></div>`).join('')}
-        <button type="button" class="inv-mini-btn" data-act="rem-add" ${dis}>＋ Lembrete</button>`;
-    }
-    if(cm.skills){
-      html += `<div class="hub-label">Perícias e bônus salvos</div>
-        ${(card.skills || []).map((s, i) => `<div class="bonus-row"><input type="text" data-bind="card.skills.${i}.name" value="${esc(s.name)}" placeholder="Perícia" ${dis}>
-          <input type="number" data-bind="card.skills.${i}.bonus" data-num value="${esc(s.bonus)}" aria-label="Bônus" ${dis}>
-          <button type="button" class="inv-mini-btn primary" data-act="skill-use" data-i="${i}" aria-label="Levar para os dados">🎲</button>
-          <button type="button" class="inv-mini-btn danger" data-act="skill-del" data-i="${i}" ${dis} aria-label="Remover perícia">✕</button></div>`).join('')}
-        <button type="button" class="inv-mini-btn" data-act="skill-add" ${dis}>＋ Perícia</button>`;
+    const ordem = card.systemId === 'ordem';
+    if(ordem){
+      // ficha nova (Ordem Paranormal); os campos antigos (anotações, lembretes, necessidades, atalhos) continuam existindo
+      html += renderFichaOrdem(h, card, dis);
+      if(cm.identity) html += renderReminders(card, dis);
+    } else {
+      html += opBanner(card, edit);
+      if(cm.identity){
+        html += `<div class="hub-label">Identidade</div>
+          <input type="text" data-bind="card.name" value="${esc(card.name)}" placeholder="Nome do personagem" ${dis}>
+          <input type="text" data-bind="card.player" value="${esc(card.player)}" placeholder="Jogador" ${dis}>
+          ${renderReminders(card, dis)}`;
+      }
+      if(cm.skills){
+        html += `<div class="hub-label">Perícias e bônus salvos</div>
+          ${(card.skills || []).map((s, i) => `<div class="bonus-row"><input type="text" data-bind="card.skills.${i}.name" value="${esc(s.name)}" placeholder="Perícia" ${dis}>
+            <input type="number" data-bind="card.skills.${i}.bonus" data-num value="${esc(s.bonus)}" aria-label="Bônus" ${dis}>
+            <button type="button" class="inv-mini-btn primary" data-act="skill-use" data-i="${i}" aria-label="Levar para os dados">${ic('dice', 18)}</button>
+            <button type="button" class="inv-mini-btn danger" data-act="skill-del" data-i="${i}" ${dis} aria-label="Remover perícia">${ic('close', 16)}</button></div>`).join('')}
+          <button type="button" class="inv-mini-btn" data-act="skill-add" ${dis}>${ic('plus', 16)} Perícia</button>`;
+      }
     }
     if(cm.notes) html += `<div class="hub-label">Anotações</div><textarea data-bind="card.notes" rows="4" ${dis}>${esc(card.notes)}</textarea>`;
-    html += renderFichaExtras(h, card, dis);
+    if(!ordem) html += renderFichaExtras(h, card, dis);
     if(cm.equip){
       const eq = equippedItems(h.id);
       html += `<div class="hub-label">Equipamento</div>${eq.length ? '<ul class="craft-ing">' + eq.map(i => `<li>${esc(slotLabel(i.slot))}: ${esc(i.name)}${i.cond != null ? ' · ' + esc(COND_LEVELS[i.cond]) : ''}</li>`).join('') + '</ul>' : '<p class="hub-hint">Nada equipado.</p>'}
-        <p class="hub-hint">Inventário ${esc(capTxt(h.id))}</p><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(h.id)}">🎒 Abrir inventário</button>`;
+        <p class="hub-hint">Inventário ${esc(capTxt(h.id))}</p><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(h.id)}">${ic('bag', 16)} Abrir inventário</button>`;
     }
     if(mods.needs){
       const w = WEATHER_STATES[weather.state] || WEATHER_STATES.calmo;
-      html += `<div class="hub-label">Necessidades (registro; o mestre decide os efeitos)</div><p class="hub-hint">${w.emoji} Clima agora: <b>${esc(w.label)}</b>. ${esc(w.desc)}</p>` + NEED_LIST.map(n => {
+      html += `<div class="hub-label">Necessidades (registro; o mestre decide os efeitos)</div><p class="hub-hint">${ic(w.icon, 14)} Clima agora: <b>${esc(w.label)}</b>. ${esc(w.desc)}${w.eff.length ? ' Efeitos: ' + esc(w.eff.join('; ')) + '.' : ''}</p>` + NEED_LIST.map(n => {
         const v = (card.needs && card.needs[n[0]]) || 0;
         return `<div class="need-row"><span>${n[1]}</span><button type="button" class="die-btn" data-act="need" data-n="${n[0]}" data-d="-1" ${dis} aria-label="Reduzir ${n[1]}">−</button><b class="need-v">${NEED_LEVELS[v]}</b><button type="button" class="die-btn" data-act="need" data-n="${n[0]}" data-d="1" ${dis} aria-label="Aumentar ${n[1]}">+</button></div>`;
       }).join('');
     }
+    if(ordem && edit) html += `<div class="hub-label">Formato da ficha</div><button type="button" class="inv-mini-btn" data-act="op-revert">Voltar ao formato antigo</button><p class="hub-hint">Os dados antigos (perícias e recursos) foram guardados na migração e voltam como estavam.</p>`;
     return html + '</div>';
   }
 
@@ -5138,12 +5219,12 @@
       <div class="inv-item-util">${esc(m.system || 'sem sistema definido')}${m.masterName ? ' · mestre: ' + esc(m.masterName) : ''}${isMasterOf(m) ? (m.joinCode ? '<br>Código de convite: <b>' + esc(m.joinCode) + '</b>' : '<br>Sem código de convite ainda.') : ''}</div>
       <div class="inv-item-actions">${isMasterOf(m) ? (m.joinCode ? `<button type="button" class="inv-mini-btn" data-act="camp-code-copy" data-id="${esc(m.id)}">Copiar código</button><button type="button" class="inv-mini-btn" data-act="camp-code-new" data-id="${esc(m.id)}">Trocar código</button>` : `<button type="button" class="inv-mini-btn primary" data-act="camp-code-gen" data-id="${esc(m.id)}">Gerar código</button>`) : ''}${m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn primary" data-act="camp-open" data-id="${esc(m.id)}">Abrir</button>` : ''}
       ${isMasterOf(m) && m.id !== 'legacy' ? (m.archived ? `<button type="button" class="inv-mini-btn" data-act="camp-reopen" data-id="${esc(m.id)}">Reabrir</button>` : (m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn" data-act="camp-archive" data-id="${esc(m.id)}">Arquivar</button>` : '')) : ''}
-      ${isMasterOf(m) && m.id !== 'legacy' && m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn danger" data-act="camp-delete" data-id="${esc(m.id)}">Excluir</button>` : ''}</div></div>`;
+      ${isMasterOf(m) && m.id !== 'legacy' ? `<button type="button" class="inv-mini-btn danger" data-act="camp-delete" data-id="${esc(m.id)}">Excluir</button>` : ''}</div></div>`;
     const nc = hub.newCampaign;
     if(!hub.cfgDraft){
       const c = cfg();
       hub.cfgDraft = { name:campaignMeta ? campaignMeta.name : '', system:campaignMeta ? campaignMeta.system || '' : '', invMode:c.invMode, invLimit:c.invLimit, decimals:c.decimals, lootMin:c.lootMin, lootMax:c.lootMax,
-        weights:Object.assign({}, c.weights), modules:Object.assign({}, c.modules), cardModules:Object.assign({}, c.cardModules) };
+        weights:Object.assign({}, c.weights), modules:Object.assign({}, c.modules), cardModules:Object.assign({}, c.cardModules), progressionMode:c.progressionMode };
     }
     const d = hub.cfgDraft;
     const cats = Array.from(new Set(ITEMS.map(i => i.category))).sort();
@@ -5160,9 +5241,12 @@
       ${nc.mode === 'duplicar' ? ['copyTokens:Tokens','copyInv:Inventários','copyChars:Fichas','copyRecipes:Receitas','copyWeather:Clima'].map(x => { const [k, l] = x.split(':'); return `<label class="check-row"><input type="checkbox" data-bind="nc.${k}" ${nc[k] ? 'checked' : ''}> ${l}</label>`; }).join('') : ''}
       <button type="button" class="inv-mini-btn primary" data-act="camp-create">Criar campanha</button>
       <p class="hub-hint">Nada é copiado sem você escolher. A campanha atual não é alterada.</p></div>
-    <div class="hub-sec"><div class="hub-label">Configuração desta campanha</div>
+    <div class="hub-sec"><div class="hub-label" id="cfg-anchor">Configuração desta campanha</div>
       <input type="text" data-bind="cd.name" value="${esc(d.name)}" placeholder="Nome" maxlength="60">
       <input type="text" data-bind="cd.system" value="${esc(d.system)}" placeholder="Sistema / perfil" maxlength="80">
+      <div class="hub-label">Sistema: Ordem Paranormal (fixo)</div>
+      <select data-bind="cd.progressionMode" aria-label="Progressão do personagem">${opt('nex_level', 'Progressão: NEX + Nível', d.progressionMode)}${opt('nex_only', 'Progressão: só NEX', d.progressionMode)}</select>
+      <p class="hub-hint">NEX vai de 5% a 99%, de 5 em 5. O segundo recurso é o PD (Pontos de Determinação). Escolha uma vez; trocar depois não apaga nada.</p>
       <div class="hub-label">Módulos</div>
       ${Object.keys(modLabels).map(k => `<label class="check-row"><input type="checkbox" data-bind="cd.modules.${k}" ${d.modules[k] ? 'checked' : ''}> ${modLabels[k]}</label>`).join('')}
       <div class="hub-label">Partes da ficha</div>
@@ -5199,7 +5283,7 @@
           <button type="button" class="inv-mini-btn" data-act="pin-go" data-id="${esc(p.id)}">Ver no mapa</button></div>`;
       }).join('') || '<div class="inv-empty">Nenhum pin no mapa.</div>'}</div>`;
     }
-    return html + '<div class="hub-sec"><button type="button" class="inv-mini-btn primary" data-act="close-hub">🗺 Voltar ao mapa</button></div>';
+    return html + `<div class="hub-sec"><button type="button" class="inv-mini-btn primary" data-act="close-hub">${ic('map', 14)} Voltar ao mapa</button></div>`;
   }
 
   // --- ofício ---
@@ -5216,14 +5300,14 @@
       if(!rs.length) return;
       html += `<div class="hub-sec"><div class="hub-label">${fl}</div>${rs.map(r => {
         const chk = hub.craftHolder ? craftCheck(r, hub.craftHolder) : { missing:[], toolOk:false, canCraft:false };
-        const ing = (r.ingredients || []).map(i => { const miss = chk.missing.find(m => m.itemId === i.itemId); return `<li class="${miss ? 'bad' : 'good'}">${miss ? '✖' : '✔'} ${i.qty}× ${iconHtml(ITEMS_BY_ID[i.itemId])}${esc(nm(i.itemId))}${miss ? ` (tem ${miss.have})` : ''}</li>`; }).join('');
+        const ing = (r.ingredients || []).map(i => { const miss = chk.missing.find(m => m.itemId === i.itemId); return `<li class="${miss ? 'bad' : 'good'}">${ic(miss ? 'close' : 'check', 13)} ${i.qty}× ${iconHtml(ITEMS_BY_ID[i.itemId])}${esc(nm(i.itemId))}${miss ? ` (tem ${miss.have})` : ''}</li>`; }).join('');
         return `<div class="inv-item"><div class="inv-item-name">${esc(r.name)}</div>
-          <div class="inv-item-util">Resultado: ${r.result.qty}× ${iconHtml(ITEMS_BY_ID[r.result.itemId])}${esc(nm(r.result.itemId))}</div><ul class="craft-ing">${ing}${r.tool ? `<li class="${chk.toolOk ? 'good' : 'bad'}">${chk.toolOk ? '✔' : '✖'} Ferramenta: ${esc(nm(r.tool))}</li>` : ''}</ul>
+          <div class="inv-item-util">Resultado: ${r.result.qty}× ${iconHtml(ITEMS_BY_ID[r.result.itemId])}${esc(nm(r.result.itemId))}</div><ul class="craft-ing">${ing}${r.tool ? `<li class="${chk.toolOk ? 'good' : 'bad'}">${ic(chk.toolOk ? 'check' : 'close', 13)} Ferramenta: ${esc(nm(r.tool))}</li>` : ''}</ul>
           <div class="inv-item-util">${[r.station && 'Estação: ' + r.station, r.skill && 'Perícia: ' + r.skill, r.time && 'Tempo: ' + r.time, r.noise && 'Ruído: ' + r.noise, r.risk && 'Risco: ' + r.risk].filter(Boolean).map(esc).join(' · ')}</div>
           ${r.resolution ? `<div class="inv-item-util"><i>${esc(r.resolution)}</i></div>` : ''}
           <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="craft" data-id="${esc(r.id)}" data-o="sucesso" ${chk.canCraft ? '' : 'disabled'}>Deu certo</button>
           <button type="button" class="inv-mini-btn danger" data-act="craft" data-id="${esc(r.id)}" data-o="falha" ${chk.canCraft ? '' : 'disabled'}>Deu errado${r.wasteOnFail ? ' (perde materiais)' : ''}</button>
-          <button type="button" class="inv-mini-btn" data-act="craft-roll" data-id="${esc(r.id)}">🎲 Rolar</button>
+          <button type="button" class="inv-mini-btn" data-act="craft-roll" data-id="${esc(r.id)}">${ic('dice', 14)} Rolar</button>
           ${master ? `<button type="button" class="inv-mini-btn" data-act="recipe-edit" data-id="${esc(r.id)}">Editar</button><button type="button" class="inv-mini-btn danger" data-act="recipe-del" data-id="${esc(r.id)}" aria-label="Excluir receita">✕</button>` : ''}</div></div>`;
       }).join('')}</div>`;
     });
@@ -5259,7 +5343,7 @@
   function syncGm(){
     if(gmOff){ gmOff(); gmOff = null; }
     gmJournal = {};
-    if(isMaster() && (!firebaseReady || currentUser)) gmOff = DB.on(scopedKey(KEY_GMJ), v => { gmJournal = v || {}; hubChanged(); }, 300);
+    if(isMaster() && (!firebaseReady || currentUser)) gmOff = DB.on(scopedKey(KEY_GMJ), v => { gmJournal = v || {}; hubChanged(); hudFeedChanged(); }, 300);
     if(tacGmOff){ tacGmOff(); tacGmOff = null; }
     gmTac = {};
     if(isMaster() && (!firebaseReady || currentUser)) tacGmOff = DB.on(scopedKey(KEY_GMTAC), v => { gmTac = v || {}; tacChanged(); });
@@ -5275,7 +5359,7 @@
     return ok;
   }
   // acontecimento automático do mestre (clima, sessão...) para a linha do tempo
-  function logEvent(text){ if(isMaster()) addJournal({ type:'evento', text, auto:true, vis:'grupo' }); }
+  function logEvent(text, kind, extra){ if(isMaster()) addJournal(Object.assign({ type:'evento', text, auto:true, vis:'grupo' }, kind ? { evKind:kind } : {}, extra || {})); }
   function canEditEntry(e){ return isMaster() || (!!currentUser && e.authorId === currentUser.uid) || (!firebaseReady); }
   async function removeJournal(e){
     if(!canEditEntry(e)){ toast('Só o autor ou o mestre apaga.', true); return; }
@@ -5326,7 +5410,8 @@
       const c = characters[h.id] || {}, t = tokens.find(x => x.id === h.id) || {}, eq = equippedItems(h.id);
       return `<div class="inv-item"><div class="inv-item-name">${esc(c.name || h.name)}</div>
         <div class="inv-item-util">${t.ownerName ? 'Jogador: ' + esc(t.ownerName) + ' · ' : ''}Inventário ${esc(capTxt(h.id))}</div>
-        ${res.length ? `<div class="inv-item-util">${res.map(r => `${esc(r.label)} <b>${resVal(c, r)}${r.max ? '/' + r.max : ''}</b>`).join(' · ')}</div>` : ''}
+        ${c.systemId === 'ordem' ? `<div class="inv-item-util">NEX ${esc(String(c.nex == null ? 5 : c.nex))}% · PV <b>${opRes(c, 'pv').cur}/${opRes(c, 'pv').max}</b> · PD <b>${opRes(c, 'pd').cur}/${opRes(c, 'pd').max}</b>${(c.conditions || []).length ? '<br>Condições: ' + c.conditions.map(x => esc(opCondName(x))).join(', ') : ''}</div>`
+          : (res.length ? `<div class="inv-item-util">${res.map(r => `${esc(r.label)} <b>${resVal(c, r)}${r.max ? '/' + r.max : ''}</b>`).join(' · ')}</div>` : '')}
         ${eq.length ? `<div class="inv-item-util">Equipado: ${eq.map(i => esc(i.name) + (i.cond != null ? ' (' + COND_LEVELS[i.cond] + ')' : '')).join(', ')}</div>` : ''}
         <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="grp-sheet" data-id="${esc(h.id)}">Ficha</button><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(h.id)}">Inventário</button></div></div>`;
     }).join('');
@@ -5339,9 +5424,9 @@
   function resVal(card, r){ const v = card && card.res && card.res[r.key]; return typeof v === 'number' ? v : (r.max || 0); }
   function weatherBox(){
     const w = WEATHER_STATES[weather.state] || WEATHER_STATES.calmo;
-    return `<div class="hub-sec"><div class="hub-label">Clima</div><div class="inv-item-util">${w.emoji} <b>${esc(w.label)}</b> — ${esc(w.desc)}${weather.updatedBy ? '<br>Definido por ' + esc(weather.updatedBy) : ''}</div>
+    return `<div class="hub-sec"><div class="hub-label">Clima</div><div class="inv-item-util">${ic(w.icon, 16)} <b>${esc(w.label)}</b> — ${esc(w.desc)}${w.eff.length ? '<ul class="craft-ing wx-eff">' + w.eff.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : ''}${weather.updatedBy ? '<br>Definido por ' + esc(weather.updatedBy) : ''}</div>
       <button type="button" class="inv-mini-btn" data-act="weather-open">Ver / mudar clima</button>
-      <p class="hub-hint">O clima é um estado compartilhado; as consequências são decididas pelo mestre.</p></div>`;
+      <p class="hub-hint">O clima é um estado compartilhado. Os modificadores aparecem na conta das rolagens de Percepção e de ataques à distância (Pontaria) enquanto este clima estiver ativo; o mestre decide o resto.</p></div>`;
   }
   function renderMestre(){
     if(!isMaster()) return '<div class="inv-empty">Área restrita ao mestre desta campanha.</div>';
@@ -5351,9 +5436,9 @@
     if(!hub.slotDraft) hub.slotDraft = Object.assign({}, c.equipSlots);
     const locOpts = cc => opt('', '— abastecer à mão —', cc.locKey || '') + LOC_ORDER.map(k => opt(k, LOC_NAMES[k], cc.locKey || '')).join('');
     const cont = pins2.map(p => {
-      const cc = p.container || {}, on = !!cc.enabled;
+      const eff = pinCC(p), cc = eff || p.container || {}, on = !!eff;
       return `<div class="inv-item"><div class="inv-item-name">${esc(p.title || 'Pin')}</div>
-        <label class="check-row"><input type="checkbox" data-ctn="${esc(p.id)}" data-f="enabled" ${on ? 'checked' : ''}> É um contêiner (tem conteúdo persistente)</label>
+        <label class="check-row"><input type="checkbox" data-ctn="${esc(p.id)}" data-f="enabled" ${on ? 'checked' : ''}> É um contêiner (tem conteúdo persistente)${eff && eff.auto ? ' · automático pelo tipo do pin' : ''}</label>
         ${on ? `<label class="hub-label">Tabela de saque (sorteada uma única vez)</label><select data-ctn="${esc(p.id)}" data-f="locKey">${locOpts(cc)}</select>
         <div class="expr-row"><input type="number" min="0" max="8" data-ctn="${esc(p.id)}" data-f="min" value="${cc.min != null ? esc(cc.min) : 1}" aria-label="Mínimo de itens"><input type="number" min="1" max="8" data-ctn="${esc(p.id)}" data-f="max" value="${cc.max != null ? esc(cc.max) : 3}" aria-label="Máximo de itens"></div>
         <input type="number" min="1" data-ctn="${esc(p.id)}" data-f="cap" value="${cc.cap || ''}" placeholder="Capacidade em espaços (vazio = sem limite)">
@@ -5367,12 +5452,12 @@
     <div class="hub-sec"><div class="hub-label">Dar item (ajuste do mestre)</div>
       <datalist id="item-names">${ITEMS.map(i => `<option value="${esc(i.name)}">`).join('')}</datalist>
       <input type="text" list="item-names" data-bind="gv.name" value="${esc(g.name)}" placeholder="Nome do item do catálogo">
-      <div class="expr-row"><input type="number" min="1" class="qty-in" data-bind="gv.qty" data-num value="${esc(g.qty)}" aria-label="Quantidade"><select data-bind="gv.to">${allHolders().map(h => opt(h.id, (h.type === 'container' ? '📦 ' : h.type === 'npc' ? '👤 ' : '') + h.name, g.to)).join('')}</select></div>
+      <div class="expr-row"><input type="number" min="1" class="qty-in" data-bind="gv.qty" data-num value="${esc(g.qty)}" aria-label="Quantidade"><select data-bind="gv.to">${allHolders().map(h => opt(h.id, (h.type === 'container' ? 'Contêiner · ' : h.type === 'npc' ? 'NPC · ' : '') + h.name, g.to)).join('')}</select></div>
       <button type="button" class="inv-mini-btn primary" data-act="give">Entregar</button></div>
-    <div class="hub-sec"><div class="hub-label">Recursos da ficha (PV, PE, Sanidade...)</div>
-      <p class="hub-hint">Defina os recursos que a sua mesa usa. O app só guarda e mostra os valores; nenhuma regra é aplicada sozinha.</p>
+    <div class="hub-sec"><div class="hub-label">Recursos do formato antigo da ficha (PV, PD...)</div>
+      <p class="hub-hint">Vale só para fichas no formato antigo. As fichas de Ordem Paranormal já têm PV e PD próprios. O app guarda e mostra os valores; nenhuma regra é aplicada sozinha.</p>
       ${hub.resDraft.map((r, i) => `<div class="bonus-row"><input type="text" data-bind="rs.${i}.label" value="${esc(r.label)}" placeholder="Nome (ex.: PV)" maxlength="20"><input type="number" min="0" data-bind="rs.${i}.max" data-num value="${esc(r.max || '')}" placeholder="Máx."><button type="button" class="inv-mini-btn danger" data-act="res-del" data-i="${i}" aria-label="Remover recurso">✕</button></div>`).join('')}
-      <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="res-add">＋ Recurso</button><button type="button" class="inv-mini-btn" data-act="res-seed">Sugerir PV / PE / Sanidade</button><button type="button" class="inv-mini-btn primary" data-act="res-save">Salvar recursos</button></div></div>
+      <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="res-add">＋ Recurso</button><button type="button" class="inv-mini-btn" data-act="res-seed">Sugerir PV / PD</button><button type="button" class="inv-mini-btn primary" data-act="res-save">Salvar recursos</button></div></div>
     <div class="hub-sec"><div class="hub-label">Espaços de equipamento (quantos itens cabem em cada)</div>
       ${EQUIP_SLOTS.map(s => `<div class="bonus-row"><span class="w-cat">${esc(s[1])}</span><input type="number" min="0" max="9" data-bind="sl.${s[0]}" data-num value="${esc(hub.slotDraft[s[0]])}"></div>`).join('')}
       <button type="button" class="inv-mini-btn primary" data-act="slots-save">Salvar espaços</button></div>
@@ -5383,7 +5468,7 @@
       ${toks.map(h => `<label class="check-row"><input type="checkbox" data-act="bulk-pick" data-id="${esc(h.id)}" ${hub.bulkPick.includes(h.id) ? 'checked' : ''}> ${esc(h.name)}</label>`).join('') || '<div class="inv-item-util">Sem tokens.</div>'}
       <button type="button" class="inv-mini-btn primary" data-act="bulk-apply">Aplicar</button></div>` : ''}
     <div class="hub-sec"><div class="hub-label">Backup e restauração desta campanha</div>
-      <button type="button" class="inv-mini-btn primary" data-act="backup-export">⬇ Exportar backup (arquivo .json)</button>
+      <button type="button" class="inv-mini-btn primary" data-act="backup-export">${ic('download', 14)} Exportar backup (arquivo .json)</button>
       <label class="hub-label">Restaurar de um backup</label>
       <input type="file" accept="application/json,.json" id="backup-file">
       <p class="hub-hint">Restaurar sobrescreve mapa, inventários, fichas, diário e registros desta campanha com o conteúdo do arquivo. Um backup do estado atual é baixado automaticamente antes.</p>
@@ -5490,6 +5575,336 @@
     return html;
   }
 
+  // ================= FICHA DE ORDEM PARANORMAL =================
+  // As tabelas abaixo (perícias, treinamento, condições com modificador, margens) vêm do plano da mesa
+  // e NÃO foram conferidas contra o livro. Para ajustar uma regra, edite só estas tabelas.
+  // Segundo recurso: PD (Pontos de Determinação). DET e PD são a mesma coisa, então existe uma única barra.
+  const OP_ATTRS = [['agi','AGI','Agilidade'], ['for','FOR','Força'], ['int','INT','Intelecto'], ['pre','PRE','Presença'], ['vig','VIG','Vigor']];
+  const OP_SKILLS = [
+    ['acrobacia','Acrobacia','agi'], ['adestramento','Adestramento','pre'], ['artes','Artes','pre'], ['atletismo','Atletismo','for'],
+    ['atualidades','Atualidades','int'], ['ciencias','Ciências','int'], ['crime','Crime','agi'], ['diplomacia','Diplomacia','pre'],
+    ['enganacao','Enganação','pre'], ['fortitude','Fortitude','vig'], ['furtividade','Furtividade','agi'], ['iniciativa','Iniciativa','agi'],
+    ['intimidacao','Intimidação','pre'], ['intuicao','Intuição','pre'], ['investigacao','Investigação','int'], ['luta','Luta','for'],
+    ['medicina','Medicina','int'], ['ocultismo','Ocultismo','int'], ['percepcao','Percepção','pre'], ['pilotagem','Pilotagem','agi'],
+    ['pontaria','Pontaria','agi'], ['profissao','Profissão','int'], ['reflexos','Reflexos','agi'], ['religiao','Religião','pre'],
+    ['sobrevivencia','Sobrevivência','int'], ['tatica','Tática','int'], ['tecnologia','Tecnologia','int'], ['vontade','Vontade','pre']
+  ];
+  const OP_TRAIN = { none:['Destreinado', 0], trained:['Treinado', 5], veteran:['Veterano', 10], expert:['Expert', 15] };
+  const OP_NEX = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 99];   // 99% = estágio 20
+  const OP_RES = { pv:['PV', 'Pontos de Vida', '#c9433f'], pd:['PD', 'Pontos de Determinação', '#3f8fd1'] };
+  // Condições. mods = modificadores automáticos em testes: g = grupo (dentro do mesmo grupo vale só a pior penalidade,
+  // porque condições com o mesmo efeito não se acumulam), v = valor, when(ctx) = quando se aplica
+  // (ctx: kind 'skill' | 'attack', attr, skill). Condições sem "mods" ficam só como marcação.
+  const OP_PHYS = a => a === 'agi' || a === 'for' || a === 'vig', OP_MENT = a => a === 'int' || a === 'pre';
+  const OP_COND = {
+    abalado:    { n:'Abalado',    t:'−2 em testes.',                              mods:[{ g:'medo', v:-2, when:() => true }] },
+    apavorado:  { n:'Apavorado',  t:'−5 em testes de perícia.',                   mods:[{ g:'medo', v:-5, when:c => !!c.skill }] },
+    debilitado: { n:'Debilitado', t:'−5 em testes de Agilidade, Força e Vigor.',  mods:[{ g:'fisico', v:-5, when:c => OP_PHYS(c.attr) }] },
+    esmorecido: { n:'Esmorecido', t:'−5 em testes de Intelecto e Presença.',      mods:[{ g:'mental', v:-5, when:c => OP_MENT(c.attr) }] },
+    fraco:      { n:'Fraco',      t:'−2 em testes de Agilidade, Força e Vigor.',  mods:[{ g:'fisico', v:-2, when:c => OP_PHYS(c.attr) }] },
+    ofuscado:   { n:'Ofuscado',   t:'−2 em ataques e Percepção.', i:'eye',        mods:[{ g:'visao', v:-2, when:c => c.kind === 'attack' || c.skill === 'percepcao' }] },
+    vulneravel: { n:'Vulnerável', t:'−2 na Defesa (não entra em testes de perícia).' },
+    sangrando:{ n:'Sangrando', i:'drop' }, morrendo:{ n:'Morrendo', i:'skull' }, cego:{ n:'Cego', i:'eye' },
+    agarrado:{ n:'Agarrado' }, alquebrado:{ n:'Alquebrado' }, atordoado:{ n:'Atordoado' }, caido:{ n:'Caído' }, confuso:{ n:'Confuso' },
+    desprevenido:{ n:'Desprevenido' }, doente:{ n:'Doente' }, em_chamas:{ n:'Em chamas' }, enjoado:{ n:'Enjoado' }, enredado:{ n:'Enredado' },
+    envenenado:{ n:'Envenenado' }, exausto:{ n:'Exausto' }, fascinado:{ n:'Fascinado' }, fatigado:{ n:'Fatigado' }, frustrado:{ n:'Frustrado' },
+    imovel:{ n:'Imóvel' }, indefeso:{ n:'Indefeso' }, inconsciente:{ n:'Inconsciente' }, lento:{ n:'Lento' }, machucado:{ n:'Machucado' },
+    paralisado:{ n:'Paralisado' }, pasmo:{ n:'Pasmo' }, petrificado:{ n:'Petrificado' }, surdo:{ n:'Surdo' }, surpreendido:{ n:'Surpreendido' },
+    outra:{ n:'Outra (nome livre)' }
+  };
+  const OP_COND_ORDER = ['abalado','apavorado','debilitado','esmorecido','fraco','ofuscado','vulneravel','sangrando'];
+  const opSgn = n => (n < 0 ? '−' : '+') + Math.abs(n);
+  const opNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+  const opSlug = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const opAttrOf = (card, a) => a ? opNum(card.attributes && card.attributes[a]) : 0;
+  const opAttrLabel = a => (OP_ATTRS.find(x => x[0] === a) || ['', ''])[1];
+  function opSkillDef(card, key){
+    const d = OP_SKILLS.find(x => x[0] === key), s = (card.skillsV2 && card.skillsV2[key]) || {};
+    return { key, name:d ? d[1] : (s.name || key), attr:d ? d[2] : (s.attr || ''), s, free:!d };
+  }
+  function opCondName(c){ const d = OP_COND[c.key]; return c.key === 'outra' ? (c.note || 'Condição') : (d ? d.n : (c.note || c.key)); }
+  // penalidades de condição que valem para este teste (uma por grupo: a pior)
+  function opCondMods(card, ctx){
+    const best = {};
+    (card.conditions || []).forEach(c => {
+      const d = OP_COND[c.key]; if(!d || !d.mods) return;
+      d.mods.forEach(m => { if(m.when(ctx) && (!best[m.g] || m.v < best[m.g].value)) best[m.g] = { label:d.n, value:m.v }; });
+    });
+    // grupos diferentes se somam (ex.: Abalado −2 e Debilitado −5 num teste de Força); o mesmo grupo não
+    return Object.keys(best).map(g => best[g]);
+  }
+  // partes do teste de uma perícia ou ataque: atributo + treinamento + bônus avulso + condições
+  function opParts(card, skillKey, attrKey, kind){
+    const sd = skillKey ? opSkillDef(card, skillKey) : null;
+    const attr = attrKey || (sd ? sd.attr : '');
+    const tr = OP_TRAIN[(sd && sd.s.training)] || OP_TRAIN.none;
+    const parts = [];
+    if(attr) parts.push({ label:opAttrLabel(attr), value:opAttrOf(card, attr) });
+    parts.push({ label:tr[0], value:tr[1] });
+    if(sd && opNum(sd.s.bonus)) parts.push({ label:'Outros', value:opNum(sd.s.bonus) });
+    const conds = opCondMods(card, { kind:kind || 'skill', attr, skill:skillKey || '' }).map(m => ({ label:m.label, value:m.value, cond:true }))
+      .concat(weatherMods(kind || 'skill', skillKey || ''));      // clima ativo: Percepção / ataques à distância
+    return { parts, conds, attr, train:tr };
+  }
+  const opSum = p => p.parts.concat(p.conds).reduce((a, x) => a + x.value, 0);
+  function opRes(card, k){ const r = (card.resources2 && card.resources2[k]) || {}; return { cur:opNum(r.cur), max:opNum(r.max) }; }
+  // texto da composição: "d20: 14 + AGI 3 + Treinado 5 − 2 (Abalado) = 22"
+  function opBonusTxt(b){ return `${b.value < 0 ? '−' : '+'} ${b.cond ? Math.abs(b.value) + ' (' + b.label + ')' : b.label + ' ' + Math.abs(b.value)}`; }
+  function opCompText(r){
+    const sh = r.sheet || {}, t0 = r.terms && r.terms[0];
+    const base = (sh.kind === 'skill' || sh.kind === 'attack') ? 'd20: ' + (t0 && t0.dice && t0.dice[0] ? t0.dice[0].v : '?') : fmtTerms(r.terms || []);
+    return base + (r.bonuses || []).map(b => ' ' + opBonusTxt(b)).join('') + ' = ' + r.total + (sh.kind === 'attack' && sh.crit ? ' · CRÍTICO!' : '');
+  }
+  // cartão que fica 7 s no topo da tela com o resultado (o histórico fica na aba Dados)
+  function opToast(r){
+    const old = document.getElementById('op-toast'); if(old) old.remove();
+    if(hudReady){ const q = hudEl('qr-sheet'); if(q.classList.contains('open') && q.scrollTop < 40) return; }   // a folha Rolar já mostra o resultado no topo
+    const crit = !!(r.sheet && r.sheet.kind === 'attack' && r.sheet.crit);
+    const el = document.createElement('div');
+    el.id = 'op-toast'; el.className = 'op-toast' + (crit ? ' crit' : ''); el.setAttribute('role', 'status');
+    el.innerHTML = `<div class="op-toast-total">${r.total}</div><div class="op-toast-body"><b>${esc(r.whoName || '')} · ${esc(r.skill)}${crit ? ' <span class="op-crit">CRÍTICO!</span>' : ''}</b><span>${esc(opCompText(r))}</span></div>`;
+    el.addEventListener('click', () => el.remove());
+    document.body.appendChild(el);
+    setTimeout(() => { if(el.isConnected) el.remove(); }, 7000);
+  }
+  // registra uma rolagem da ficha (mesmo formato da aba Dados, então cai no histórico e no feed)
+  async function opRecord(tokenId, title, termResults, bonuses, extra){
+    const h = holderById(tokenId), a = actorFields();
+    const bs = bonuses.filter(b => b.value !== 0).map(b => b.cond ? Object.assign({ label:b.label, value:b.value, cond:true }, b.weather ? { weather:true } : {}) : { label:b.label, value:b.value });
+    const diceSum = termResults.reduce((s, t) => s + t.value, 0), bonusSum = bs.reduce((s, b) => s + b.value, 0);
+    const rec = { important:false, skill:title, terms:termResults, diceSum, bonuses:bs, bonusSum, total:diceSum + bonusSum, note:'', physical:false,
+      tokenId:h ? h.id : null, whoName:h ? h.name : a.actorName, actorId:a.actorId, actorName:a.actorName,
+      sessionId:(campaignMeta && campaignMeta.activeSessionId) || null, sheet:extra || {} };
+    rollUI.last = Object.assign({ ts:Date.now() }, rec);
+    const path = scopedKey(KEY_ROLLS), id = DB.newId(path);
+    const ok = await DB.set(path + '/' + id, Object.assign({ id, ts:DB.ts() }, JSON.parse(JSON.stringify(rec))));
+    if(!ok) toast(dbFailMsg('A rolagem'), true);
+    opToast(rollUI.last);
+    if(hubIsOpen()) renderHub();
+    hudQRChanged();
+    return rec;
+  }
+  function opCanEdit(tokenId, msg){
+    if(!canEditHolder(holderById(tokenId))){ toast(msg || 'Só o dono do personagem (ou o mestre) altera esta ficha.', true); return false; }
+    return true;
+  }
+  async function opRollSkill(key, tokenId){
+    const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
+    const card = ensureCard(id), sd = opSkillDef(card, key), p = opParts(card, key, null, 'skill');
+    const t = rollTerm({ sign:1, n:1, sides:20 }, makeSource(null));
+    await opRecord(id, sd.name, [t], p.parts.concat(p.conds), { kind:'skill', key });
+  }
+  async function opRollAttack(atkId, tokenId){
+    const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
+    const card = ensureCard(id), atk = (card.attacks || []).find(x => x.id === atkId); if(!atk) return;
+    const p = opParts(card, atk.skill || '', atk.attribute || '', 'attack');
+    const t = rollTerm({ sign:1, n:1, sides:20 }, makeSource(null));
+    const nat = t.dice[0].v, margin = Math.min(20, Math.max(2, parseInt(atk.critMargin, 10) || 20));
+    const crit = nat >= margin;      // crítico: o d20 natural caiu dentro da margem
+    hub.opCrit = hub.opCrit || {}; hub.opCrit[atkId] = crit;
+    await opRecord(id, (atk.name || 'Ataque') + ' · ataque', [t], p.parts.concat(p.conds), { kind:'attack', atk:atkId, crit, nat });
+  }
+  async function opRollDamage(atkId, tokenId){
+    const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
+    const card = ensureCard(id), atk = (card.attacks || []).find(x => x.id === atkId); if(!atk) return;
+    const pe = parseExpr(atk.damage || '');
+    if(pe.error || !pe.terms.length){ toast(pe.error || 'Escreva o dano do ataque (ex.: 1d10+2).', true); return; }
+    const crit = !!(hub.opCrit && hub.opCrit[atkId]), mult = Math.min(10, Math.max(1, parseInt(atk.critMult, 10) || 2));
+    // no crítico só os DADOS são multiplicados; bônus fixos não
+    const terms = pe.terms.map(t => crit ? Object.assign({}, t, { n:Math.min(50, t.n * mult) }) : t);
+    const results = terms.map(t => rollTerm(t, makeSource(null)));
+    const bonuses = [];
+    if(pe.bonus) bonuses.push({ label:'Fixo', value:pe.bonus });
+    if(atk.addAttrToDamage && atk.attribute) bonuses.push({ label:opAttrLabel(atk.attribute), value:opAttrOf(card, atk.attribute) });
+    if(atk.addTrainingToDamage && atk.skill){ const tr = OP_TRAIN[opSkillDef(card, atk.skill).s.training] || OP_TRAIN.none; bonuses.push({ label:tr[0], value:tr[1] }); }
+    if(hub.opCrit) hub.opCrit[atkId] = false;
+    await opRecord(id, (atk.name || 'Ataque') + ' · dano' + (crit ? ' (crítico ×' + mult + ')' : ''), results, bonuses, { kind:'damage', atk:atkId, crit });
+  }
+  // ---- formato antigo → Ordem Paranormal (aditivo e reversível) ----
+  function opSkipped(id){
+    if(hub.opSkip && hub.opSkip[id]) return true;
+    try{ return !!JSON.parse(localStorage.getItem('tv-op-skip:' + activeCampaignId) || '{}')[id]; }catch(e){ return false; }
+  }
+  function opSkip(id){
+    hub.opSkip = hub.opSkip || {}; hub.opSkip[id] = 1;     // só neste aparelho; nada é gravado na ficha
+    try{ const k = 'tv-op-skip:' + activeCampaignId, o = JSON.parse(localStorage.getItem(k) || '{}'); o[id] = 1; localStorage.setItem(k, JSON.stringify(o)); }catch(e){}
+    renderHub();
+  }
+  function opMigrate(){
+    const id = hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) migra a ficha.')) return;
+    const card = ensureCard(id);
+    card.skillsLegacy = JSON.parse(JSON.stringify(card.skills || []));       // cópias: dá para voltar
+    card.resLegacy = JSON.parse(JSON.stringify(card.res || {}));
+    card.systemId = 'ordem';
+    if(!card.attributes) card.attributes = { agi:1, for:1, int:1, pre:1, vig:1 };
+    if(!card.meta) card.meta = { class:'', origin:'' };
+    if(card.nex == null) card.nex = 5;
+    if(card.level == null) card.level = 1;
+    if(!card.skillsV2) card.skillsV2 = {};
+    (card.skills || []).forEach(s => {
+      const nm = opSlug(s.name); if(!nm) return;
+      const def = OP_SKILLS.find(x => opSlug(x[1]) === nm);
+      const key = def ? def[0] : 'x_' + nm;
+      if(!card.skillsV2[key]) card.skillsV2[key] = def ? { training:'none', bonus:opNum(s.bonus) } : { training:'none', bonus:opNum(s.bonus), name:s.name, attr:'' };
+    });
+    if(!card.resources2){
+      const old = cfg().resources.find(x => x.key === 'pv' || String(x.label).trim().toLowerCase() === 'pv');
+      card.resources2 = { pv:old ? { cur:resVal(card, old), max:old.max || 0 } : { cur:0, max:0 }, pd:{ cur:0, max:0 } };
+    }
+    if(!card.attacks) card.attacks = [];
+    if(!card.conditions) card.conditions = [];
+    scheduleSaveCard(); renderHub();
+    toast('Ficha migrada. Confira os atributos e os bônus das perícias. Os dados antigos ficaram guardados.');
+  }
+  function opRevert(){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    if(!window.confirm('Voltar esta ficha para o formato antigo? Os dados novos (atributos, ataques, condições) ficam guardados e voltam se você migrar de novo.')) return;
+    delete ensureCard(id).systemId;
+    scheduleSaveCard(); renderHub();
+  }
+  function opAddSkill(raw, attr, all){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    const card = ensureCard(id); card.skillsV2 = card.skillsV2 || {};
+    if(all){
+      OP_SKILLS.forEach(d => { if(!card.skillsV2[d[0]]) card.skillsV2[d[0]] = { training:'none', bonus:0 }; });
+    } else {
+      const txt = String(raw || '').trim(); if(!txt){ toast('Digite ou escolha o nome da perícia.', true); return; }
+      const def = OP_SKILLS.find(x => opSlug(x[1]) === opSlug(txt));
+      const key = def ? def[0] : 'x_' + opSlug(txt);
+      if(card.skillsV2[key]){ toast('Essa perícia já está na ficha.', true); return; }
+      card.skillsV2[key] = def ? { training:'none', bonus:0 } : { training:'none', bonus:0, name:txt, attr:attr || '' };
+    }
+    scheduleSaveCard(); renderHub();
+  }
+  function opDelSkill(key){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    const card = ensureCard(id), s = (card.skillsV2 || {})[key]; if(!s) return;
+    if((s.training && s.training !== 'none') || opNum(s.bonus)){ if(!window.confirm('Remover "' + opSkillDef(card, key).name + '" da ficha? O treinamento e o bônus dela serão perdidos.')) return; }
+    delete card.skillsV2[key];
+    scheduleSaveCard(); renderHub();
+  }
+  function opNewAttack(){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    const card = ensureCard(id), atk = { id:newUid('atk_'), name:'Novo ataque', attribute:'for', skill:'luta', damage:'1d6', critMargin:20, critMult:2, addAttrToDamage:false, addTrainingToDamage:false };
+    card.attacks = (card.attacks || []).concat([atk]); hub.opEdit = atk.id;
+    scheduleSaveCard(); renderHub();
+  }
+  function opDelAttack(atkId){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    if(!window.confirm('Remover este ataque?')) return;
+    const card = ensureCard(id); card.attacks = (card.attacks || []).filter(a => a.id !== atkId);
+    if(hub.opEdit === atkId) hub.opEdit = null;
+    scheduleSaveCard(); renderHub();
+  }
+  function opAddCondition(){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    const key = (hubBody.querySelector('#op-cond-key') || {}).value, note = ((hubBody.querySelector('#op-cond-note') || {}).value || '').trim();
+    if(!key) return;
+    if(key === 'outra' && !note){ toast('Escreva o nome da condição.', true); return; }
+    const card = ensureCard(id), h = holderById(id);
+    if(key !== 'outra' && (card.conditions || []).some(c => c.key === key)){ toast('Essa condição já está ativa.', true); return; }
+    const c = { id:newUid('cd_'), key, note };
+    card.conditions = (card.conditions || []).concat([c]);
+    scheduleSaveCard(); renderHub();
+    // aparece no feed e na linha do tempo da mesa
+    addJournal({ type:'evento', evKind:'condicao', text:`${h ? h.name : card.name} recebeu [${opCondName(c)}]`, auto:true, vis:'grupo' });
+  }
+  function opDelCondition(cid){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    const card = ensureCard(id); card.conditions = (card.conditions || []).filter(c => c.id !== cid);
+    scheduleSaveCard(); renderHub();
+  }
+  function opAdjustRes(k, d, tokenId){
+    const id = tokenId || hub.charToken; if(!opCanEdit(id)) return;
+    const card = ensureCard(id); card.resources2 = card.resources2 || {};
+    const r = card.resources2[k] = card.resources2[k] || { cur:0, max:0 };
+    let v = opNum(r.cur) + d; v = Math.max(0, opNum(r.max) > 0 ? Math.min(opNum(r.max), v) : v);
+    r.cur = v; scheduleSaveCard(id); if(hubIsOpen() && hub.charToken === id) renderHub(); hudMiniChanged();
+  }
+  // ---- desenho da ficha ----
+  function opBar(card, k, dis){
+    const r = opRes(card, k), pct = r.max > 0 ? Math.max(0, Math.min(100, Math.round(r.cur / r.max * 100))) : 0, low = r.max > 0 && r.cur / r.max < 0.3, nm = OP_RES[k];
+    return `<div class="op-res"><div class="op-res-head"><b title="${esc(nm[1])}">${nm[0]}<small>${esc(nm[1])}</small></b><span class="op-val">${low ? ic('alert', 14) : ''}${r.cur} / ${r.max}</span></div>
+      <div class="op-res-top"><button type="button" class="die-btn" data-act="op-res" data-k="${k}" data-d="-1" aria-label="Reduzir ${esc(nm[1])}" ${dis}>${ic('minus', 16)}</button>
+      <div class="op-bar${low ? ' low' : ''}" style="--c:${nm[2]}" role="meter" aria-valuemin="0" aria-valuemax="${r.max}" aria-valuenow="${r.cur}" aria-label="${esc(nm[1])}: ${r.cur} de ${r.max}"><i style="width:${pct}%"></i></div>
+      <button type="button" class="die-btn" data-act="op-res" data-k="${k}" data-d="1" aria-label="Aumentar ${esc(nm[1])}" ${dis}>${ic('plus', 16)}</button></div>
+      <div class="op-res-edit"><label>atual<input type="number" min="0" data-bind="card.resources2.${k}.cur" data-num data-sheet value="${esc(String(r.cur))}" ${dis}></label><label>máximo<input type="number" min="0" data-bind="card.resources2.${k}.max" data-num data-sheet value="${esc(String(r.max))}" ${dis}></label></div></div>`;
+  }
+  function opBanner(card, edit){
+    const id = hub.charToken;
+    if(!edit || opSkipped(id)) return '';
+    const empty = !(card.skills || []).length && !Object.keys(card.res || {}).length;
+    return `<div class="op-banner" role="region" aria-label="Formato da ficha"><p>${empty ? 'Esta ficha ainda está vazia. Quer começar já no formato de Ordem Paranormal?' : 'Este personagem está no formato antigo. Quer migrar para Ordem Paranormal?'}</p>
+      <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="op-migrate">Migrar</button><button type="button" class="inv-mini-btn" data-act="op-keep">Continuar no formato antigo</button></div>
+      ${empty ? '' : '<p class="hub-hint">Nada é apagado: as perícias e os recursos antigos ficam guardados e dá para voltar ao formato antigo.</p>'}</div>`;
+  }
+  function renderReminders(card, dis){
+    return `<div class="hub-label">Lembretes da mesa (patente, o que o grupo quiser)</div>
+      ${(card.reminders || []).map((r, i) => `<div class="bonus-row"><input type="text" data-bind="card.reminders.${i}.label" value="${esc(r.label)}" placeholder="Campo" ${dis}>
+        <input type="text" data-bind="card.reminders.${i}.value" value="${esc(r.value)}" placeholder="Valor" ${dis}>
+        <button type="button" class="inv-mini-btn danger" data-act="rem-del" data-i="${i}" ${dis} aria-label="Remover lembrete">${ic('close', 16)}</button></div>`).join('')}
+      <button type="button" class="inv-mini-btn" data-act="rem-add" ${dis}>${ic('plus', 16)} Lembrete</button>`;
+  }
+  function renderFichaOrdem(h, card, dis){
+    const c = cfg(), nexLevel = c.progressionMode !== 'nex_only';
+    const A = card.attributes || {}, meta = card.meta || {}, nex = card.nex == null ? 5 : card.nex, lvl = card.level == null ? 1 : card.level;
+    let html = `<div class="hub-label">Personagem</div>
+      <input type="text" data-bind="card.name" value="${esc(card.name)}" placeholder="Nome do personagem" ${dis}>
+      <div class="bonus-row"><input type="text" data-bind="card.meta.class" data-sheet value="${esc(meta.class || '')}" placeholder="Classe" ${dis}><input type="text" data-bind="card.meta.origin" data-sheet value="${esc(meta.origin || '')}" placeholder="Origem" ${dis}></div>
+      <div class="bonus-row"><label class="op-fld">NEX<select data-bind="card.nex" data-num data-rerender ${dis}>${OP_NEX.map(n => opt(n, n + '%', nex)).join('')}</select></label>
+        ${nexLevel ? `<label class="op-fld">Nível (1 a 20)<input type="number" min="1" max="20" data-bind="card.level" data-num data-sheet value="${esc(String(lvl))}" ${dis}></label>` : ''}</div>
+      <input type="text" data-bind="card.player" value="${esc(card.player)}" placeholder="Jogador" ${dis}>
+      <div class="op-sum">${esc([meta.class, meta.origin].filter(Boolean).join(' · '))}${(meta.class || meta.origin) ? ' · ' : ''}NEX ${nex}%${nexLevel ? ' · Nível ' + esc(String(lvl)) : ''}</div>`;
+    html += `<div class="hub-label">Atributos</div><div class="op-attrs">${OP_ATTRS.map(a => `<label class="op-attr"><span>${a[1]}</span><input type="number" min="0" max="20" data-bind="card.attributes.${a[0]}" data-num data-sheet value="${esc(String(opNum(A[a[0]])))}" aria-label="${a[2]}" ${dis}></label>`).join('')}</div>`;
+    html += `<div class="hub-label">Recursos</div>${opBar(card, 'pv', dis)}${opBar(card, 'pd', dis)}`;
+    // perícias
+    const rows = Object.keys(card.skillsV2 || {}).map(k => opSkillDef(card, k)).sort((x, y) => x.name.localeCompare(y.name, 'pt-BR'));
+    html += `<div class="hub-label">Perícias</div>${rows.map(sd => {
+      const p = opParts(card, sd.key, null, 'skill'), tot = opSum(p), pen = p.conds.reduce((a, x) => a + x.value, 0);
+      return `<div class="op-skill"><div class="op-sk-name"><b>${esc(sd.name)}</b><small>${sd.attr ? opAttrLabel(sd.attr) : 'livre'}</small></div>
+        <span class="op-total" title="atributo + treinamento + bônus${pen ? ' + condições/clima' : ''}">${opSgn(tot)}${pen ? '<small>' + opSgn(pen) + (p.conds.some(x => x.weather) ? (p.conds.some(x => !x.weather) ? ' cond.+clima' : ' clima') : ' cond.') + '</small>' : ''}</span>
+        <button type="button" class="inv-mini-btn primary op-roll" data-act="op-skill-roll" data-k="${esc(sd.key)}" aria-label="Rolar ${esc(sd.name)}" ${dis}>${ic('dice', 18)}</button>
+        <button type="button" class="inv-mini-btn danger op-del" data-act="op-skill-del" data-k="${esc(sd.key)}" aria-label="Remover ${esc(sd.name)}" ${dis}>${ic('close', 16)}</button>
+        <select data-bind="card.skillsV2.${esc(sd.key)}.training" data-rerender aria-label="Treinamento de ${esc(sd.name)}" ${dis}>${Object.keys(OP_TRAIN).map(t => opt(t, OP_TRAIN[t][0], sd.s.training || 'none')).join('')}</select>
+        <input type="number" class="op-n" data-bind="card.skillsV2.${esc(sd.key)}.bonus" data-num data-sheet value="${esc(String(opNum(sd.s.bonus)))}" aria-label="Bônus avulso de ${esc(sd.name)}" placeholder="Outros" ${dis}></div>`;
+    }).join('') || '<p class="hub-hint">Nenhuma perícia ainda. Escolha uma da lista, escreva uma livre ou adicione todas.</p>'}
+      <datalist id="op-skill-list">${OP_SKILLS.map(s => `<option value="${esc(s[1])}">`).join('')}</datalist>
+      <div class="op-add"><input type="text" id="op-skill-new" list="op-skill-list" placeholder="Nova perícia (ex.: Furtividade)" ${dis}><select id="op-skill-attr" aria-label="Atributo da perícia livre" ${dis}><option value="">atributo (se livre)</option>${OP_ATTRS.map(a => `<option value="${a[0]}">${a[1]}</option>`).join('')}</select>
+      <button type="button" class="inv-mini-btn" data-act="op-skill-add" ${dis}>${ic('plus', 16)} Nova</button>
+      <button type="button" class="inv-mini-btn" data-act="op-skill-all" ${dis}>Adicionar todas as 28</button></div>`;
+    // ataques
+    const skillOpts = a => OP_SKILLS.map(x => opt(x[0], x[1], a.skill)).join('') + Object.keys(card.skillsV2 || {}).filter(k => k.indexOf('x_') === 0).map(k => opt(k, opSkillDef(card, k).name, a.skill)).join('');
+    html += `<div class="hub-label">Ataques</div>${(card.attacks || []).map((a, i) => {
+      const p = opParts(card, a.skill || '', a.attribute || '', 'attack'), open = hub.opEdit === a.id, sk = a.skill ? opSkillDef(card, a.skill).name : '';
+      const crit = !!(hub.opCrit && hub.opCrit[a.id]);
+      return `<div class="op-atk"><div class="op-atk-top"><div><b>${esc(a.name || 'Ataque')}</b><small>${esc(a.damage || '—')} · ${esc(String(a.critMargin || 20))}/×${esc(String(a.critMult || 2))} · ${esc([a.attribute ? opAttrLabel(a.attribute) : '', sk].filter(Boolean).join(' + ') || 'sem perícia')}</small></div>
+        <span class="op-total" title="bônus do ataque">${opSgn(opSum(p))}</span></div>
+        <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="op-atk-roll" data-id="${esc(a.id)}" ${dis}>${ic('dice', 16)} Rolar ataque</button>
+          <button type="button" class="inv-mini-btn ${crit ? 'op-crit-btn' : 'primary'}" data-act="op-dmg-roll" data-id="${esc(a.id)}" ${dis}>${ic('dice', 16)} Rolar dano${crit ? ' (crítico ×' + esc(String(a.critMult || 2)) + ')' : ''}</button>
+          <button type="button" class="inv-mini-btn" data-act="op-atk-edit" data-id="${esc(a.id)}" aria-expanded="${open}">${open ? 'Fechar' : 'Editar'}</button></div>
+        ${open ? `<div class="op-atk-form"><input type="text" data-bind="card.attacks.${i}.name" value="${esc(a.name || '')}" placeholder="Nome" ${dis}>
+          <div class="bonus-row"><select data-bind="card.attacks.${i}.attribute" data-rerender aria-label="Atributo" ${dis}><option value="">— atributo —</option>${OP_ATTRS.map(x => opt(x[0], x[1], a.attribute)).join('')}</select>
+          <select data-bind="card.attacks.${i}.skill" data-rerender aria-label="Perícia" ${dis}><option value="">— perícia —</option>${skillOpts(a)}</select></div>
+          <input type="text" data-bind="card.attacks.${i}.damage" data-sheet value="${esc(a.damage || '')}" placeholder="Dano (ex.: 1d10+2)" ${dis}>
+          <div class="bonus-row"><label class="op-fld">Margem de crítico<input type="number" min="2" max="20" data-bind="card.attacks.${i}.critMargin" data-num data-sheet value="${esc(String(a.critMargin || 20))}" ${dis}></label>
+          <label class="op-fld">Multiplicador<input type="number" min="2" max="10" data-bind="card.attacks.${i}.critMult" data-num data-sheet value="${esc(String(a.critMult || 2))}" ${dis}></label></div>
+          <label class="check-row"><input type="checkbox" data-bind="card.attacks.${i}.addAttrToDamage" ${a.addAttrToDamage ? 'checked' : ''} ${dis}> Somar o atributo ao dano</label>
+          <label class="check-row"><input type="checkbox" data-bind="card.attacks.${i}.addTrainingToDamage" ${a.addTrainingToDamage ? 'checked' : ''} ${dis}> Somar o bônus de treinamento ao dano</label>
+          <button type="button" class="inv-mini-btn danger" data-act="op-atk-del" data-id="${esc(a.id)}" ${dis}>${ic('close', 16)} Remover ataque</button></div>` : ''}</div>`;
+    }).join('') || '<p class="hub-hint">Nenhum ataque ainda.</p>'}
+      <button type="button" class="inv-mini-btn" data-act="op-atk-new" ${dis}>${ic('plus', 16)} Novo ataque</button>`;
+    // condições
+    html += `<div class="hub-label">Condições ativas</div><div class="op-conds">${(card.conditions || []).map(cd => {
+      const d = OP_COND[cd.key] || {};
+      return `<span class="op-cond">${ic(d.i || 'alert', 14)}<span>${esc(opCondName(cd))}${cd.note && cd.key !== 'outra' ? ' · ' + esc(cd.note) : ''}</span><button type="button" data-act="op-cond-del" data-id="${esc(cd.id)}" aria-label="Remover ${esc(opCondName(cd))}" ${dis}>${ic('close', 14)}</button></span>`;
+    }).join('') || '<span class="hub-hint">Nenhuma.</span>'}</div>
+      ${(card.conditions || []).filter(cd => OP_COND[cd.key] && OP_COND[cd.key].t).map(cd => `<div class="hub-hint"><b>${esc(OP_COND[cd.key].n)}:</b> ${esc(OP_COND[cd.key].t)}</div>`).join('')}
+      <div class="op-add"><select id="op-cond-key" aria-label="Condição" ${dis}>${OP_COND_ORDER.concat(Object.keys(OP_COND).filter(k => !OP_COND_ORDER.includes(k))).map(k => `<option value="${k}">${esc(OP_COND[k].n)}</option>`).join('')}</select>
+      <input type="text" id="op-cond-note" placeholder="Observação ou nome" ${dis}><button type="button" class="inv-mini-btn" data-act="op-cond-add" ${dis}>${ic('plus', 16)} Adicionar</button></div>
+      <p class="hub-hint">Os modificadores das condições entram sozinhos nas rolagens desta ficha. Condições com o mesmo efeito não se somam: vale a pior. As demais ficam só como marcação.</p>`;
+    return html;
+  }
+
   // ---------- eventos do painel ----------
   function bindRoot(name){
     return { rollUI, hub, sf:hub.sessionForm, nc:hub.newCampaign, cd:hub.cfgDraft, rf:hub.recipeForm, card:characters[hub.charToken] || null,
@@ -5507,6 +5922,7 @@
     const v = t.type === 'checkbox' ? t.checked : (t.hasAttribute('data-num') ? (t.value === '' ? '' : Number(t.value)) : t.value);
     const root = bindSet(t.dataset.bind, v);
     if(root === 'card') scheduleSaveCard();
+    if(t.hasAttribute('data-sheet')) hubDirty = true;      // totais da ficha se refazem quando o campo perde o foco
     if(t.hasAttribute('data-rerender')) renderHub();
   }
   hubBody.addEventListener('input', e => {
@@ -5570,6 +5986,21 @@
       case 'skill-add': ensureCard(hub.charToken).skills = (characters[hub.charToken].skills || []).concat([{ name:'', bonus:0 }]); scheduleSaveCard(); renderHub(); break;
       case 'skill-del': characters[hub.charToken].skills.splice(+D.i, 1); scheduleSaveCard(); renderHub(); break;
       case 'skill-use': { const s = characters[hub.charToken].skills[+D.i]; rollUI.skill = s.name; rollUI.bonuses = Number(s.bonus) ? [{ label:s.name, value:Number(s.bonus) }] : []; rollUI.who = hub.charToken; hub.tab = 'dados'; renderHub(); break; }
+      case 'op-migrate': opMigrate(); break;
+      case 'op-keep': opSkip(hub.charToken); break;
+      case 'op-revert': opRevert(); break;
+      case 'op-skill-roll': opRollSkill(D.k); break;
+      case 'op-skill-del': opDelSkill(D.k); break;
+      case 'op-skill-add': opAddSkill((hubBody.querySelector('#op-skill-new') || {}).value, (hubBody.querySelector('#op-skill-attr') || {}).value, false); break;
+      case 'op-skill-all': opAddSkill('', '', true); break;
+      case 'op-atk-new': opNewAttack(); break;
+      case 'op-atk-edit': hub.opEdit = hub.opEdit === D.id ? null : D.id; renderHub(); break;
+      case 'op-atk-del': opDelAttack(D.id); break;
+      case 'op-atk-roll': opRollAttack(D.id); break;
+      case 'op-dmg-roll': opRollDamage(D.id); break;
+      case 'op-cond-add': opAddCondition(); break;
+      case 'op-cond-del': opDelCondition(D.id); break;
+      case 'op-res': opAdjustRes(D.k, +D.d); break;
       case 'need': { const c = ensureCard(hub.charToken); c.needs = c.needs || {}; c.needs[D.n] = Math.min(4, Math.max(0, (c.needs[D.n] || 0) + (+D.d))); scheduleSaveCard(); renderHub(); break; }
       case 'open-inv': openInventory(D.id); break;
       case 'sess-new': newSession(); break;
@@ -5614,7 +6045,7 @@
         let v = resVal(c, r) + (+D.d); v = Math.max(0, r.max ? Math.min(r.max, v) : v); c.res[r.key] = v; scheduleSaveCard(); renderHub(); break; }
       case 'res-add': hub.resDraft.push({ key:'', label:'', max:0 }); renderHub(); break;
       case 'res-del': hub.resDraft.splice(+D.i, 1); renderHub(); break;
-      case 'res-seed': [['pv', 'PV'], ['pe', 'PE'], ['san', 'Sanidade']].forEach(x => { if(!hub.resDraft.some(r => r.key === x[0])) hub.resDraft.push({ key:x[0], label:x[1], max:0 }); }); renderHub(); break;
+      case 'res-seed': [['pv', 'PV'], ['pd', 'PD']].forEach(x => { if(!hub.resDraft.some(r => r.key === x[0])) hub.resDraft.push({ key:x[0], label:x[1], max:0 }); }); renderHub(); break;
       case 'res-save': saveResources(); break;
       case 'slots-save': saveSlots(); break;
       case 'give': giveItem(); break;
@@ -5813,8 +6244,22 @@
     for(let y = oy; y <= sc.h + 0.01; y += sz) lines.push([[sc.h - y, 0], [sc.h - y, sc.w]]);
     L.polyline(lines, { color:'#8fd7e8', weight:1, opacity:editing ? 0.75 : 0.32, interactive:false, noClip:true }).addTo(tacGridLayer);
   }
+  // imagem do token do mapa geográfico (ou NPC) ligado a este token tático; acompanha o original
+  function tacImgOf(t){
+    if(!t || !t.mapTokenId) return '';
+    const o = tokens.find(x => x.id === t.mapTokenId) || pins.find(x => x.id === t.mapTokenId && x.type === 'npc');
+    const im = o && o.image;
+    return (typeof im === 'string' && /^(data:image\/|https?:|\.?\/?[\w\-./]+\.(png|jpe?g|gif|webp|svg)$)/i.test(im)) ? im : '';
+  }
+  let tacImgSig = '';
+  function tacImgSigNow(){
+    const sc = tacScene(tacCurId()); if(!sc) return '';
+    return tacTokensOf(tacCurId()).map(t => { const im = tacImgOf(t); return t.id + ':' + im.length + ':' + im.slice(-24); }).join('|');
+  }
+  mapEntitiesHook = () => { if(typeof tacUI === 'undefined' || !tacUI.open) return; const s = tacImgSigNow(); if(s !== tacImgSig){ tacImgSig = s; tacDrawTokens(); } };
   function tacDrawTokens(){
     if(!tacTokLayer) return;
+    tacImgSig = tacImgSigNow();
     if(tacUI.drag){ tacUI.dirty = true; return; }
     // o redesenho recria os marcadores: devolve o foco ao token que o tinha (teclado e leitor de tela)
     const fe0 = document.activeElement;
@@ -5831,9 +6276,10 @@
       const col = t.color || (TAC_KINDS[t.kind] || TAC_KINDS.obj)[1];
       const over = sc.rule.limit !== 'off' && (+t.mv || 0) > tacSpeed(sc, t);
       const label = tacX(String(t.em || t.name || '?').slice(0, 2).toUpperCase());
-      const cls = 'tac-tok' + (t.hidden ? ' hid' : '') + (tacUI.sel === t.id ? ' sel' : '') + (cur === t.id ? ' turn' : '') + (over ? ' over' : '');
+      const img = tacImgOf(t);
+      const cls = 'tac-tok' + (img ? ' has-img' : '') + (t.hidden ? ' hid' : '') + (tacUI.sel === t.id ? ' sel' : '') + (cur === t.id ? ' turn' : '') + (over ? ' over' : '');
       const icon = L.divIcon({ className:'', iconSize:[px, px], iconAnchor:[px / 2 - off, px / 2 - off],
-        html:`<div class="${cls}" style="width:${px}px;height:${px}px;--tc:${tacX(col)};font-size:${Math.round(px * 0.36)}px"><span>${label}</span></div><span class="tac-nm">${tacX(String(t.name || '').split(/\s+/)[0])}${t.hidden ? ' · oculto' : ''}</span>` });
+        html:`<div class="${cls}" style="width:${px}px;height:${px}px;--tc:${tacX(col)};font-size:${Math.round(px * 0.36)}px">${img ? `<img src="${tacX(img)}" alt="">` : `<span>${label}</span>`}</div><span class="tac-nm">${tacX(String(t.name || '').split(/\s+/)[0])}${t.hidden ? ' · oculto' : ''}</span>` });
       const kname = (TAC_KINDS[t.kind] || TAC_KINDS.obj)[0], aria = `${t.name || 'Token'}, ${kname}${t.hidden ? ', oculto' : ''}${cur === t.id ? ', vez atual' : ''}, coluna ${c + 1}, linha ${r + 1}`;
       const m = L.marker(tacCenter(sc, c, r), { icon, draggable:tacCanMove(t), keyboard:true, title:aria, zIndexOffset:cur === t.id ? 500 : (tacUI.sel === t.id ? 300 : 0) });
       m.on('click', ev => { L.DomEvent.stopPropagation(ev); if(tacUI.ruler){ tacRulerPoint(m.getLatLng()); return; } tacSelect(t.id); });
@@ -5864,7 +6310,7 @@
     const c0 = Math.round(+t.c), r0 = Math.round(+t.r);
     const d = tacDist(c0, r0, cell.c, cell.r, sc.grid.diag);
     if(!d) return false;
-    const master = isMaster(), used = (+t.mv || 0) + d, sp = tacSpeed(sc, t);
+    const f = weatherTerrainFactor(), master = isMaster(), used = (+t.mv || 0) + d * f, sp = tacSpeed(sc, t);   // clima com terreno difícil: cada casa custa 2
     if(!master && sc.turn.on && sc.rule.lock && tacTurnId(sc) !== t.id){ toast('Ainda não é a vez deste token.', true); return false; }
     if(!master && sc.rule.limit === 'block' && used > sp){ toast(`Passa do deslocamento: ${used} de ${sp} casas.`, true); return false; }
     if(sc.rule.limit !== 'off' && used > sp) toast(`Deslocamento acima do limite: ${used} de ${sp} casas.`, true);
@@ -5925,7 +6371,8 @@
   function tacRenderTitle(){
     const sid = tacCurId(), sc = tacScene(sid);
     tacEl('tac-title').textContent = sc ? (sc.name || 'Cena') : 'Mapa tático';
-    tacEl('tac-sub').textContent = !sc ? '' : (tac.active === sid ? 'Cena ativa para o grupo' : 'Prévia: o grupo não está vendo esta cena');
+    const wx = weatherTerrainFactor() > 1 ? ' · ' + weatherDef().label + ': terreno difícil (casa custa 2)' : '';
+    tacEl('tac-sub').textContent = !sc ? '' : (tac.active === sid ? 'Cena ativa para o grupo' : 'Prévia: o grupo não está vendo esta cena') + wx;
   }
   const tacSvg = p => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
   const TAC_IC = {
@@ -5950,9 +6397,8 @@
   // atalho do menu Áreas e aviso de cena ativa na tela do mapa
   function tacRenderArea(){
     const sc = tac.active && tac.scenes[tac.active] ? tac.scenes[tac.active] : null;
-    const sub = tacEl('area-tatico-sub'), live = tacEl('area-tatico-live');
-    if(sub) sub.textContent = sc ? 'Cena ativa: ' + (sc.name || 'Cena') : 'Cena, grade, turnos';
-    if(live) live.hidden = !sc;
+    if(typeof hudTacLive === 'function') hudTacLive(sc);
+    if(typeof hudDockSync === 'function') hudDockSync();
     const bn = tacEl('tac-banner');
     if(!bn) return;
     const show = !!sc && !tacUI.open && tacUI.bannerOff !== tac.active;
@@ -5964,7 +6410,7 @@
     if(!sc || !sc.turn.on){ el.hidden = true; return; }
     const id = tacTurnId(sc), t = tacTokensOf(sid).find(x => x.id === id);
     el.hidden = false;
-    el.innerHTML = `<span>⚔ Rodada <b>${sc.turn.round}</b> · Vez de <b>${tacX(t ? t.name : '—')}</b>${t ? ' · ' + tacX(tacMoveTxt(sc, t)) : ''}</span>` + (isMaster() ? '<button type="button" class="inv-mini-btn primary" data-tac="next">Próximo ▶</button>' : '');
+    el.innerHTML = `<span>${ic('swords', 14)} Rodada <b>${sc.turn.round}</b> · Vez de <b>${tacX(t ? t.name : '—')}</b>${t ? ' · ' + tacX(tacMoveTxt(sc, t)) : ''}</span>` + (isMaster() ? '<button type="button" class="inv-mini-btn primary" data-tac="next">Próximo ▶</button>' : '');
   }
   function tacSh(title, sub){ return `<div class="tac-sh"><div><b>${tacX(title)}</b>${sub ? `<small>${tacX(sub)}</small>` : ''}</div><button type="button" class="tac-x" data-tac="close-sheet" aria-label="Fechar painel">×</button></div>`; }
   function tacStep(label, k, v, ds){
@@ -6306,7 +6752,7 @@
   function tacOnData(v){
     const prev = tac.active;
     tac = { active:(v && v.active) || null, scenes:(v && v.scenes) || {} };
-    if(tacUI.seen && tac.active && tac.active !== prev && !tacUI.open && !isMaster() && tac.scenes[tac.active]) toast('Cena tática ativa: ' + (tac.scenes[tac.active].name || 'Cena') + ' (menu Áreas ▸ Tático)');
+    if(tacUI.seen && tac.active && tac.active !== prev && !tacUI.open && !isMaster() && tac.scenes[tac.active]) toast('Cena tática ativa: ' + (tac.scenes[tac.active].name || 'Cena') + ' (botão Tático)');
     tacUI.seen = true;
     tacRenderArea();
     tacChanged();
@@ -6320,7 +6766,7 @@
     tacRenderSheet();
   }
   function tacOpen(){
-    closeHub(); closeDrawer(); closeNavDrawer(); closeInventory();
+    closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets();
     tacUI.open = true;
     tacEl('tac').hidden = false;
     tacRenderArea();
@@ -6329,7 +6775,7 @@
     requestAnimationFrame(() => { tacMap.invalidateSize(); tacBuild(true); const bk = root0(); if(bk) bk.focus({ preventScroll:true }); });
   }
   function root0(){ return document.querySelector('#tac .tac-back'); }
-  function tacClose(){ tacUI.open = false; tacUI.ruler = false; tacUI.pts = []; tacEl('tac').hidden = true; tacRenderArea(); const f = document.getElementById('fab-system'); if(f) f.focus({ preventScroll:true }); }
+  function tacClose(){ tacUI.open = false; tacUI.ruler = false; tacUI.pts = []; tacEl('tac').hidden = true; tacRenderArea(); const f = document.getElementById('dock-tac'); if(f) f.focus({ preventScroll:true }); }
   (function tacWire(){
     const root = tacEl('tac');
     if(!root) return;
@@ -6339,37 +6785,523 @@
     window.addEventListener('resize', () => { if(tacUI.open && tacMap) tacMap.invalidateSize(); });
     if(window.ResizeObserver) new ResizeObserver(() => { if(tacUI.open && tacMap) tacMap.invalidateSize({ animate:false }); }).observe(tacEl('tac-mapwrap'));
     document.addEventListener('keydown', e => { if(e.key === 'Escape' && tacUI.open && !hubIsOpen()) tacClose(); });
-    const ab = tacEl('area-tatico');
-    if(ab) ab.addEventListener('click', tacOpen);
     const bo = tacEl('tac-banner-open'), bx = tacEl('tac-banner-x');
     if(bo) bo.addEventListener('click', tacOpen);
     if(bx) bx.addEventListener('click', () => { tacUI.bannerOff = tac.active; tacRenderArea(); });
   })();
 
-  // ---------- navegação por áreas (menu "Áreas") ----------
-  // Mundo = mapa + clima/locais · Personagem = ficha · Inventário · Expedição = saque/pesca/contêineres
-  // Diário · Grupo · Mestre (só aparece para quem é mestre). Cada botão faz uma ação real.
-  function closeAllPanels(){ closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); }
-  const AREA_HUB_TAB = { mundo:'mundo', personagem:'ficha', diario:'diario', grupo:'grupo', mestre:'mestre' };
-  document.querySelectorAll('[data-area]').forEach(b => b.addEventListener('click', () => {
-    const a = b.dataset.area;
-    if(AREA_HUB_TAB[a]){
-      if(a === 'personagem' && charSelect.value) hub.charToken = charSelect.value;
-      openHub(AREA_HUB_TAB[a]);
-    }
-  }));
+  function closeAllPanels(){ closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); if(typeof hudCloseSheets === 'function') hudCloseSheets(); }
   document.getElementById('hub-drawer-close-btn').addEventListener('click', closeHub);
   hubBackdrop.addEventListener('click', closeHub);
-  document.getElementById('hub-toggle-btn').addEventListener('click', () => { hubIsOpen() ? closeHub() : openHub('dados'); });
-  document.getElementById('roll-toggle-btn').addEventListener('click', () => { hubIsOpen() && hub.tab === 'dados' ? closeHub() : openHub('dados'); });
   document.getElementById('campaign-chip').addEventListener('click', () => openHub('campanhas'));
   document.addEventListener('keydown', e => {
     if(e.key === 'Escape' && hubIsOpen()) closeHub();
     const tag = (document.activeElement && document.activeElement.tagName) || '';
     if(/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || e.ctrlKey || e.metaKey || e.altKey) return;
-    if(e.key === 'd' || e.key === 'D') openHub('dados');
+    if(e.key === 'd' || e.key === 'D') hudOpenQuickRoll();
     else if(e.key === 'c' || e.key === 'C') openHub('campanhas');
   });
+
+  // ================= HUD: DOCK, ÍNDICE, ROLAGEM RÁPIDA, FEED VIVO E MINI-FICHA =================
+  // Tudo aqui é camada de interface por cima do que já existia: os dados (rolagens, registro de itens,
+  // diário, fichas) continuam nos mesmos lugares. O feed só LÊ lootLog + rolls + journal.
+  const hudEl = id => document.getElementById(id);
+  const hudNorm = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const hudPlain = html => { const d = document.createElement('div'); d.innerHTML = html; return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
+  const hudCol = () => !!(window.matchMedia && window.matchMedia('(min-width:1100px)').matches);
+  const hud = { who:null, idxAdd:false, idxQ:'', mapf:new Set(), feed:{ f:'all', m:'all', seen:0, collapsed:false, sheet:false, tall:false, open:null, more:false } };
+
+  // ---- personagem ativo (o que o dock usa por padrão) ----
+  function hudWho(){
+    const hl = holderList();
+    if(hud.who && hl.some(h => h.id === hud.who)) return hud.who;
+    const cs = charSelect && charSelect.value;
+    if(cs && hl.some(h => h.id === cs)) return cs;
+    const mine = tokens.find(t => currentUser && t.ownerId === currentUser.uid);
+    if(mine) return mine.id;
+    const own = hl.filter(h => h.type === 'token' && canEditHolder(h));
+    return own.length === 1 ? own[0].id : null;
+  }
+  function hudSetWho(id){
+    hud.who = id || null;
+    if(id){
+      if(tokens.some(t => t.id === id) && charSelect.value !== id){ charSelect.value = id; charSelect.dispatchEvent(new Event('change')); }
+      hub.charToken = id; rollUI.who = id;
+    }
+    hudMiniChanged(); if(hudEl('qr-sheet').classList.contains('open')) hudRenderQR();
+  }
+  // deixa o personagem escolhido já selecionado nas folhas de saque e inventário
+  function hudEnsureWho(){ const w = hudWho(); if(w && tokens.some(t => t.id === w) && !charSelect.value){ charSelect.value = w; charSelect.dispatchEvent(new Event('change')); } if(w && !hub.charToken) hub.charToken = w; }
+
+  // ---- folhas (índice, rolar, feed no celular) ----
+  const hudSheetIds = [['idx-sheet', 'idx-backdrop'], ['qr-sheet', 'qr-backdrop'], ['lay-sheet', 'lay-backdrop']];
+  function hudCloseSheets(except){
+    if(!hudReady) return;
+    hudSheetIds.forEach(p => { if(p[0] !== except){ hudEl(p[0]).classList.remove('open'); hudEl(p[1]).classList.remove('open'); } });
+    if(except !== 'feed' && !hudCol()){ hud.feed.sheet = false; hud.feed.tall = false; hudFeedLayout(); }
+    hudDockSync();
+  }
+  function hudOpenSheet(id){
+    closeHub(); closeDrawer(); closeNavDrawer(); closeInventory();
+    hudCloseSheets(id);
+    const pair = hudSheetIds.find(p => p[0] === id);
+    hudEl(pair[0]).classList.add('open'); hudEl(pair[1]).classList.add('open');
+    hudDockSync();
+  }
+  const hudIsOpen = id => hudEl(id).classList.contains('open');
+  function hudToggleSheet(id, render){
+    if(hudIsOpen(id)){ hudCloseSheets(); return; }
+    if(render) render();
+    hudOpenSheet(id);
+  }
+  // arrastar a alça: para baixo fecha; para cima expande (só o feed expande)
+  function hudDrag(sheet, onClose, onTall, isTall){
+    let y0 = null, dy = 0, cap = null;
+    sheet.addEventListener('pointerdown', e => {
+      const g = e.target.closest('.sheet-grab'); if(!g) return;
+      y0 = e.clientY; dy = 0; cap = g; sheet.style.transition = 'none';
+      try{ g.setPointerCapture(e.pointerId); }catch(err){}
+    });
+    sheet.addEventListener('pointermove', e => { if(y0 == null) return; dy = e.clientY - y0; if(dy > 0) sheet.style.transform = `translateY(${dy}px)`; });
+    const end = () => {
+      if(y0 == null) return; y0 = null; cap = null; sheet.style.transition = ''; sheet.style.transform = '';
+      if(onTall && isTall() && dy > 30) onTall(false); else if(dy > 90) onClose(); else if(dy < -50 && onTall) onTall(true);
+    };
+    sheet.addEventListener('pointerup', end); sheet.addEventListener('pointercancel', end);
+  }
+
+  // ---- dock ----
+  const HUD_DOCK = [['dock-roll', 'dice', 'Rolar'], ['dock-loot', 'compass', 'Saque'], ['dock-inv', 'bag', 'Inventário'], ['dock-tac', 'swords', 'Tático'], ['dock-more', 'more', 'Mais']];
+  function hudDockBuild(){
+    hudEl('dock').innerHTML = HUD_DOCK.map(d => `<button type="button" class="dock-btn" id="${d[0]}" aria-pressed="false">${ic(d[1], 22)}<span>${d[2]}</span><i class="dock-live" hidden></i></button>`).join('');
+  }
+  function hudDockSync(){
+    if(!hudReady) return;
+    const st = { 'dock-roll':hudIsOpen('qr-sheet'), 'dock-loot':saqueDrawer.classList.contains('open'), 'dock-inv':invDrawer.classList.contains('open'), 'dock-tac':tacUI.open, 'dock-more':hudIsOpen('idx-sheet') };
+    Object.keys(st).forEach(k => { const b = hudEl(k); if(b){ b.classList.toggle('active', !!st[k]); b.setAttribute('aria-pressed', String(!!st[k])); } });
+    hudEl('dock-more').setAttribute('aria-expanded', String(hudIsOpen('idx-sheet')));
+    const lc = hudEl('mchip-layers'); if(lc){ lc.classList.toggle('active', hudIsOpen('lay-sheet')); lc.setAttribute('aria-expanded', String(hudIsOpen('lay-sheet'))); }
+    document.body.classList.toggle('tac-on', !!tacUI.open);
+    document.body.classList.toggle('panel-open', [saqueDrawer, invDrawer, hubDrawer, navDrawer].some(el => el.classList.contains('open')));
+  }
+  function hudTacLive(sc){
+    if(!hudReady) return;
+    const b = hudEl('dock-tac'); if(!b) return;
+    const dot = b.querySelector('.dock-live'); if(dot) dot.hidden = !sc;
+    b.title = sc ? 'Cena tática ativa: ' + (sc.name || 'Cena') : 'Mapa tático';
+  }
+  function hudTactical(){
+    if(tacUI.open){ tacClose(); return; }
+    const sc = tac.active && tac.scenes[tac.active];
+    if(!sc && !isMaster()){ toast('Nenhuma cena tática ativa no momento. O mestre precisa ativar uma.', true); return; }
+    hudCloseSheets(); tacOpen();
+  }
+  function hudWireDock(){
+    hudEl('dock-roll').addEventListener('click', () => hudToggleSheet('qr-sheet', hudRenderQR));
+    hudEl('dock-loot').addEventListener('click', () => { if(saqueDrawer.classList.contains('open')){ closeDrawer(); return; } hudCloseSheets(); hudEnsureWho(); openDrawer(); });
+    hudEl('dock-inv').addEventListener('click', () => { if(invDrawer.classList.contains('open')){ closeInventory(); return; } hudCloseSheets(); hudEnsureWho(); openInventory(null); });
+    hudEl('dock-tac').addEventListener('click', hudTactical);
+    hudEl('dock-more').addEventListener('click', () => hudToggleSheet('idx-sheet', hudRenderIndex));
+    // o dock reflete o que está aberto, mesmo quando outra parte do app abre/fecha as folhas
+    const mo = new MutationObserver(hudDockSync);
+    [saqueDrawer, invDrawer, hubDrawer, navDrawer, hudEl('qr-sheet'), hudEl('idx-sheet')].forEach(el => mo.observe(el, { attributes:true, attributeFilter:['class'] }));
+    document.addEventListener('keydown', e => { if(e.key === 'Escape' && (hudIsOpen('idx-sheet') || hudIsOpen('qr-sheet') || hudIsOpen('lay-sheet') || (hud.feed.sheet && !hudCol()))) hudCloseSheets(); });
+    ['idx', 'qr', 'lay'].forEach(k => {
+      hudEl(k + '-backdrop').addEventListener('click', () => hudCloseSheets());
+      hudDrag(hudEl(k + '-sheet'), () => hudCloseSheets());
+    });
+    hudEl('idx-close').addEventListener('click', () => hudCloseSheets());
+    hudEl('lay-close').addEventListener('click', () => hudCloseSheets());
+  }
+
+  // ---- índice ----
+  function hudIndexItems(){
+    const m = isMaster(), mods = cfg().modules;
+    const tab = (t, extra) => () => { hudCloseSheets(); const w = hudWho(); if(w && t === 'ficha') hub.charToken = w; openHub(t); if(extra) extra(); };
+    const pinWords = PIN_TYPES.map(t => t.label).join(' ');
+    const L = [
+      { id:'add', ic:'plus', t:'Adicionar ao mapa', d:'Pins, token, áreas e rotas', kw:'pin token area rota medir selecionar ' + pinWords, toggle:true, run:() => { hud.idxAdd = !hud.idxAdd; hudRenderIndex(); } },
+      { id:'list', ic:'list', t:'Camadas e lista do mapa', d:'Mapa-base e ir até pins, tokens, áreas e rotas', kw:'lista navegar viagem rapida buscar mapa camadas base satelite relevo ruas filtros', run:() => { hudCloseSheets(); openNavDrawer(); } },
+      { id:'char', ic:'user', t:'Personagem', d:'Ficha, perícias, ataques e condições', kw:'ficha personagem pericia ataque condicao atributo', run:tab('ficha') },
+      { id:'diary', ic:'book', t:'Diário', d:'Pistas, objetivos e linha do tempo', kw:'diario pista objetivo nota linha tempo', run:tab('diario') },
+      { id:'group', ic:'users', t:'Grupo', d:'Personagens e participantes da mesa', kw:'grupo jogadores participantes', run:tab('grupo') },
+      { id:'session', ic:'list', t:'Sessão', d:'Abrir, encerrar e resumir sessões', kw:'sessao resumo encerrar', run:tab('sessao') },
+      { id:'world', ic:'map', t:'Mundo', d:'Relógio, locais e exploração', kw:'mundo relogio locais exploracao hora dia', run:tab('mundo') },
+      mods.crafting ? { id:'craft', ic:'tool', t:'Ofício', d:'Receitas e fabricação', kw:'oficio receita fabricar craft', run:tab('oficio') } : null,
+      { id:'dice', ic:'dice', t:'Dados completos', d:'Construtor de rolagens, atalhos e histórico', kw:'dados rolagem atalho historico expressao', run:tab('dados') },
+      { id:'loot', ic:'compass', t:'Saque e pesca', d:'Locais, pesca e tabela completa de itens', kw:'saque pesca expedicao tabela itens discord webhook', run:() => { hudCloseSheets(); hudEnsureWho(); openDrawer(); } },
+      { id:'weather', ic:'snow', t:'Clima', d:'Ver e mudar o clima da mesa', kw:'clima tempo neblina vento tempestade nevasca', run:() => { hudCloseSheets(); openWeatherPopover(); } },
+      { id:'camp', ic:'layers', t:'Campanhas', d:'Trocar, criar e convidar com código', kw:'campanha convite codigo trocar nova arquivar excluir', run:tab('campanhas') },
+      m ? { id:'cfg', ic:'sliders', t:'Configuração da campanha', d:'Nome, sistema, módulos e progressão', kw:'configuracao config nome sistema modulos nex nivel inventario', run:tab('campanhas', () => setTimeout(() => { const a = hudEl('cfg-anchor'); if(a) a.scrollIntoView({ block:'start' }); }, 60)) } : null,
+      m ? { id:'master', ic:'lock', t:'Mestre', d:'Contêineres, recursos e backup', kw:'mestre conteiner backup restaurar recursos espacos necessidades', run:tab('mestre') } : null,
+      { id:'csv', ic:'copy', t:'Registro de itens (CSV)', d:'Baixar o histórico de transações do inventário', kw:'registro csv exportar historico log baixar', run:() => { hudCloseSheets(); exportLogCsv(); } }
+    ];
+    return L.filter(Boolean);
+  }
+  function hudRenderIndex(){
+    const list = hudEl('idx-list'), body = hudEl('idx-add-body'), sheet = hudEl('idx-sheet');
+    sheet.appendChild(body); body.hidden = true;                    // guarda o conteúdo de "Adicionar" antes de redesenhar
+    const q = hudNorm(hud.idxQ).split(/\s+/).filter(Boolean);
+    const items = hudIndexItems().filter(it => { const hay = hudNorm(it.t + ' ' + it.d + ' ' + it.kw); return q.every(w => hay.includes(w)); });
+    list.innerHTML = items.map(it => `<button type="button" class="idx-item" data-idx="${it.id}"${it.toggle ? ` aria-expanded="${hud.idxAdd}"` : ''}>
+        <span class="idx-ic">${ic(it.ic, 20)}</span><span class="idx-tx"><b>${esc(it.t)}</b><small>${esc(it.d)}</small></span><span class="idx-go">${ic(it.toggle ? (hud.idxAdd ? 'minus' : 'plus') : 'chev', 16)}</span></button>${it.toggle ? '<div id="idx-add-slot"></div>' : ''}`).join('')
+      || '<div class="inv-empty">Nada encontrado. Tente outra palavra.</div>';
+    const slot = hudEl('idx-add-slot');
+    if(slot && hud.idxAdd){ slot.appendChild(body); body.hidden = false; }
+  }
+  function hudWireIndex(){
+    hudEl('idx-list').addEventListener('click', e => {
+      const b = e.target.closest('[data-idx]'); if(!b) return;
+      const it = hudIndexItems().find(x => x.id === b.dataset.idx); if(it) it.run();
+    });
+    hudEl('idx-search').addEventListener('input', e => { hud.idxQ = e.target.value; hudRenderIndex(); });
+    hudEl('idx-search').addEventListener('keydown', e => { if(e.key === 'Enter'){ const b = hudEl('idx-list').querySelector('[data-idx]'); if(b) b.click(); } });
+    // ao escolher uma ferramenta do mapa o índice se fecha para você tocar no mapa
+    hudEl('idx-add-body').addEventListener('click', e => { if(e.target.closest('.tool-btn')) setTimeout(() => hudCloseSheets(), 120); });
+  }
+
+  // ---- rolar (rápido) ----
+  function hudRollLine(r){
+    if(r.sheet && r.sheet.kind) return opCompText(r);
+    return fmtRoll(r) + (r.bonuses && r.bonuses.length ? ' ' + fmtBonuses(r.bonuses) : '') + ' = ' + r.total;
+  }
+  async function hudRoll(terms, bonuses, title){
+    const w = hudWho(), who = (w && canEditHolder(holderById(w))) ? w : null;
+    let res; try{ res = terms.map(t => rollTerm(t, makeSource(null))); }catch(e){ toast('Não foi possível rolar.', true); return; }
+    await opRecord(who, title, res, bonuses, { kind:'quick' });
+  }
+  function hudRenderQR(){
+    const sh = hudEl('qr-sheet'), w = hudWho(), h = holderById(w), card = w ? characters[w] : null, ordem = !!(card && card.systemId === 'ordem');
+    const editable = holderList().filter(canEditHolder), can = !!(h && canEditHolder(h));
+    const last = rollUI.last;
+    let html = `<div class="sheet-grab" aria-hidden="true"></div><div class="sheet-head"><b>Rolar</b><button type="button" class="sheet-x" data-hud="close" aria-label="Fechar">${ic('close', 18)}</button></div>
+      ${last ? `<div class="qr-last${last.sheet && last.sheet.crit ? ' crit' : ''}" role="status"><div class="qr-last-total">${last.total}</div><div><b>${esc(last.whoName || '')} · ${esc(last.skill || 'Rolagem')}</b><span>${esc(hudRollLine(last))}</span></div></div>` : ''}
+      <label class="hub-label" for="qr-who">Rolando como</label>
+      <select id="qr-who" data-hud-who><option value="">Sem personagem (só o seu nome)</option>${editable.map(x => opt(x.id, (x.type === 'npc' ? 'NPC · ' : '') + x.name, w)).join('')}</select>
+      <div class="hub-label">Dado único</div><div class="qr-dice">${DIE_SIDES.map(s => `<button type="button" class="qr-die" data-hud="die" data-s="${s}">d${s}</button>`).join('')}</div>
+      <div class="bonus-row"><button type="button" class="inv-mini-btn" data-hud="adv">Vantagem (2d20, maior)</button><button type="button" class="inv-mini-btn" data-hud="dis">Desvantagem (2d20, menor)</button></div>
+      <div class="expr-row"><input type="text" id="qr-expr" placeholder="Expressão (ex.: 2d6+3, 4d6kh3)" autocomplete="off" value="${esc(hud.qrExpr || '')}"><button type="button" class="inv-mini-btn primary" data-hud="expr">${ic('dice', 16)} Rolar</button></div>`;
+    if(ordem && can){
+      const rows = Object.keys(card.skillsV2 || {}).map(k => opSkillDef(card, k)).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      html += `<div class="hub-label">Perícias de ${esc(h.name)}</div><div class="qr-chips">${rows.map(sd => `<button type="button" class="qr-chip" data-hud="skill" data-k="${esc(sd.key)}"><span>${esc(sd.name)}</span><b>${opSgn(opSum(opParts(card, sd.key, null, 'skill')))}</b></button>`).join('') || '<span class="hub-hint">Adicione perícias na ficha.</span>'}</div>`;
+      if((card.attacks || []).length) html += `<div class="hub-label">Ataques</div>${card.attacks.map(a => { const crit = !!(hub.opCrit && hub.opCrit[a.id]); return `<div class="qr-atk"><span><b>${esc(a.name || 'Ataque')}</b><small>${esc(a.damage || '—')}</small></span>
+        <button type="button" class="inv-mini-btn primary" data-hud="atk" data-id="${esc(a.id)}">${ic('dice', 16)} Ataque ${opSgn(opSum(opParts(card, a.skill || '', a.attribute || '', 'attack')))}</button>
+        <button type="button" class="inv-mini-btn ${crit ? 'op-crit-btn' : ''}" data-hud="dmg" data-id="${esc(a.id)}">Dano${crit ? ' crítico' : ''}</button></div>`; }).join('')}`;
+    } else if(card && can && (card.skills || []).length){
+      html += `<div class="hub-label">Perícias salvas de ${esc(h.name)} (1d20 + bônus)</div><div class="qr-chips">${card.skills.map((s, i) => `<button type="button" class="qr-chip" data-hud="lskill" data-i="${i}"><span>${esc(s.name || 'Perícia')}</span><b>${opSgn(opNum(s.bonus))}</b></button>`).join('')}</div>`;
+    }
+    html += `<button type="button" class="inv-mini-btn qr-full" data-hud="full">Abrir dados completos (atalhos, dados físicos, histórico)</button>`;
+    sh.innerHTML = html;
+  }
+  function hudWireQR(){
+    const sh = hudEl('qr-sheet');
+    sh.addEventListener('change', e => { if(e.target.hasAttribute('data-hud-who')){ hudSetWho(e.target.value || null); hud.who = e.target.value || null; hudRenderQR(); } });
+    sh.addEventListener('input', e => { if(e.target.id === 'qr-expr') hud.qrExpr = e.target.value; });
+    sh.addEventListener('keydown', e => { if(e.target.id === 'qr-expr' && e.key === 'Enter'){ e.preventDefault(); sh.querySelector('[data-hud="expr"]').click(); } });
+    sh.addEventListener('click', async e => {
+      const b = e.target.closest('[data-hud]'); if(!b || b.hasAttribute('data-hud-who')) return;
+      const D = b.dataset, w = hudWho();
+      switch(D.hud){
+        case 'close': hudCloseSheets(); break;
+        case 'die': await hudRoll([{ sign:1, n:1, sides:+D.s }], [], 'd' + D.s); break;
+        case 'adv': await hudRoll([{ sign:1, n:2, sides:20, kh:1 }], [], 'Vantagem (2d20, maior)'); break;
+        case 'dis': await hudRoll([{ sign:1, n:2, sides:20, kl:1 }], [], 'Desvantagem (2d20, menor)'); break;
+        case 'expr': { const pe = parseExpr(hud.qrExpr || ''); if(pe.error){ toast(pe.error, true); break; } await hudRoll(pe.terms, pe.bonus ? [{ label:'Fixo', value:pe.bonus }] : [], String(hud.qrExpr).trim()); break; }
+        case 'skill': await opRollSkill(D.k, w); break;
+        case 'atk': await opRollAttack(D.id, w); break;
+        case 'dmg': await opRollDamage(D.id, w); break;
+        case 'lskill': { const s = ((characters[w] || {}).skills || [])[+D.i]; if(s) await hudRoll([{ sign:1, n:1, sides:20 }], Number(s.bonus) ? [{ label:s.name || 'Bônus', value:Number(s.bonus) }] : [], s.name || 'Perícia'); break; }
+        case 'full': hudCloseSheets(); openHub('dados'); break;
+      }
+    });
+  }
+  function hudOpenQuickRoll(){ if(!hudReady) return; if(!hudIsOpen('qr-sheet')){ hudRenderQR(); hudOpenSheet('qr-sheet'); } }
+  function hudQRChanged(){
+    if(!hudReady || !hudIsOpen('qr-sheet')) return;
+    const sh = hudEl('qr-sheet'), ae = document.activeElement;
+    if(ae && sh.contains(ae) && /^(INPUT|SELECT)$/.test(ae.tagName)) return;      // não atrapalha quem está digitando
+    const sel = ae && sh.contains(ae) && ae.dataset && ae.dataset.hud ? '[data-hud="' + ae.dataset.hud + '"]' + ['k', 'id', 's', 'i'].filter(k => ae.dataset[k] != null).map(k => `[data-${k}="${ae.dataset[k]}"]`).join('') : null;
+    const st = sh.scrollTop;
+    hudRenderQR();
+    sh.scrollTop = st;
+    if(sel){ const el = sh.querySelector(sel); if(el) el.focus({ preventScroll:true }); }
+  }
+
+  // ---- feed vivo ----
+  const HUD_FEED_FILTERS = [['all', 'Tudo'], ['dados', 'Dados'], ['itens', 'Itens'], ['diario', 'Diário']];
+  const HUD_FEED_M = [['all', 'Todos'], ['jogadores', 'Só jogadores'], ['mestre', 'Só mestre']];
+  const HUD_LOOT_IC = { saque:'compass', guardar:'bag', adicionar:'bag', pegar:'bag', depositar:'bag', troca:'users', craft:'tool', usar:'heart', descartar:'close', vasculhar:'box', ajuste:'sliders', recusar:'close', condicao:'alert', reparar:'tool', inv_removido:'skull' };
+  const HUD_J_IC = { resumo:'book', pista:'eye', decisao:'check', objetivo:'target', nota:'note', evento:'alert' };
+  function hudPrefKey(){ return 'tv-feed:' + activeCampaignId; }
+  function hudLoadPrefs(){
+    const f = hud.feed; f.f = 'all'; f.m = 'all'; f.collapsed = false; f.seen = Date.now(); f.open = null; f.more = false; f.sheet = false; f.tall = false;
+    try{
+      const o = JSON.parse(localStorage.getItem(hudPrefKey()) || 'null');
+      if(o){ if(HUD_FEED_FILTERS.some(x => x[0] === o.f)) f.f = o.f; if(HUD_FEED_M.some(x => x[0] === o.m)) f.m = o.m; f.collapsed = !!o.collapsed; if(o.seen) f.seen = o.seen; }
+    }catch(e){}
+  }
+  function hudSavePrefs(){ try{ const f = hud.feed; localStorage.setItem(hudPrefKey(), JSON.stringify({ f:f.f, m:f.m, collapsed:f.collapsed, seen:f.seen })); }catch(e){} }
+  function hudFeedItems(){
+    const out = [];
+    Object.keys(rolls).forEach(k => { const r = rolls[k]; if(r) out.push({ key:'r:' + k, kind:'dados', ts:r.ts || 0, by:r.actorName || r.whoName || '?', byId:r.actorId, data:r }); });
+    lootLog.forEach(e => { if(e) out.push({ key:'l:' + (e.id || e.ts), kind:'itens', ts:e.ts || 0, by:e.actorName || '?', byId:e.actorId, data:e }); });
+    journalAll().forEach(e => out.push({ key:'j:' + e.id, kind:'diario', ts:e.ts || 0, by:e.author || '?', byId:e.authorId, priv:e.vis === 'mestre', data:e }));
+    return out.filter(it => !(it.kind === 'itens' && it.data.action === 'guardar' && (it.data.source === 'saque' || it.data.source === 'pesca')))   // o "encontrou" já conta essa história
+      .sort((a, b) => (b.ts - a.ts) || String(b.key).localeCompare(String(a.key)));
+  }
+  function hudByMaster(it){ const mid = campaignMeta && campaignMeta.masterId; return !!(it.priv || (mid && it.byId === mid)); }
+  function hudFeedVisible(){
+    const f = hud.feed, master = isMaster();
+    return hudFeedItems().filter(it => (f.f === 'all' || it.kind === f.f) && (!master || f.m === 'all' || (f.m === 'mestre' ? hudByMaster(it) : !hudByMaster(it))));
+  }
+  function hudRel(ts){
+    if(!ts) return '';
+    const d = Date.now() - ts;
+    if(d < 45000) return 'agora';
+    if(d < 3600000) return Math.max(1, Math.round(d / 60000)) + ' min';
+    const t = new Date(ts), n = new Date(), p = v => String(v).padStart(2, '0');
+    return (t.toDateString() === n.toDateString() ? '' : p(t.getDate()) + '/' + p(t.getMonth() + 1) + ' ') + p(t.getHours()) + ':' + p(t.getMinutes());
+  }
+  function hudIconOf(it){
+    if(it.kind === 'dados') return it.data.sheet && it.data.sheet.kind === 'attack' ? 'swords' : 'dice';
+    if(it.kind === 'itens') return HUD_LOOT_IC[it.data.action] || 'bag';
+    if(it.data.type === 'evento') return it.data.evKind === 'clima' ? ((WEATHER_STATES[it.data.wx] || {}).icon || 'snow') : 'alert';
+    return HUD_J_IC[it.data.type] || 'note';
+  }
+  function hudShort(it){
+    const d = it.data;
+    if(it.kind === 'dados') return `${d.total} — ${d.skill || 'Rolagem'}`;
+    if(it.kind === 'itens') return hudPlain(logText(d)).replace(/\s*\(item \d+ de \d+\)/, '');
+    return (d.title || d.text || (DJ_TYPES.find(t => t[0] === d.type) || ['', 'Diário'])[1]).slice(0, 80);
+  }
+  function hudUnseen(){
+    const me = actorFields().actorId, seen = hud.feed.seen;
+    return hudFeedItems().filter(it => it.ts > seen && it.byId !== me && (isMaster() || !it.priv)).length;
+  }
+  function hudRow(it){
+    const d = it.data, open = hud.feed.open === it.key, ic0 = hudIconOf(it);
+    let head, line, side = '', detail = '', cls = it.kind;
+    if(it.kind === 'dados'){
+      const crit = d.sheet && d.sheet.kind === 'attack' && d.sheet.crit;
+      head = `${esc(d.whoName || it.by)} <span>· ${esc(d.skill || 'Rolagem')}</span>${crit ? ' <em class="fd-crit">CRÍTICO!</em>' : ''}`;
+      line = esc(hudRollLine(d)); side = `<span class="fd-total">${d.total}</span>`;
+      detail = `<div class="fd-full">${esc(hudRollLine(d))}</div>${d.note ? `<div class="fd-note">“${esc(d.note)}”</div>` : ''}<div class="fd-meta">${esc(it.by)} · ${esc(fmtTs(it.ts))}${d.physical ? ' · dados físicos' : ''}</div>`;
+    } else if(it.kind === 'itens'){
+      head = `${esc(ACTION_LABELS[d.action] || d.action)} <span>· ${esc(d.holderName || '')}</span>`;
+      line = logText(d);
+      detail = `<div class="fd-full">${line}</div>${d.note ? `<div class="fd-note">“${esc(d.note)}”</div>` : ''}<div class="fd-meta">${esc(it.by)} · ${esc(fmtTs(it.ts))}</div>${d.holderId && holderById(d.holderId) ? `<button type="button" class="inv-mini-btn" data-fd="inv" data-id="${esc(d.holderId)}">${ic('bag', 16)} Abrir inventário</button>` : ''}`;
+    } else {
+      const tl = (DJ_TYPES.find(t => t[0] === d.type) || ['', d.type])[1];
+      head = `${esc(tl)}${it.priv ? ' <span>· privado</span>' : ''}${d.title ? ' <span>· ' + esc(d.title) + '</span>' : ''}`;
+      line = esc(d.text || ''); cls += d.type === 'evento' ? ' ev' : '';
+      detail = `<div class="fd-full fd-pre">${esc(d.text || d.title || '')}</div><div class="fd-meta">${esc(it.by)} · ${esc(fmtTs(it.ts))}</div><button type="button" class="inv-mini-btn" data-fd="diary">${ic('book', 16)} Abrir diário</button>`;
+    }
+    return `<div class="fd-row ${cls}${open ? ' open' : ''}"><button type="button" class="fd-main" data-fd="toggle" data-key="${esc(it.key)}" aria-expanded="${open}">
+      <span class="fd-ic">${ic(ic0, 18)}</span><span class="fd-body"><b>${head}</b><span class="fd-line">${line}</span></span><span class="fd-side">${side}<time>${esc(hudRel(it.ts))}</time></span></button>${open ? `<div class="fd-detail">${detail}</div>` : ''}</div>`;
+  }
+  function hudRenderFeed(){
+    const f = hud.feed, items = hudFeedVisible(), master = isMaster();
+    hudEl('feed-filters').innerHTML = HUD_FEED_FILTERS.map(x => `<button type="button" class="fd-chip${f.f === x[0] ? ' on' : ''}" data-fd="filter" data-v="${x[0]}" aria-pressed="${f.f === x[0]}">${x[1]}</button>`).join('');
+    const mf = hudEl('feed-mfilters'); mf.hidden = !master;
+    if(master) mf.innerHTML = HUD_FEED_M.map(x => `<button type="button" class="fd-chip${f.m === x[0] ? ' on' : ''}" data-fd="mfilter" data-v="${x[0]}" aria-pressed="${f.m === x[0]}">${x[1]}</button>`).join('');
+    const cap = hudCol() && !f.more ? 20 : 100;
+    hudEl('feed-list').innerHTML = items.length ? items.slice(0, cap).map(hudRow).join('') + (items.length > cap ? '<button type="button" class="inv-mini-btn fd-more" data-fd="more">Ver mais</button>' : '')
+      : '<div class="inv-empty">Nada por aqui ainda. Rolagens, itens e o diário da mesa aparecem neste feed.</div>';
+    hudFeedChip();
+  }
+  function hudFeedChip(){
+    const chip = hudEl('feed-chip'), f = hud.feed, col = hudCol();
+    const all = hudFeedItems().filter(it => isMaster() || !it.priv), last = all[0], n = hudUnseen();
+    const visibleNow = col ? !f.collapsed : f.sheet;
+    chip.hidden = col && !f.collapsed;
+    chip.setAttribute('aria-expanded', String(visibleNow));
+    chip.innerHTML = `<span class="fc-ic">${ic(last ? hudIconOf(last) : 'list', 16)}</span><span class="fc-tx">${last ? esc(hudShort(last)) : 'Feed da mesa'}</span>${n && !visibleNow ? `<span class="fc-badge" aria-label="${n} novas">${n > 99 ? '99+' : n}</span>` : ''}`;
+    chip.setAttribute('aria-label', 'Abrir o feed da mesa' + (n && !visibleNow ? ', ' + n + ' novas' : ''));
+  }
+  function hudMarkSeen(){ const f = hud.feed; if(!(hudCol() ? !f.collapsed : f.sheet)) return; const top = hudFeedItems()[0]; const t = Math.max(f.seen, top ? top.ts : 0, Date.now() - 2000); if(t !== f.seen){ f.seen = t; hudSavePrefs(); } }
+  function hudFeedLayout(){
+    const f = hud.feed, col = hudCol(), feed = hudEl('feed');
+    document.body.classList.toggle('feed-col', col && !f.collapsed);
+    document.body.classList.toggle('mini-col', col);
+    const open = col ? !f.collapsed : f.sheet;
+    feed.classList.toggle('open', open); feed.classList.toggle('tall', !col && f.tall);
+    hudEl('feed-backdrop').classList.toggle('open', !col && f.sheet);
+    hudEl('feed-close').setAttribute('aria-label', col ? 'Recolher o feed' : 'Fechar o feed');
+    if(open) hudMarkSeen();
+    hudRenderFeed(); hudRenderMini();
+    hudDockSync();
+  }
+  function hudFeedOpen(v){
+    const f = hud.feed;
+    if(hudCol()){ f.collapsed = !v; hudSavePrefs(); }
+    else { if(v){ closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets('feed'); } f.sheet = !!v; if(!v) f.tall = false; }
+    hudFeedLayout();
+  }
+  function hudFeedChanged(){
+    if(!hudReady) return;
+    const f = hud.feed;
+    if(hudCol() ? !f.collapsed : f.sheet) hudMarkSeen();
+    hudRenderFeed();
+  }
+  function hudWireFeed(){
+    const feed = hudEl('feed');
+    hudEl('feed-chip').addEventListener('click', () => hudFeedOpen(true));
+    hudEl('feed-close').addEventListener('click', () => hudFeedOpen(false));
+    hudEl('feed-backdrop').addEventListener('click', () => hudFeedOpen(false));
+    hudDrag(feed, () => hudFeedOpen(false), v => { hud.feed.tall = v; hudFeedLayout(); }, () => hud.feed.tall);
+    feed.addEventListener('click', e => {
+      const b = e.target.closest('[data-fd]'); if(!b) return;
+      const D = b.dataset, f = hud.feed;
+      if(D.fd === 'toggle'){ f.open = f.open === D.key ? null : D.key; hudRenderFeed(); }
+      else if(D.fd === 'filter'){ f.f = D.v; hudSavePrefs(); hudRenderFeed(); }
+      else if(D.fd === 'mfilter'){ f.m = D.v; hudSavePrefs(); hudRenderFeed(); }
+      else if(D.fd === 'more'){ f.more = true; hudRenderFeed(); }
+      else if(D.fd === 'inv'){ if(!hudCol()) hud.feed.sheet = false; hudFeedLayout(); openInventory(D.id); }
+      else if(D.fd === 'diary'){ if(!hudCol()) hud.feed.sheet = false; hudFeedLayout(); openHub('diario'); }
+    });
+    const mq = window.matchMedia ? window.matchMedia('(min-width:1100px)') : null;
+    if(mq){ const onMq = () => { hud.feed.sheet = false; hud.feed.tall = false; hudFeedLayout(); }; if(mq.addEventListener) mq.addEventListener('change', onMq); else if(mq.addListener) mq.addListener(onMq); }
+    setInterval(() => { if(document.visibilityState === 'visible') hudFeedChip(); }, 30000);   // "2 min" → "3 min"
+  }
+
+  // ---- mini-ficha (coluna esquerda no desktop largo) ----
+  function hudMiniBar(card, k, can){
+    const r = opRes(card, k), pct = r.max > 0 ? Math.max(0, Math.min(100, Math.round(r.cur / r.max * 100))) : 0, low = r.max > 0 && r.cur / r.max < 0.3, nm = OP_RES[k], dis = can ? '' : 'disabled';
+    return `<div class="mn-bar"><div class="mn-bar-top"><b>${nm[0]}</b><span>${low ? ic('alert', 13) : ''}${r.cur} / ${r.max}</span></div>
+      <div class="mn-bar-row"><button type="button" class="die-btn" data-hud="mres" data-k="${k}" data-d="-1" aria-label="Reduzir ${esc(nm[1])}" ${dis}>${ic('minus', 14)}</button>
+      <div class="op-bar${low ? ' low' : ''}" style="--c:${nm[2]}" role="meter" aria-valuemin="0" aria-valuemax="${r.max}" aria-valuenow="${r.cur}" aria-label="${esc(nm[1])}"><i style="width:${pct}%"></i></div>
+      <button type="button" class="die-btn" data-hud="mres" data-k="${k}" data-d="1" aria-label="Aumentar ${esc(nm[1])}" ${dis}>${ic('plus', 14)}</button></div></div>`;
+  }
+  function hudRenderMini(){
+    const el = hudEl('mini'); if(!el) return;
+    if(!hudCol()){ el.hidden = true; return; }
+    el.hidden = false;
+    const ae = document.activeElement; if(ae && el.contains(ae) && ae.tagName === 'SELECT') return;
+    const w = hudWho(), h = holderById(w), card = w ? characters[w] : null, can = !!(h && canEditHolder(h));
+    const opts = holderList().filter(canEditHolder);
+    let html = `<div class="mn-head"><span class="mn-tag">Personagem</span><select data-hud-mini aria-label="Personagem ativo"><option value="">— escolher —</option>${opts.map(x => opt(x.id, x.name, w)).join('')}</select></div>`;
+    if(!h){ html += '<p class="hub-hint">Escolha um personagem para ver a ficha resumida aqui. Crie um token no mapa se ainda não tiver um.</p>'; el.innerHTML = html; return; }
+    const ordem = !!(card && card.systemId === 'ordem');
+    const nm = (card && card.name) || h.name;
+    html += `<div class="mn-name">${esc(nm)}</div>`;
+    if(ordem){
+      const meta = card.meta || {}, nex = card.nex == null ? 5 : card.nex, lvl = card.level == null ? 1 : card.level;
+      html += `<div class="mn-sub">${esc([meta.class, meta.origin].filter(Boolean).join(' · '))}${(meta.class || meta.origin) ? ' · ' : ''}NEX ${nex}%${cfg().progressionMode !== 'nex_only' ? ' · Nível ' + esc(String(lvl)) : ''}</div>
+        ${hudMiniBar(card, 'pv', can)}${hudMiniBar(card, 'pd', can)}
+        <div class="mn-attrs">${OP_ATTRS.map(a => `<div><small>${a[1]}</small><b>${opNum(card.attributes && card.attributes[a[0]])}</b></div>`).join('')}</div>
+        <div class="op-conds">${(card.conditions || []).map(cd => `<span class="op-cond mn-cond">${ic((OP_COND[cd.key] || {}).i || 'alert', 13)}<span>${esc(opCondName(cd))}</span></span>`).join('') || '<span class="hub-hint">Sem condições.</span>'}</div>`;
+    } else if(card){
+      html += `<div class="mn-sub">Formato antigo da ficha. Abra a ficha completa para migrar para Ordem Paranormal.</div>${cfg().resources.map(r => `<div class="mn-res"><span>${esc(r.label)}</span><b>${resVal(card, r)}${r.max ? ' / ' + r.max : ''}</b></div>`).join('')}`;
+    } else html += '<div class="mn-sub">Ficha ainda vazia. Abra a ficha completa para começar.</div>';
+    html += `<div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-hud="mrollq">${ic('dice', 16)} Rolar</button><button type="button" class="inv-mini-btn" data-hud="msheet">${ic('user', 16)} Ficha completa</button><button type="button" class="inv-mini-btn" data-hud="minv">${ic('bag', 16)} Inventário</button></div>`;
+    el.innerHTML = html;
+  }
+  function hudMiniChanged(){ if(hudReady) hudRenderMini(); }
+  function hudWireMini(){
+    const el = hudEl('mini');
+    el.addEventListener('change', e => { if(e.target.hasAttribute('data-hud-mini')) hudSetWho(e.target.value || null); });
+    el.addEventListener('click', e => {
+      const b = e.target.closest('[data-hud]'); if(!b) return;
+      const w = hudWho();
+      if(b.dataset.hud === 'mres') opAdjustRes(b.dataset.k, +b.dataset.d, w);
+      else if(b.dataset.hud === 'mrollq') hudOpenQuickRoll();
+      else if(b.dataset.hud === 'msheet'){ if(w) hub.charToken = w; openHub('ficha'); }
+      else if(b.dataset.hud === 'minv'){ hudEnsureWho(); openInventory(w); }
+    });
+  }
+
+  // ---- filtros do mapa (chips no topo) ----
+  // Cada chip liga/desliga uma categoria. Pins e tokens são escondidos por CSS (classe hf-<cat> no #map + classe mk-<cat> no
+  // marcador, definida em pinIcon/tokenIcon); áreas e rotas saem do mapa junto com a camada. Nada é apagado: só deixa de aparecer.
+  // A escolha fica salva neste aparelho, por campanha (tv-mapf:<campanha>).
+  const MAPF = [['pins', 'Pins'], ['tokens', 'Tokens'], ['perigos', 'Perigos'], ['rotas', 'Rotas'], ['notas', 'Notas']];
+  const mapfKey = () => 'tv-mapf:' + activeCampaignId;
+  function mapfLoad(){
+    hud.mapf = new Set();
+    try{ const a = JSON.parse(localStorage.getItem(mapfKey()) || '[]'); if(Array.isArray(a)) a.forEach(k => { if(MAPF.some(x => x[0] === k)) hud.mapf.add(k); }); }catch(e){}
+  }
+  function mapfSave(){
+    try{ if(hud.mapf.size) localStorage.setItem(mapfKey(), JSON.stringify(Array.from(hud.mapf))); else localStorage.removeItem(mapfKey()); }catch(e){}
+  }
+  function mapfCounts(){
+    const c = { pins:0, tokens:tokens.length, perigos:shapes.length, rotas:routes.length, notas:0 };
+    pins.forEach(p => { c[mapfCat(p.type)]++; });
+    return c;
+  }
+  function mapfApply(){
+    if(!hudReady) return;
+    const m = document.getElementById('map');
+    MAPF.forEach(x => m.classList.toggle('hf-' + x[0], hud.mapf.has(x[0])));
+    [[shapesLayer, 'perigos'], [routesLayer, 'rotas']].forEach(x => {
+      const off = hud.mapf.has(x[1]), on = map.hasLayer(x[0]);
+      if(off && on) map.removeLayer(x[0]); else if(!off && !on) map.addLayer(x[0]);
+    });
+    mapfRender();
+  }
+  function mapfRender(){
+    if(!hudReady) return;
+    const nav = hudEl('map-chips'); if(!nav) return;
+    const cnt = mapfCounts();
+    nav.querySelectorAll('[data-mf]').forEach(b => {
+      const k = b.dataset.mf, off = hud.mapf.has(k), label = MAPF.find(x => x[0] === k)[1];
+      b.classList.toggle('off', off); b.setAttribute('aria-pressed', String(!off));
+      b.setAttribute('aria-label', label + ' (' + cnt[k] + '): ' + (off ? 'ocultos. Toque para mostrar' : 'visíveis. Toque para ocultar'));
+      const n = b.querySelector('.mc-n'); if(n) n.textContent = cnt[k] ? String(cnt[k]) : '';
+    });
+    const dot = nav.querySelector('.mc-dot'); if(dot) dot.hidden = !hud.mapf.size;
+    const box = hudEl('lay-hidden'); if(box){
+      box.hidden = !hud.mapf.size;
+      if(hud.mapf.size) hudEl('lay-hidden-txt').textContent = 'Ocultos no mapa: ' + MAPF.filter(x => hud.mapf.has(x[0])).map(x => x[1]).join(', ') + '.';
+    }
+  }
+  function mapfToggle(k){
+    if(hud.mapf.has(k)) hud.mapf.delete(k); else { hud.mapf.add(k); map.closePopup(); }
+    mapfApply(); mapfSave();
+  }
+  // categoria oculta que o usuário passa a usar (ferramenta de criação, "ir até") volta a aparecer
+  function mapfReveal(k, say){
+    if(!hudReady || !hud.mapf.has(k)) return false;
+    hud.mapf.delete(k); mapfApply(); mapfSave();
+    if(say) toast(MAPF.find(x => x[0] === k)[1] + ' voltaram a aparecer no mapa.');
+    return true;
+  }
+  function mapfWire(){
+    hudEl('map-chips').addEventListener('click', e => {
+      const b = e.target.closest('button'); if(!b) return;
+      if(b.dataset.mf) mapfToggle(b.dataset.mf);
+      else if(b.id === 'mchip-layers') hudToggleSheet('lay-sheet', renderNavList);
+    });
+    // a barra rola na horizontal: um esmaecido na ponta direita avisa que há mais chips
+    const bar = hudEl('map-chips'), edge = () => bar.classList.toggle('more', bar.scrollWidth - bar.scrollLeft - bar.clientWidth > 4);
+    bar.addEventListener('scroll', edge, { passive:true }); window.addEventListener('resize', edge);
+    if(window.ResizeObserver) new ResizeObserver(edge).observe(bar);
+    setTimeout(edge, 0);
+    hudEl('lay-showall').addEventListener('click', () => { hud.mapf.clear(); mapfApply(); mapfSave(); });
+    document.addEventListener('click', e => {
+      const b = e.target.closest && e.target.closest('#tool-token, #token-select-toggle-btn, #tool-area-polygon, #tool-area-rect, #tool-area-circle, #tool-route, #pin-buttons .tool-btn');
+      if(!b || b.classList.contains('active')) return;
+      mapfReveal(b.id === 'tool-route' ? 'rotas' : (/^tool-area/.test(b.id) ? 'perigos' : (b.dataset.pinType ? mapfCat(b.dataset.pinType) : 'tokens')), true);
+    }, true);
+  }
+
+  function hudCampaignChanged(){
+    if(!hudReady) return;
+    hud.who = null; hudLoadPrefs(); hudFeedLayout(); mapfLoad(); mapfApply();
+  }
+  function hudInit(){
+    hudDockBuild(); hudWireDock(); hudWireIndex(); hudWireQR(); hudWireFeed(); hudWireMini(); mapfWire();
+    hudEl('idx-close').innerHTML = ic('close', 18); hudEl('feed-close').innerHTML = ic('close', 18); hudEl('lay-close').innerHTML = ic('close', 18);
+    document.querySelectorAll('[data-ic]').forEach(e => { e.innerHTML = ic(e.dataset.ic, +e.dataset.icSize || 16); });   // ícones das partes estáticas do HTML
+    hudLoadPrefs(); mapfLoad();
+    hudReady = true;
+    mapfApply();
+    map.on('click', () => { hudCloseSheets(); if(!hudCol() && hud.feed.sheet) hudFeedOpen(false); });
+    hudRenderIndex(); hudFeedLayout(); hudDockSync();
+    // o mapa recalcula o tamanho quando as colunas do desktop abrem ou fecham
+    if(window.ResizeObserver) new ResizeObserver(() => { if(map) map.invalidateSize({ animate:false }); }).observe(document.getElementById('map'));
+  }
+
+  hudInit();
 
   renderLootResults();
   renderFishResults();

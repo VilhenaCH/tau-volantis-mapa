@@ -118,3 +118,73 @@ Ainda pendente (não mexi): ler as telas antigas (inventário, hub) com o mesmo 
 - Entrar na campanha e assumir como mestre também avisam quando a gravação falha.
 
 **Como testei.** Simulei no teste a regra do Firebase que recusa a gravação (e reproduzi o sumiço antes da correção). Depois da correção, testei criar campanha (vazia e com mapa-modelo), recarregar a página, gerar/trocar/copiar código, um jogador entrando pelo código, o código antigo sendo recusado e o aviso quando o Firebase recusa. Não testei no Firebase real.
+
+## 10. Correção: excluir campanha
+Dois problemas, os dois reproduzidos em teste:
+- **O botão "Excluir" não aparecia na campanha que está aberta.** Como uma campanha recém-criada normalmente fica aberta, parecia que a exclusão não existia. Agora o botão aparece em qualquer campanha sua, menos a original. Ao excluir a que está aberta, o app volta para a campanha original.
+- **Com as regras antigas do Firebase** (`firebase-rules.SUGESTAO.json` e `-v2`), o banco recusa apagar alguns tipos de dado (diário, tático), e a exclusão parava no meio, sem aviso. Agora cada tipo de dado é apagado separadamente, o que o banco recusar é pulado (com aviso), e a campanha e as sessões são removidas no fim. Se a remoção da campanha falhar, aparece um aviso claro. Para apagar tudo de verdade, publique as regras `firebase-rules.SUGESTAO-v3.json`.
+- A confirmação (digitar o nome) agora ignora maiúsculas/minúsculas e espaços nas pontas.
+
+---
+
+# Plano em 4 fases (rodada atual)
+
+Tudo é **aditivo**: campos novos são opcionais, nada que já existia foi removido do banco, não há dependência externa nova e os ícones novos são SVG (nenhum emoji). Cada fase foi testada antes de começar a próxima. Arquivos alterados: `app.js`, `index.html`, `style.css` (o `tv-icons.js` e as regras do Firebase não mudaram).
+
+## 11. Fase 1 — tamanhos, token tático com imagem, saque automático por tipo de pin
+- **Pins e tokens menores.** Pin comum 26 px; NPC, veículo, abrigo e token 36 px (antes: NPC e token 44 px). A etiqueta com o nome continua só com a primeira palavra.
+- **Token do mapa tático com imagem.** Se o token tem foto/GIF, o tático mostra a imagem; sem imagem, continuam as iniciais. A imagem acompanha o token ao trocar.
+- **Contêiner de saque automático.** Os pins que são local de saque ganham no popup o botão **Vasculhar**, cada um com a tabela do seu tipo: Saque (casas), Médico (farmácias), Suprimentos (mercados), Combustível (oficinas), Veículo (veículos), Abrigo (acampamentos), Água (rios), Munição, Rádio e Extração (bases) e Radiação (convergência). O primeiro uso sorteia da tabela daquele tipo, grava os itens no inventário do pin e abre o contêiner; depois disso o botão some e nada novo é sorteado (nem ao recarregar). Nota, Perigo, Ameaça, Armadilha, Pino e NPC não viram contêiner. O mestre pode desligar (`container.enabled:false`) ou trocar a tabela (`container.locKey`) por pin.
+
+## 12. Fase 2 — ficha de Ordem Paranormal
+- **Atributos** AGI, FOR, INT, PRE e VIG; **perícias** com treino (Destreinado +0, Treinado +5, Veterano +10, Expert +15) e campo "Outros"; total mostrado em cada perícia e botão de rolar.
+- **Barras de PV e PD.** Você pediu que DET e PD fossem a mesma coisa: existe só **PD** (azul). Não há PE nem Sanidade.
+- **Ataques**: nome, atributo, perícia, dano, margem de crítico e multiplicador. A rolagem de ataque marca CRÍTICO quando o d20 natural cai na margem; o botão de dano rola os dados multiplicados (o bônus fixo não multiplica).
+- **Condições** com efeito automático nas rolagens (Abalado, Apavorado, Debilitado, Esmorecido, Fraco, Ofuscado). O texto da rolagem mostra a conta, ex.: `d20: 15 + AGI 3 + Treinado 5 − 2 (Abalado) = 21`. Vulnerável e as outras condições ficam só como marcação.
+- **Migração sem perda.** Fichas antigas mostram um aviso: "Migrar" copia os dados para o formato novo mantendo uma cópia (`skillsLegacy`, `resLegacy`) e **não toca** em `skills`, `res`, `notes`, `reminders`, `needs`; "Continuar no formato antigo" não grava nada; dá para voltar ao formato antigo depois.
+
+## 13. Fase 3 — dock, Índice, rolagem rápida e feed vivo
+- **Dock de 5 botões** no rodapé: Rolar, Saque, Inventário, Tático, Mais. Um painel por vez; o botão ativo fica marcado; o Tático mostra um ponto quando há cena ativa.
+- **Índice (Mais)** com busca (ignora acentos): tudo que saiu do dock (Personagem, Diário, Grupo, Mestre, Mundo/Clima, Sessão, Ofício, Dados, Campanhas, Adicionar ao mapa, Camadas e lista do mapa). A aba "Registro" foi removida; o CSV continua no Índice.
+- **Rolagem rápida** (Rolar): d4 a d100, vantagem/desvantagem, expressão livre, e as perícias e ataques do personagem ativo.
+- **Feed vivo** unificado (dados, itens e diário em ordem de tempo): chip "Feed da mesa" com contador de novidades no celular, coluna fixa à direita no desktop. Filtros Tudo/Dados/Itens/Diário por campanha; o mestre filtra também "só jogadores / só mestre". Itens privados do mestre nunca aparecem para jogadores.
+- **Desktop (≥ 1100 px)**: 3 colunas — mini-ficha | mapa | feed.
+- Tocar no mapa fecha as folhas abertas; emojis da interface viraram SVG.
+
+## 14. Fase 4 — clima expandido e filtros do mapa
+**Clima (só o mestre muda; o app só aplica modificadores enquanto o clima está ativo):**
+
+| Clima | Efeito mostrado na mesa | O que o app aplica sozinho |
+|---|---|---|
+| Neblina | −5 Percepção; camuflagem total além de 9 m | −5 na perícia Percepção |
+| Vento Forte | −2 ataques à distância; 50% por rodada de apagar chamas/dissipar névoa | −2 em ataques com a perícia Pontaria |
+| Vendaval | −5 à distância; apaga chamas e dissipa névoas | −5 em ataques com Pontaria |
+| Tempestade | −5 Percepção; efeitos de vendaval; 10% de raio por rodada (8d12) | −5 Percepção e −5 Pontaria; botão do mestre **Testar o raio** (d100 ≤ 10 → rola 8d12; tudo vai para o feed) |
+| Nevasca Forte | −5 Percepção; terreno difícil (deslocamento ×2) | −5 Percepção; no mapa tático cada casa custa 2 de deslocamento (aviso e limite usam o custo dobrado) |
+
+Calmo, Nevasca e Nevasca Espectral continuam como eram. Cada clima tem ícone SVG e efeito visual na tela (neblina, rajadas de vento, chuva, neve), que respeita "reduzir movimento". A troca grava um evento no feed ("Clima: A → B (efeitos)") e segue para o Discord como antes. Nas rolagens o modificador aparece na conta, ex.: `… − 5 (Clima: Neblina) = 17`. O que não é número (camuflagem, apagar chamas, dano) fica como lembrete para o mestre decidir.
+
+**Filtros do mapa.** Barra de chips logo abaixo do cabeçalho: **Camadas, Pins, Tokens, Perigos, Rotas, Notas**.
+- Cada chip liga/desliga uma categoria. *Tokens* inclui tokens e NPCs; *Perigos* inclui pins de perigo, ameaça, radiação e armadilha **e as áreas marcadas**; *Notas* são os pins de nota; *Pins* é o resto (saque, abrigo, água, veículo…). Nada é apagado: só deixa de aparecer.
+- Chip desligado fica tracejado, com texto riscado e a **quantidade escondida**; o chip Camadas ganha um pontinho enquanto houver algo oculto.
+- A escolha fica salva **neste aparelho, por campanha** (`tv-mapf:<campanha>`); não vai para o Firebase e não afeta os outros jogadores.
+- Usar uma ferramenta de criação (pin, token, área, rota) ou "ir até" um item de uma categoria oculta religa essa categoria sozinho e avisa.
+- **Camadas** abre uma folha com o **mapa-base** (Ruas/Relevo/Satélite), um aviso "Ocultos no mapa… / Mostrar tudo", e a **lista de itens para ir até** (a antiga gaveta de navegação, agora dentro da folha, com a mesma busca e os mesmos botões de excluir). O botão **Reiniciar o mapa** mudou para o rodapé dessa folha, com o aviso do que apaga (ainda pede confirmação). O painel flutuante de camadas do menu foi removido.
+
+## 15. Como testei (fases 1–4)
+Chromium headless com Firebase simulado (dois clientes, mestre e jogador), em 360, 390 e 420 px e em desktop 1280 px: **cerca de 700 verificações automáticas, todas passando** (clima: 67 + 12 do tático; filtros do mapa: 78; rodada final de larguras: 42; fase 3: 183; fases 1 e 2, tático, inventário, ofício, campanhas e a regressão antiga: o restante). Conferi também capturas de tela dos overlays de clima, dos chips e da folha Camadas. Sem erros de console. Sem rolagem horizontal, alvos de toque ≥ 44 px (chips incluem área de toque estendida).
+
+## 16. O que NÃO foi verificado — leia antes de jogar
+- **Nada foi testado em celular de verdade nem no Firebase real**; foi tudo em navegador simulado com banco de mentira. As regras `firebase-rules.SUGESTAO-v3.json` continuam as mesmas (não validam os campos novos, então funcionam publicadas ou não; publicar a v3 é opcional e é você quem publica).
+- **Tabelas e condições de Ordem Paranormal escritas de memória** (lista de perícias, treino +5/+10/+15, efeitos de Abalado, Apavorado, Debilitado etc.). Confira com o livro; tudo é editável na ficha.
+- **Interpretações minhas:** crítico = d20 natural ≥ margem (o dano multiplica só os dados, não o fixo); condições do mesmo grupo (ex.: Abalado e Apavorado) não se acumulam e vale só a pior; "ataque à distância" para o clima = ataque que usa a perícia **Pontaria**; "−5 em Percepção" vale para a perícia Percepção da ficha.
+- **Filtros do mapa e do feed ficam por aparelho e por campanha** (localStorage). Trocar de celular volta tudo a "visível".
+- A **v3 das regras não limita quem muda o clima**: a trava "só o mestre" está no app, não no banco (como já era).
+
+## 17. Passo a passo pelo celular (GitHub)
+Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtros e o `app.js` novo procura por ela). **Suba os três juntos, num único commit**, para ninguém abrir o site com versões misturadas:
+1. Extraia o ZIP no celular.
+2. No repositório: **Add file → Upload files** e selecione de uma vez `app.js`, `index.html` e `style.css` (eles substituem os antigos). Escreva uma mensagem e toque em **Commit changes**.
+3. Não mexa em `tv-icons.js` nem nas regras. (Opcional: se ainda não publicou a v3, copie `firebase-rules.SUGESTAO-v3.json` para Firebase Console → Realtime Database → Regras → Publicar.)
+4. Espere o GitHub Pages atualizar (1–2 min) e recarregue. O `index.html` agora chama `app.js?v=f4` e `style.css?v=f4`, então o navegador não reaproveita o `app.js` antigo do cache; se ainda assim aparecer a versão antiga, feche e abra o navegador.
+5. Se você fizer outra atualização depois, troque `f4` por outro texto (ex.: `f5`) nessas duas linhas do `index.html`.
