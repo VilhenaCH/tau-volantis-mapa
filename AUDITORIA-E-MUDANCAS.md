@@ -140,7 +140,7 @@ Tudo é **aditivo**: campos novos são opcionais, nada que já existia foi remov
 - **Atributos** AGI, FOR, INT, PRE e VIG; **perícias** com treino (Destreinado +0, Treinado +5, Veterano +10, Expert +15) e campo "Outros"; total mostrado em cada perícia e botão de rolar.
 - **Barras de PV e PD.** Você pediu que DET e PD fossem a mesma coisa: existe só **PD** (azul). Não há PE nem Sanidade.
 - **Ataques**: nome, atributo, perícia, dano, margem de crítico e multiplicador. A rolagem de ataque marca CRÍTICO quando o d20 natural cai na margem; o botão de dano rola os dados multiplicados (o bônus fixo não multiplica).
-- **Condições** com efeito automático nas rolagens (Abalado, Apavorado, Debilitado, Esmorecido, Fraco, Ofuscado). O texto da rolagem mostra a conta, ex.: `d20: 15 + AGI 3 + Treinado 5 − 2 (Abalado) = 21`. Vulnerável e as outras condições ficam só como marcação.
+- **Condições** com efeito automático nas rolagens (Abalado, Apavorado, Debilitado, Esmorecido, Fraco, Ofuscado). O texto da rolagem mostra a conta, ex.: `3d20 maior (AGI 3) [(5), 15, (8)] → 15 + Treinado 5 − 2 (Abalado) = 18`. Vulnerável e as outras condições ficam só como marcação.
 - **Migração sem perda.** Fichas antigas mostram um aviso: "Migrar" copia os dados para o formato novo mantendo uma cópia (`skillsLegacy`, `resLegacy`) e **não toca** em `skills`, `res`, `notes`, `reminders`, `needs`; "Continuar no formato antigo" não grava nada; dá para voltar ao formato antigo depois.
 
 ## 13. Fase 3 — dock, Índice, rolagem rápida e feed vivo
@@ -188,3 +188,15 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 3. Não mexa em `tv-icons.js` nem nas regras. (Opcional: se ainda não publicou a v3, copie `firebase-rules.SUGESTAO-v3.json` para Firebase Console → Realtime Database → Regras → Publicar.)
 4. Espere o GitHub Pages atualizar (1–2 min) e recarregue. O `index.html` agora chama `app.js?v=f4` e `style.css?v=f4`, então o navegador não reaproveita o `app.js` antigo do cache; se ainda assim aparecer a versão antiga, feche e abra o navegador.
 5. Se você fizer outra atualização depois, troque `f4` por outro texto (ex.: `f5`) nessas duas linhas do `index.html`.
+
+
+## 18. Regra de teste de perícia (Ordem Paranormal) — correção
+- O **valor do atributo é a quantidade de d20** rolados; vale o **maior**. Atributo 0 → rola **2d20 e vale o menor**. O atributo **não é somado**: somam apenas treinamento, bônus avulso (Outros), condições e clima. Dados descartados aparecem entre parênteses no resultado.
+- **Escolher o atributo**: cada perícia da ficha tem um seletor de atributo (campo opcional `skillsV2.<perícia>.attr`; sem ele vale o padrão do sistema, e a linha avisa "padrão XXX" quando foi trocado). Perícias livres também aceitam atributo.
+- Na folha **Rolar** há "Atributo desta rolagem": vale só para aquela folha aberta (não altera a ficha) e volta ao padrão ao fechar.
+- Condições seguem o atributo escolhido (ex.: Debilitado pesa em AGI/FOR/VIG, não em INT).
+- Interpretações: ataques usam o mesmo critério (atributo do ataque define os dados); o crítico vale para o d20 que **ficou**; limite de 20 dados.
+- Cache: `app.js?v=f6` / `style.css?v=f6` — nas próximas atualizações troque `f6` por outro texto.
+
+## 19. Painel do personagem recolhível (tela larga)
+- A mini-ficha da esquerda ganhou um botão X (recolher). Recolhida, o mapa ocupa a largura toda e aparece uma aba com o ícone de personagem na borda esquerda para reabrir. A escolha é lembrada por campanha neste aparelho. Em telas estreitas o painel não existe (como antes). O feed da direita já era recolhível.

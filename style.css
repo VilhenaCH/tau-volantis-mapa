@@ -1540,10 +1540,10 @@ img, svg{ shape-rendering: geometricPrecision; }
 .op-skill{ display:grid; grid-template-columns:1fr auto auto auto; gap:0.3rem 0.4rem; align-items:center; padding:0.5rem 0; border-bottom:1px solid var(--line); }
 .op-sk-name b{ display:block; font-size:0.78rem; font-weight:400; color:var(--ink); }
 .op-sk-name small{ color:var(--ink-dim); font-size:0.6rem; letter-spacing:0.1em; }
-.op-total{ font-family:'Oswald',sans-serif; font-size:1.2rem; color:var(--frost); min-width:3rem; text-align:right; }
+.op-total{ font-family:'Oswald',sans-serif; font-size:1.2rem; color:var(--frost); min-width:3rem; text-align:right; white-space:nowrap; }
+.op-pool{ font-family:'Space Mono',monospace; font-size:0.62rem; letter-spacing:0.04em; color:var(--ink-dim); margin-right:0.15rem; }
+.op-pool.low{ color:var(--hazard); }
 .op-total small{ display:block; font-family:'Space Mono',monospace; font-size:0.52rem; color:var(--hazard); }
-#hub-drawer .op-skill select{ grid-column:1 / 2; margin:0; }
-#hub-drawer .op-skill .op-n{ grid-column:2 / 5; margin:0; }
 .op-roll, .op-del{ min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; padding:0; }
 .op-atk{ border:1px solid var(--line); border-radius:var(--r-md); background:var(--bg-1); padding:0.6rem; margin:0.35rem 0; }
 .op-atk-top{ display:flex; justify-content:space-between; gap:0.5rem; align-items:flex-start; }
@@ -1917,3 +1917,21 @@ body:has(.app-popover.open) #feed-chip{ visibility:hidden; }
 .lay-danger small{ font-size:0.62rem; color:var(--ink-dim); line-height:1.4; }
 .lay-danger .reset-link{ min-height:44px; }
 @media (prefers-reduced-motion: reduce){ .mchip{ transition:none !important; } }
+
+/* ficha de Ordem: controles da perícia (treinamento, atributo, bônus) e dados do teste */
+.op-sk-ctl{ grid-column:1 / -1; display:grid; grid-template-columns:minmax(0, 1fr) 4.7rem 4.3rem; gap:0.4rem; }
+#hub-drawer .op-sk-ctl select, #hub-drawer .op-sk-ctl input{ margin:0; min-width:0; width:100%; min-height:44px; }
+#hub-drawer .op-attr-sel.custom{ border-color:var(--frost); color:var(--frost); }
+#qr-sheet #qr-attr{ margin-top:0.2rem; }
+
+/* mini-ficha recolhível: botão no cabeçalho e aba na borda esquerda quando recolhida */
+.mn-head{ flex-direction:row; flex-wrap:wrap; align-items:center; }
+.mn-head .mn-tag{ flex:1; }
+.mn-head select{ flex:1 1 100%; }
+.mn-hide{ margin:-0.5rem -0.4rem -0.4rem 0; width:44px; height:44px; display:flex; align-items:center; justify-content:center; background:none; border:0; color:var(--ink-dim); cursor:pointer; border-radius:var(--r-sm); }
+.mn-hide:hover{ color:var(--frost); }
+#mini-tab{ position:fixed; z-index:900; left:0; top:50%; transform:translateY(-50%); width:44px; height:64px; display:flex; align-items:center; justify-content:center;
+  background:var(--bg-0); border:1px solid var(--line); border-left:0; border-radius:0 var(--r-md) var(--r-md) 0; color:var(--frost); cursor:pointer; padding:0; }
+#mini-tab[hidden]{ display:none; }
+#mini-tab:hover{ border-color:var(--frost); }
+#mini-tab:focus-visible, .mn-hide:focus-visible{ outline:2px solid var(--frost); outline-offset:2px; }

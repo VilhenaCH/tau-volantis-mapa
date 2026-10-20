@@ -5620,7 +5620,9 @@
   const opAttrLabel = a => (OP_ATTRS.find(x => x[0] === a) || ['', ''])[1];
   function opSkillDef(card, key){
     const d = OP_SKILLS.find(x => x[0] === key), s = (card.skillsV2 && card.skillsV2[key]) || {};
-    return { key, name:d ? d[1] : (s.name || key), attr:d ? d[2] : (s.attr || ''), s, free:!d };
+    // atributo da perícia: o padrão do sistema, ou o que o jogador escolheu (skillsV2.<chave>.attr, campo opcional)
+    const own = OP_ATTRS.some(a => a[0] === s.attr) ? s.attr : '';
+    return { key, name:d ? d[1] : (s.name || key), attr:own || (d ? d[2] : ''), defAttr:d ? d[2] : '', s, free:!d };
   }
   function opCondName(c){ const d = OP_COND[c.key]; return c.key === 'outra' ? (c.note || 'Condição') : (d ? d.n : (c.note || c.key)); }
   // penalidades de condição que valem para este teste (uma por grupo: a pior)
@@ -5633,26 +5635,42 @@
     // grupos diferentes se somam (ex.: Abalado −2 e Debilitado −5 num teste de Força); o mesmo grupo não
     return Object.keys(best).map(g => best[g]);
   }
-  // partes do teste de uma perícia ou ataque: atributo + treinamento + bônus avulso + condições
+  // Regra de teste de Ordem Paranormal: o VALOR DO ATRIBUTO define quantos d20 são rolados (fica o MAIOR);
+  // com atributo 0 rola 2d20 e fica o MENOR. O atributo não soma no resultado: somam só treinamento, bônus avulso,
+  // condições e clima. Sem atributo (perícia livre sem atributo): 1d20.
+  const OP_MAXD20 = 20;
+  function opPool(card, attr){
+    if(!attr) return { n:1, keep:null, attr:'', val:null, label:'1d20', low:false };
+    const v = Math.trunc(opAttrOf(card, attr)) || 0;
+    if(v >= 1){ const n = Math.min(OP_MAXD20, v); return { n, keep:n > 1 ? 'kh' : null, attr, val:v, label:n + 'd20', low:false }; }
+    return { n:2, keep:'kl', attr, val:v, label:'2d20↓', low:true };      // ↓ = fica o menor
+  }
+  const opPoolHelp = p => p.n === 1 && !p.attr ? '1d20' : (p.low ? '2d20, fica o menor (atributo 0)' : (p.n === 1 ? '1d20' : p.n + 'd20, fica o maior'));
+  function opD20(pool){ const t = { sign:1, n:pool.n, sides:20 }; if(pool.keep) t[pool.keep] = 1; return rollTerm(t, makeSource(null)); }
+  // partes do teste de uma perícia ou ataque: (dados pelo atributo) + treinamento + bônus avulso + condições + clima
   function opParts(card, skillKey, attrKey, kind){
     const sd = skillKey ? opSkillDef(card, skillKey) : null;
     const attr = attrKey || (sd ? sd.attr : '');
     const tr = OP_TRAIN[(sd && sd.s.training)] || OP_TRAIN.none;
     const parts = [];
-    if(attr) parts.push({ label:opAttrLabel(attr), value:opAttrOf(card, attr) });
     parts.push({ label:tr[0], value:tr[1] });
     if(sd && opNum(sd.s.bonus)) parts.push({ label:'Outros', value:opNum(sd.s.bonus) });
     const conds = opCondMods(card, { kind:kind || 'skill', attr, skill:skillKey || '' }).map(m => ({ label:m.label, value:m.value, cond:true }))
       .concat(weatherMods(kind || 'skill', skillKey || ''));      // clima ativo: Percepção / ataques à distância
-    return { parts, conds, attr, train:tr };
+    return { parts, conds, attr, train:tr, pool:opPool(card, attr) };
   }
   const opSum = p => p.parts.concat(p.conds).reduce((a, x) => a + x.value, 0);
   function opRes(card, k){ const r = (card.resources2 && card.resources2[k]) || {}; return { cur:opNum(r.cur), max:opNum(r.max) }; }
-  // texto da composição: "d20: 14 + AGI 3 + Treinado 5 − 2 (Abalado) = 22"
+  // texto da composição. 1 dado: "d20 (AGI 1): 14 + Treinado 5 − 2 (Abalado) = 17";  vários: "3d20 maior (AGI 3) [14, (9), (6)] → 14 + Treinado 5 = 19"
   function opBonusTxt(b){ return `${b.value < 0 ? '−' : '+'} ${b.cond ? Math.abs(b.value) + ' (' + b.label + ')' : b.label + ' ' + Math.abs(b.value)}`; }
   function opCompText(r){
     const sh = r.sheet || {}, t0 = r.terms && r.terms[0];
-    const base = (sh.kind === 'skill' || sh.kind === 'attack') ? 'd20: ' + (t0 && t0.dice && t0.dice[0] ? t0.dice[0].v : '?') : fmtTerms(r.terms || []);
+    let base;
+    if((sh.kind === 'skill' || sh.kind === 'attack') && t0 && t0.dice && t0.dice.length){
+      const n = t0.dice.length, at = sh.attr ? ' (' + opAttrLabel(sh.attr) + (sh.val != null ? ' ' + sh.val : '') + ')' : '';
+      base = n === 1 ? 'd20' + at + ': ' + t0.value
+        : n + 'd20 ' + (sh.keep === 'kl' ? 'menor' : 'maior') + at + ' [' + t0.dice.map(fmtDie).join(', ') + '] → ' + t0.value;
+    } else base = fmtTerms(r.terms || []);
     return base + (r.bonuses || []).map(b => ' ' + opBonusTxt(b)).join('') + ' = ' + r.total + (sh.kind === 'attack' && sh.crit ? ' · CRÍTICO!' : '');
   }
   // cartão que fica 7 s no topo da tela com o resultado (o histórico fica na aba Dados)
@@ -5688,21 +5706,23 @@
     if(!canEditHolder(holderById(tokenId))){ toast(msg || 'Só o dono do personagem (ou o mestre) altera esta ficha.', true); return false; }
     return true;
   }
-  async function opRollSkill(key, tokenId){
+  const opAttrOk = a => OP_ATTRS.some(x => x[0] === a) ? a : null;
+  // attrOv = atributo escolhido só para esta rolagem (folha Rolar); sem ele vale o atributo da perícia na ficha
+  async function opRollSkill(key, tokenId, attrOv){
     const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
-    const card = ensureCard(id), sd = opSkillDef(card, key), p = opParts(card, key, null, 'skill');
-    const t = rollTerm({ sign:1, n:1, sides:20 }, makeSource(null));
-    await opRecord(id, sd.name, [t], p.parts.concat(p.conds), { kind:'skill', key });
+    const card = ensureCard(id), sd = opSkillDef(card, key), ov = opAttrOk(attrOv), p = opParts(card, key, ov, 'skill');
+    const t = opD20(p.pool);
+    await opRecord(id, sd.name + (ov && ov !== sd.attr ? ' (' + opAttrLabel(ov) + ')' : ''), [t], p.parts.concat(p.conds), { kind:'skill', key, attr:p.pool.attr, val:p.pool.val, pool:p.pool.n, keep:p.pool.keep });
   }
-  async function opRollAttack(atkId, tokenId){
+  async function opRollAttack(atkId, tokenId, attrOv){
     const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
     const card = ensureCard(id), atk = (card.attacks || []).find(x => x.id === atkId); if(!atk) return;
-    const p = opParts(card, atk.skill || '', atk.attribute || '', 'attack');
-    const t = rollTerm({ sign:1, n:1, sides:20 }, makeSource(null));
-    const nat = t.dice[0].v, margin = Math.min(20, Math.max(2, parseInt(atk.critMargin, 10) || 20));
-    const crit = nat >= margin;      // crítico: o d20 natural caiu dentro da margem
+    const ov = opAttrOk(attrOv), p = opParts(card, atk.skill || '', ov || atk.attribute || '', 'attack');
+    const t = opD20(p.pool);
+    const nat = t.value, margin = Math.min(20, Math.max(2, parseInt(atk.critMargin, 10) || 20));
+    const crit = nat >= margin;      // crítico: o d20 que ficou (o maior, ou o menor com atributo 0) caiu dentro da margem
     hub.opCrit = hub.opCrit || {}; hub.opCrit[atkId] = crit;
-    await opRecord(id, (atk.name || 'Ataque') + ' · ataque', [t], p.parts.concat(p.conds), { kind:'attack', atk:atkId, crit, nat });
+    await opRecord(id, (atk.name || 'Ataque') + ' · ataque', [t], p.parts.concat(p.conds), { kind:'attack', atk:atkId, crit, nat, attr:p.pool.attr, val:p.pool.val, pool:p.pool.n, keep:p.pool.keep });
   }
   async function opRollDamage(atkId, tokenId){
     const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
@@ -5855,18 +5875,19 @@
         ${nexLevel ? `<label class="op-fld">Nível (1 a 20)<input type="number" min="1" max="20" data-bind="card.level" data-num data-sheet value="${esc(String(lvl))}" ${dis}></label>` : ''}</div>
       <input type="text" data-bind="card.player" value="${esc(card.player)}" placeholder="Jogador" ${dis}>
       <div class="op-sum">${esc([meta.class, meta.origin].filter(Boolean).join(' · '))}${(meta.class || meta.origin) ? ' · ' : ''}NEX ${nex}%${nexLevel ? ' · Nível ' + esc(String(lvl)) : ''}</div>`;
-    html += `<div class="hub-label">Atributos</div><div class="op-attrs">${OP_ATTRS.map(a => `<label class="op-attr"><span>${a[1]}</span><input type="number" min="0" max="20" data-bind="card.attributes.${a[0]}" data-num data-sheet value="${esc(String(opNum(A[a[0]])))}" aria-label="${a[2]}" ${dis}></label>`).join('')}</div>`;
+    html += `<div class="hub-label">Atributos</div><p class="hub-hint">O valor do atributo é a quantidade de d20 do teste: rola todos e fica o maior. Com atributo 0 rola 2d20 e fica o menor. Treinamento e bônus avulso somam no resultado.</p><div class="op-attrs">${OP_ATTRS.map(a => `<label class="op-attr"><span>${a[1]}</span><input type="number" min="0" max="20" data-bind="card.attributes.${a[0]}" data-num data-sheet value="${esc(String(opNum(A[a[0]])))}" aria-label="${a[2]}" ${dis}></label>`).join('')}</div>`;
     html += `<div class="hub-label">Recursos</div>${opBar(card, 'pv', dis)}${opBar(card, 'pd', dis)}`;
     // perícias
     const rows = Object.keys(card.skillsV2 || {}).map(k => opSkillDef(card, k)).sort((x, y) => x.name.localeCompare(y.name, 'pt-BR'));
     html += `<div class="hub-label">Perícias</div>${rows.map(sd => {
-      const p = opParts(card, sd.key, null, 'skill'), tot = opSum(p), pen = p.conds.reduce((a, x) => a + x.value, 0);
-      return `<div class="op-skill"><div class="op-sk-name"><b>${esc(sd.name)}</b><small>${sd.attr ? opAttrLabel(sd.attr) : 'livre'}</small></div>
-        <span class="op-total" title="atributo + treinamento + bônus${pen ? ' + condições/clima' : ''}">${opSgn(tot)}${pen ? '<small>' + opSgn(pen) + (p.conds.some(x => x.weather) ? (p.conds.some(x => !x.weather) ? ' cond.+clima' : ' clima') : ' cond.') + '</small>' : ''}</span>
-        <button type="button" class="inv-mini-btn primary op-roll" data-act="op-skill-roll" data-k="${esc(sd.key)}" aria-label="Rolar ${esc(sd.name)}" ${dis}>${ic('dice', 18)}</button>
+      const p = opParts(card, sd.key, null, 'skill'), tot = opSum(p), pen = p.conds.reduce((a, x) => a + x.value, 0), custom = !!sd.defAttr && sd.attr !== sd.defAttr;
+      return `<div class="op-skill"><div class="op-sk-name"><b>${esc(sd.name)}</b><small>${sd.attr ? opAttrLabel(sd.attr) + ' ' + opNum(A[sd.attr]) : 'livre'}${custom ? ' · padrão ' + opAttrLabel(sd.defAttr) : ''}</small></div>
+        <span class="op-total" title="${esc(opPoolHelp(p.pool))} + treinamento + bônus${pen ? ' + condições/clima' : ''}"><span class="op-pool${p.pool.low ? ' low' : ''}">${p.pool.label}</span> ${opSgn(tot)}${pen ? '<small>' + opSgn(pen) + (p.conds.some(x => x.weather) ? (p.conds.some(x => !x.weather) ? ' cond.+clima' : ' clima') : ' cond.') + '</small>' : ''}</span>
+        <button type="button" class="inv-mini-btn primary op-roll" data-act="op-skill-roll" data-k="${esc(sd.key)}" aria-label="Rolar ${esc(sd.name)} (${p.pool.label})" ${dis}>${ic('dice', 18)}</button>
         <button type="button" class="inv-mini-btn danger op-del" data-act="op-skill-del" data-k="${esc(sd.key)}" aria-label="Remover ${esc(sd.name)}" ${dis}>${ic('close', 16)}</button>
-        <select data-bind="card.skillsV2.${esc(sd.key)}.training" data-rerender aria-label="Treinamento de ${esc(sd.name)}" ${dis}>${Object.keys(OP_TRAIN).map(t => opt(t, OP_TRAIN[t][0], sd.s.training || 'none')).join('')}</select>
-        <input type="number" class="op-n" data-bind="card.skillsV2.${esc(sd.key)}.bonus" data-num data-sheet value="${esc(String(opNum(sd.s.bonus)))}" aria-label="Bônus avulso de ${esc(sd.name)}" placeholder="Outros" ${dis}></div>`;
+        <div class="op-sk-ctl"><select data-bind="card.skillsV2.${esc(sd.key)}.training" data-rerender aria-label="Treinamento de ${esc(sd.name)}" ${dis}>${Object.keys(OP_TRAIN).map(t => opt(t, OP_TRAIN[t][0], sd.s.training || 'none')).join('')}</select>
+        <select class="op-attr-sel${custom ? ' custom' : ''}" data-bind="card.skillsV2.${esc(sd.key)}.attr" data-rerender aria-label="Atributo usado em ${esc(sd.name)}" title="Atributo usado nesta perícia" ${dis}>${sd.attr ? '' : '<option value="" selected>—</option>'}${OP_ATTRS.map(x => opt(x[0], x[1], sd.attr)).join('')}</select>
+        <input type="number" class="op-n" data-bind="card.skillsV2.${esc(sd.key)}.bonus" data-num data-sheet value="${esc(String(opNum(sd.s.bonus)))}" aria-label="Bônus avulso de ${esc(sd.name)}" placeholder="Outros" ${dis}></div></div>`;
     }).join('') || '<p class="hub-hint">Nenhuma perícia ainda. Escolha uma da lista, escreva uma livre ou adicione todas.</p>'}
       <datalist id="op-skill-list">${OP_SKILLS.map(s => `<option value="${esc(s[1])}">`).join('')}</datalist>
       <div class="op-add"><input type="text" id="op-skill-new" list="op-skill-list" placeholder="Nova perícia (ex.: Furtividade)" ${dis}><select id="op-skill-attr" aria-label="Atributo da perícia livre" ${dis}><option value="">atributo (se livre)</option>${OP_ATTRS.map(a => `<option value="${a[0]}">${a[1]}</option>`).join('')}</select>
@@ -5878,7 +5899,7 @@
       const p = opParts(card, a.skill || '', a.attribute || '', 'attack'), open = hub.opEdit === a.id, sk = a.skill ? opSkillDef(card, a.skill).name : '';
       const crit = !!(hub.opCrit && hub.opCrit[a.id]);
       return `<div class="op-atk"><div class="op-atk-top"><div><b>${esc(a.name || 'Ataque')}</b><small>${esc(a.damage || '—')} · ${esc(String(a.critMargin || 20))}/×${esc(String(a.critMult || 2))} · ${esc([a.attribute ? opAttrLabel(a.attribute) : '', sk].filter(Boolean).join(' + ') || 'sem perícia')}</small></div>
-        <span class="op-total" title="bônus do ataque">${opSgn(opSum(p))}</span></div>
+        <span class="op-total" title="${esc(opPoolHelp(p.pool))} + bônus do ataque"><span class="op-pool${p.pool.low ? ' low' : ''}">${p.pool.label}</span> ${opSgn(opSum(p))}</span></div>
         <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="op-atk-roll" data-id="${esc(a.id)}" ${dis}>${ic('dice', 16)} Rolar ataque</button>
           <button type="button" class="inv-mini-btn ${crit ? 'op-crit-btn' : 'primary'}" data-act="op-dmg-roll" data-id="${esc(a.id)}" ${dis}>${ic('dice', 16)} Rolar dano${crit ? ' (crítico ×' + esc(String(a.critMult || 2)) + ')' : ''}</button>
           <button type="button" class="inv-mini-btn" data-act="op-atk-edit" data-id="${esc(a.id)}" aria-expanded="${open}">${open ? 'Fechar' : 'Editar'}</button></div>
@@ -6838,6 +6859,7 @@
   function hudCloseSheets(except){
     if(!hudReady) return;
     hudSheetIds.forEach(p => { if(p[0] !== except){ hudEl(p[0]).classList.remove('open'); hudEl(p[1]).classList.remove('open'); } });
+    if(except !== 'qr-sheet') hud.qrAttr = '';      // o atributo escolhido na folha Rolar vale só enquanto ela está aberta
     if(except !== 'feed' && !hudCol()){ hud.feed.sheet = false; hud.feed.tall = false; hudFeedLayout(); }
     hudDockSync();
   }
@@ -6897,7 +6919,7 @@
     hudCloseSheets(); tacOpen();
   }
   function hudWireDock(){
-    hudEl('dock-roll').addEventListener('click', () => hudToggleSheet('qr-sheet', hudRenderQR));
+    hudEl('dock-roll').addEventListener('click', () => hudToggleSheet('qr-sheet', () => { hud.qrAttr = ''; hudRenderQR(); }));
     hudEl('dock-loot').addEventListener('click', () => { if(saqueDrawer.classList.contains('open')){ closeDrawer(); return; } hudCloseSheets(); hudEnsureWho(); openDrawer(); });
     hudEl('dock-inv').addEventListener('click', () => { if(invDrawer.classList.contains('open')){ closeInventory(); return; } hudCloseSheets(); hudEnsureWho(); openInventory(null); });
     hudEl('dock-tac').addEventListener('click', hudTactical);
@@ -6983,9 +7005,13 @@
       <div class="expr-row"><input type="text" id="qr-expr" placeholder="Expressão (ex.: 2d6+3, 4d6kh3)" autocomplete="off" value="${esc(hud.qrExpr || '')}"><button type="button" class="inv-mini-btn primary" data-hud="expr">${ic('dice', 16)} Rolar</button></div>`;
     if(ordem && can){
       const rows = Object.keys(card.skillsV2 || {}).map(k => opSkillDef(card, k)).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-      html += `<div class="hub-label">Perícias de ${esc(h.name)}</div><div class="qr-chips">${rows.map(sd => `<button type="button" class="qr-chip" data-hud="skill" data-k="${esc(sd.key)}"><span>${esc(sd.name)}</span><b>${opSgn(opSum(opParts(card, sd.key, null, 'skill')))}</b></button>`).join('') || '<span class="hub-hint">Adicione perícias na ficha.</span>'}</div>`;
+      const ov = opAttrOk(hud.qrAttr), pp = k => opParts(card, k, ov, 'skill');
+      html += `<label class="hub-label" for="qr-attr">Atributo desta rolagem</label>
+        <select id="qr-attr" data-hud-attr aria-label="Atributo desta rolagem"><option value="">Padrão de cada perícia / ataque</option>${OP_ATTRS.map(x => opt(x[0], x[1] + ' · ' + x[2] + ' (' + opAttrOf(card, x[0]) + ')', ov || '')).join('')}</select>
+        <p class="hub-hint">${ov ? 'Perícias e ataques abaixo rolam com ' + esc(opAttrLabel(ov)) + ' só enquanto esta folha estiver aberta.' : 'O valor do atributo é a quantidade de d20 (fica o maior; atributo 0 = 2d20, fica o menor).'}</p>
+        <div class="hub-label">Perícias de ${esc(h.name)}</div><div class="qr-chips">${rows.map(sd => { const q = pp(sd.key); return `<button type="button" class="qr-chip" data-hud="skill" data-k="${esc(sd.key)}" title="${esc(opPoolHelp(q.pool))}"><span>${esc(sd.name)}</span><b>${q.pool.label}${opSgn(opSum(q))}</b></button>`; }).join('') || '<span class="hub-hint">Adicione perícias na ficha.</span>'}</div>`;
       if((card.attacks || []).length) html += `<div class="hub-label">Ataques</div>${card.attacks.map(a => { const crit = !!(hub.opCrit && hub.opCrit[a.id]); return `<div class="qr-atk"><span><b>${esc(a.name || 'Ataque')}</b><small>${esc(a.damage || '—')}</small></span>
-        <button type="button" class="inv-mini-btn primary" data-hud="atk" data-id="${esc(a.id)}">${ic('dice', 16)} Ataque ${opSgn(opSum(opParts(card, a.skill || '', a.attribute || '', 'attack')))}</button>
+        <button type="button" class="inv-mini-btn primary" data-hud="atk" data-id="${esc(a.id)}">${ic('dice', 16)} Ataque ${(() => { const q = opParts(card, a.skill || '', ov || a.attribute || '', 'attack'); return q.pool.label + opSgn(opSum(q)); })()}</button>
         <button type="button" class="inv-mini-btn ${crit ? 'op-crit-btn' : ''}" data-hud="dmg" data-id="${esc(a.id)}">Dano${crit ? ' crítico' : ''}</button></div>`; }).join('')}`;
     } else if(card && can && (card.skills || []).length){
       html += `<div class="hub-label">Perícias salvas de ${esc(h.name)} (1d20 + bônus)</div><div class="qr-chips">${card.skills.map((s, i) => `<button type="button" class="qr-chip" data-hud="lskill" data-i="${i}"><span>${esc(s.name || 'Perícia')}</span><b>${opSgn(opNum(s.bonus))}</b></button>`).join('')}</div>`;
@@ -6995,7 +7021,10 @@
   }
   function hudWireQR(){
     const sh = hudEl('qr-sheet');
-    sh.addEventListener('change', e => { if(e.target.hasAttribute('data-hud-who')){ hudSetWho(e.target.value || null); hud.who = e.target.value || null; hudRenderQR(); } });
+    sh.addEventListener('change', e => {
+      if(e.target.hasAttribute('data-hud-who')){ hudSetWho(e.target.value || null); hud.who = e.target.value || null; hud.qrAttr = ''; hudRenderQR(); }
+      else if(e.target.hasAttribute('data-hud-attr')){ hud.qrAttr = e.target.value || ''; hudRenderQR(); }      // atributo só desta rolagem (some ao fechar a folha)
+    });
     sh.addEventListener('input', e => { if(e.target.id === 'qr-expr') hud.qrExpr = e.target.value; });
     sh.addEventListener('keydown', e => { if(e.target.id === 'qr-expr' && e.key === 'Enter'){ e.preventDefault(); sh.querySelector('[data-hud="expr"]').click(); } });
     sh.addEventListener('click', async e => {
@@ -7007,15 +7036,15 @@
         case 'adv': await hudRoll([{ sign:1, n:2, sides:20, kh:1 }], [], 'Vantagem (2d20, maior)'); break;
         case 'dis': await hudRoll([{ sign:1, n:2, sides:20, kl:1 }], [], 'Desvantagem (2d20, menor)'); break;
         case 'expr': { const pe = parseExpr(hud.qrExpr || ''); if(pe.error){ toast(pe.error, true); break; } await hudRoll(pe.terms, pe.bonus ? [{ label:'Fixo', value:pe.bonus }] : [], String(hud.qrExpr).trim()); break; }
-        case 'skill': await opRollSkill(D.k, w); break;
-        case 'atk': await opRollAttack(D.id, w); break;
+        case 'skill': await opRollSkill(D.k, w, hud.qrAttr); break;
+        case 'atk': await opRollAttack(D.id, w, hud.qrAttr); break;
         case 'dmg': await opRollDamage(D.id, w); break;
         case 'lskill': { const s = ((characters[w] || {}).skills || [])[+D.i]; if(s) await hudRoll([{ sign:1, n:1, sides:20 }], Number(s.bonus) ? [{ label:s.name || 'Bônus', value:Number(s.bonus) }] : [], s.name || 'Perícia'); break; }
         case 'full': hudCloseSheets(); openHub('dados'); break;
       }
     });
   }
-  function hudOpenQuickRoll(){ if(!hudReady) return; if(!hudIsOpen('qr-sheet')){ hudRenderQR(); hudOpenSheet('qr-sheet'); } }
+  function hudOpenQuickRoll(){ if(!hudReady) return; if(!hudIsOpen('qr-sheet')){ hud.qrAttr = ''; hudRenderQR(); hudOpenSheet('qr-sheet'); } }
   function hudQRChanged(){
     if(!hudReady || !hudIsOpen('qr-sheet')) return;
     const sh = hudEl('qr-sheet'), ae = document.activeElement;
@@ -7034,13 +7063,13 @@
   const HUD_J_IC = { resumo:'book', pista:'eye', decisao:'check', objetivo:'target', nota:'note', evento:'alert' };
   function hudPrefKey(){ return 'tv-feed:' + activeCampaignId; }
   function hudLoadPrefs(){
-    const f = hud.feed; f.f = 'all'; f.m = 'all'; f.collapsed = false; f.seen = Date.now(); f.open = null; f.more = false; f.sheet = false; f.tall = false;
+    const f = hud.feed; f.f = 'all'; f.m = 'all'; f.collapsed = false; hud.miniOff = false; f.seen = Date.now(); f.open = null; f.more = false; f.sheet = false; f.tall = false;
     try{
       const o = JSON.parse(localStorage.getItem(hudPrefKey()) || 'null');
-      if(o){ if(HUD_FEED_FILTERS.some(x => x[0] === o.f)) f.f = o.f; if(HUD_FEED_M.some(x => x[0] === o.m)) f.m = o.m; f.collapsed = !!o.collapsed; if(o.seen) f.seen = o.seen; }
+      if(o){ if(HUD_FEED_FILTERS.some(x => x[0] === o.f)) f.f = o.f; if(HUD_FEED_M.some(x => x[0] === o.m)) f.m = o.m; f.collapsed = !!o.collapsed; hud.miniOff = !!o.mo; if(o.seen) f.seen = o.seen; }
     }catch(e){}
   }
-  function hudSavePrefs(){ try{ const f = hud.feed; localStorage.setItem(hudPrefKey(), JSON.stringify({ f:f.f, m:f.m, collapsed:f.collapsed, seen:f.seen })); }catch(e){} }
+  function hudSavePrefs(){ try{ const f = hud.feed; localStorage.setItem(hudPrefKey(), JSON.stringify({ f:f.f, m:f.m, collapsed:f.collapsed, mo:!!hud.miniOff, seen:f.seen })); }catch(e){} }
   function hudFeedItems(){
     const out = [];
     Object.keys(rolls).forEach(k => { const r = rolls[k]; if(r) out.push({ key:'r:' + k, kind:'dados', ts:r.ts || 0, by:r.actorName || r.whoName || '?', byId:r.actorId, data:r }); });
@@ -7122,7 +7151,7 @@
   function hudFeedLayout(){
     const f = hud.feed, col = hudCol(), feed = hudEl('feed');
     document.body.classList.toggle('feed-col', col && !f.collapsed);
-    document.body.classList.toggle('mini-col', col);
+    document.body.classList.toggle('mini-col', col && !hud.miniOff);
     const open = col ? !f.collapsed : f.sheet;
     feed.classList.toggle('open', open); feed.classList.toggle('tall', !col && f.tall);
     hudEl('feed-backdrop').classList.toggle('open', !col && f.sheet);
@@ -7174,12 +7203,15 @@
   }
   function hudRenderMini(){
     const el = hudEl('mini'); if(!el) return;
-    if(!hudCol()){ el.hidden = true; return; }
-    el.hidden = false;
+    const tab = hudEl('mini-tab');
+    if(!hudCol()){ el.hidden = true; if(tab) tab.hidden = true; return; }
+    el.hidden = !!hud.miniOff;
+    if(tab){ tab.hidden = !hud.miniOff; tab.innerHTML = ic('user', 20); tab.setAttribute('aria-expanded', 'false'); }
+    if(hud.miniOff) return;
     const ae = document.activeElement; if(ae && el.contains(ae) && ae.tagName === 'SELECT') return;
     const w = hudWho(), h = holderById(w), card = w ? characters[w] : null, can = !!(h && canEditHolder(h));
     const opts = holderList().filter(canEditHolder);
-    let html = `<div class="mn-head"><span class="mn-tag">Personagem</span><select data-hud-mini aria-label="Personagem ativo"><option value="">— escolher —</option>${opts.map(x => opt(x.id, x.name, w)).join('')}</select></div>`;
+    let html = `<div class="mn-head"><span class="mn-tag">Personagem</span><button type="button" class="mn-hide" data-hud="mhide" aria-label="Recolher o painel do personagem" title="Recolher">${ic('close', 18)}</button><select data-hud-mini aria-label="Personagem ativo"><option value="">— escolher —</option>${opts.map(x => opt(x.id, x.name, w)).join('')}</select></div>`;
     if(!h){ html += '<p class="hub-hint">Escolha um personagem para ver a ficha resumida aqui. Crie um token no mapa se ainda não tiver um.</p>'; el.innerHTML = html; return; }
     const ordem = !!(card && card.systemId === 'ordem');
     const nm = (card && card.name) || h.name;
@@ -7200,10 +7232,12 @@
   function hudWireMini(){
     const el = hudEl('mini');
     el.addEventListener('change', e => { if(e.target.hasAttribute('data-hud-mini')) hudSetWho(e.target.value || null); });
+    hudEl('mini-tab').addEventListener('click', () => { hud.miniOff = false; hudSavePrefs(); hudFeedLayout(); });
     el.addEventListener('click', e => {
       const b = e.target.closest('[data-hud]'); if(!b) return;
       const w = hudWho();
-      if(b.dataset.hud === 'mres') opAdjustRes(b.dataset.k, +b.dataset.d, w);
+      if(b.dataset.hud === 'mhide'){ hud.miniOff = true; hudSavePrefs(); hudFeedLayout(); setTimeout(() => { const t = hudEl('mini-tab'); if(t) t.focus(); }, 0); }
+      else if(b.dataset.hud === 'mres') opAdjustRes(b.dataset.k, +b.dataset.d, w);
       else if(b.dataset.hud === 'mrollq') hudOpenQuickRoll();
       else if(b.dataset.hud === 'msheet'){ if(w) hub.charToken = w; openHub('ficha'); }
       else if(b.dataset.hud === 'minv'){ hudEnsureWho(); openInventory(w); }
