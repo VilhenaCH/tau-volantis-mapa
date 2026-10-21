@@ -1892,7 +1892,7 @@ body:has(.app-popover.open) #feed-chip{ visibility:hidden; }
 .mchip .mc-dot[hidden]{ display:none; }
 .mchip:focus-visible{ outline:2px solid var(--frost); outline-offset:2px; }
 /* categoria oculta: marcadores saem do mapa (áreas e rotas saem junto com a camada, via JS) */
-#map.hf-pins .mk-pins, #map.hf-tokens .mk-tokens, #map.hf-perigos .mk-perigos, #map.hf-notas .mk-notas{ display:none !important; }
+#map.hf-pins .mk-pins, #map.hf-tokens .mk-tokens, #map.hf-perigos .mk-perigos, #map.hf-notas .mk-notas, #map.hf-lugares .mk-lugares{ display:none !important; }
 /* folha Camadas */
 #lay-sheet .hud-layer{ position:static; top:auto; right:auto; padding:0; display:block; }
 #lay-sheet .hud-layer-body{ display:flex; flex-direction:row; flex-wrap:wrap; gap:0.4rem; max-height:none; overflow:visible; opacity:1; }
@@ -1935,3 +1935,18 @@ body:has(.app-popover.open) #feed-chip{ visibility:hidden; }
 #mini-tab[hidden]{ display:none; }
 #mini-tab:hover{ border-color:var(--frost); }
 #mini-tab:focus-visible, .mn-hide:focus-visible{ outline:2px solid var(--frost); outline-offset:2px; }
+
+/* lugares reais (OpenStreetMap): candidatos ainda sem pin, desenhados vazados para não parecerem pins do jogo */
+.pl-mk{ background:none; border:0; }
+.pl-mk::before{ content:""; position:absolute; left:-8px; right:-8px; top:-8px; bottom:-8px; }   /* alvo de toque de 44px */
+.pl-badge{ width:28px; height:28px; box-sizing:border-box; border-radius:50%; border:2px dashed currentColor; background:rgba(11,18,24,0.88); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 6px rgba(0,0,0,0.55); }
+.pl-badge svg{ width:15px; height:15px; }
+.pl-mk:focus-visible .pl-badge{ outline:2px solid var(--frost); outline-offset:2px; }
+.pl-pop{ display:flex; flex-direction:column; gap:0.3rem; font-family:'Space Mono',monospace; }
+.pl-name{ font-family:'Oswald',sans-serif; font-size:1.05rem; text-transform:uppercase; letter-spacing:0.03em; line-height:1.2; }
+.pl-meta{ font-size:0.66rem; color:var(--ink-dim); line-height:1.4; }
+.pl-pop .pl-go{ margin-top:0.2rem; min-height:44px; }
+#pl-status{ position:absolute; z-index:850; left:50%; transform:translateX(-50%); top:7.7rem; width:max-content; max-width:calc(100% - 2rem); padding:0.3rem 0.7rem; border-radius:var(--r-pill); background:var(--bg-0); border:1px solid var(--line); color:var(--ink-dim); font-family:'Space Mono',monospace; font-size:0.62rem; letter-spacing:0.04em; text-align:center; pointer-events:none; }
+#pl-status[hidden]{ display:none; }
+@media (min-width:721px){ #pl-status{ top:8.7rem; } }
+.mchip[hidden]{ display:none; }

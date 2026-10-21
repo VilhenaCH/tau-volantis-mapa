@@ -196,7 +196,22 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 - Na folha **Rolar** há "Atributo desta rolagem": vale só para aquela folha aberta (não altera a ficha) e volta ao padrão ao fechar.
 - Condições seguem o atributo escolhido (ex.: Debilitado pesa em AGI/FOR/VIG, não em INT).
 - Interpretações: ataques usam o mesmo critério (atributo do ataque define os dados); o crítico vale para o d20 que **ficou**; limite de 20 dados.
-- Cache: `app.js?v=f6` / `style.css?v=f6` — nas próximas atualizações troque `f6` por outro texto.
+- Cache: `app.js?v=f7` / `style.css?v=f7` — nas próximas atualizações troque `f7` por outro texto.
 
 ## 19. Painel do personagem recolhível (tela larga)
 - A mini-ficha da esquerda ganhou um botão X (recolher). Recolhida, o mapa ocupa a largura toda e aparece uma aba com o ícone de personagem na borda esquerda para reabrir. A escolha é lembrada por campanha neste aparelho. Em telas estreitas o painel não existe (como antes). O feed da direita já era recolhível.
+
+## 20. Lugares reais do OpenStreetMap (hotel, farmácia, posto…) como locais de saque
+**O que é.** Com o módulo ligado, hotéis, hospitais, farmácias, mercados, postos, delegacias e locais de fé que existem de verdade na região do mapa aparecem como pontos para explorar. Tocar no ponto abre um cartão (nome, marcação do OpenStreetMap, endereço, estado) com o botão **Vasculhar**.
+
+**Como liga.** Mestre: Mesa de jogo → Campanhas → Configuração desta campanha → módulo **Lugares reais no mapa (OpenStreetMap)**. Aparecem as categorias (Saúde, Comércio, Combustível e oficinas, Hospedagem, Segurança, Locais de fé) e o modo **Quando aparecem**: sempre (a partir do zoom de cidade) ou só perto de um token (250 m). Escolha de módulo, categorias e modo ficam em `campaign-meta/<campanha>/config` (campos novos e opcionais; campanhas antigas não mudam). Chip **Lugares** na barra do mapa mostra/oculta a camada só para quem tocar (fica neste aparelho).
+
+**Como funciona por baixo.**
+- A consulta usa a API Overpass (3 servidores, tenta o próximo se um falhar), por blocos de mapa no zoom 14, só quando o zoom é 14 ou mais e a tela cobre no máximo 9 blocos. O resultado fica guardado no aparelho por 14 dias (`tv-poi:*`); mexer no mapa dentro da área já carregada não gera consulta. Falha de rede: aviso "Sem conexão com o OpenStreetMap" e nova tentativa depois de 60 s.
+- Nada é gravado até alguém tocar em **Vasculhar**. Aí o lugar vira um **pin comum** (`id osm_<tipo><número>`, campos novos opcionais `osm` e `osmTag`), do tipo equivalente (Saúde → Médico, Comércio → Suprimentos, Combustível → Combustível, Hospedagem e Locais de fé → Saque, Segurança → Munição) e o saque usa o sistema de contêineres que já existia: tabela por tipo, sorteio uma única vez, estado compartilhado, histórico e inventário do contêiner. Jogadores e mestre podem vasculhar (as regras do Firebase atuais já permitem, não precisa publicar regras novas).
+- O ponto candidato some do mapa quando o pin existe. **Excluir o pin** (mestre) apaga o inventário do lugar e o ponto volta a aparecer como inexplorado.
+- Todos os outros recursos de pin valem: o mestre pode trocar a tabela de saque, bloquear, mudar mínimo/máximo, abastecer à mão.
+
+**Limites que valem saber.** Os dados vêm de voluntários do OpenStreetMap: em cidades grandes são bons, em áreas rurais podem faltar lugares; nomes podem estar em branco ("sem nome"). O serviço Overpass público tem limite de uso justo; por isso as consultas são em blocos, guardadas no aparelho e feitas uma de cada vez. Casas e escolas não entram. Sem internet, só aparecem os blocos já guardados.
+
+**Não testado em aparelho real nem com o Overpass de verdade** (o ambiente de desenvolvimento não alcança a API). Os testes usaram respostas simuladas no mesmo formato.
