@@ -1950,3 +1950,20 @@ body:has(.app-popover.open) #feed-chip{ visibility:hidden; }
 #pl-status[hidden]{ display:none; }
 @media (min-width:721px){ #pl-status{ top:8.7rem; } }
 .mchip[hidden]{ display:none; }
+
+/* agrupamento de tokens ao afastar o mapa */
+.cl-hide{ display:none !important; }
+.cl-mk{ background:none; border:0; }
+.cl-badge{ width:44px; height:44px; box-sizing:border-box; border-radius:50%; background:var(--bg-0); border:2px solid var(--frost); color:var(--ink);
+  box-shadow:0 0 0 4px rgba(143,211,232,0.18), 0 2px 8px rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; }
+.cl-badge b{ font-family:'Oswald',sans-serif; font-size:1.2rem; font-weight:500; line-height:1; }
+.cl-mk:focus-visible .cl-badge{ outline:2px solid var(--ink); outline-offset:3px; }
+@media (prefers-reduced-motion: no-preference){ .cl-badge{ animation:cl-pop 0.18s ease-out; } }
+@keyframes cl-pop{ from{ transform:scale(0.7); opacity:0; } to{ transform:none; opacity:1; } }
+.lay-hint{ margin:0.4rem 0 0; font-size:0.62rem; color:var(--ink-dim); line-height:1.45; }
+
+/* lugares reais: aviso que vira botão quando a consulta falhou; resultado do teste de conexão */
+#pl-status.pl-retry{ pointer-events:auto; cursor:pointer; border-color:var(--hazard); color:var(--ink); border-radius:var(--r-md); }
+#pl-status.pl-retry::before{ content:""; position:absolute; left:0; right:0; top:-10px; bottom:-10px; }   /* alvo de toque de 44px */
+#pl-status.pl-retry:focus-visible{ outline:2px solid var(--frost); outline-offset:2px; }
+.pl-test-out{ white-space:pre-line; min-height:1.2em; }

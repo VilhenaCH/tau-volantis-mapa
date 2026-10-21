@@ -196,7 +196,7 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 - Na folha **Rolar** há "Atributo desta rolagem": vale só para aquela folha aberta (não altera a ficha) e volta ao padrão ao fechar.
 - Condições seguem o atributo escolhido (ex.: Debilitado pesa em AGI/FOR/VIG, não em INT).
 - Interpretações: ataques usam o mesmo critério (atributo do ataque define os dados); o crítico vale para o d20 que **ficou**; limite de 20 dados.
-- Cache: `app.js?v=f7` / `style.css?v=f7` — nas próximas atualizações troque `f7` por outro texto.
+- Cache: `app.js?v=f8` / `style.css?v=f8` — nas próximas atualizações troque `f8` por outro texto.
 
 ## 19. Painel do personagem recolhível (tela larga)
 - A mini-ficha da esquerda ganhou um botão X (recolher). Recolhida, o mapa ocupa a largura toda e aparece uma aba com o ícone de personagem na borda esquerda para reabrir. A escolha é lembrada por campanha neste aparelho. Em telas estreitas o painel não existe (como antes). O feed da direita já era recolhível.
@@ -207,11 +207,43 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 **Como liga.** Mestre: Mesa de jogo → Campanhas → Configuração desta campanha → módulo **Lugares reais no mapa (OpenStreetMap)**. Aparecem as categorias (Saúde, Comércio, Combustível e oficinas, Hospedagem, Segurança, Locais de fé) e o modo **Quando aparecem**: sempre (a partir do zoom de cidade) ou só perto de um token (250 m). Escolha de módulo, categorias e modo ficam em `campaign-meta/<campanha>/config` (campos novos e opcionais; campanhas antigas não mudam). Chip **Lugares** na barra do mapa mostra/oculta a camada só para quem tocar (fica neste aparelho).
 
 **Como funciona por baixo.**
-- A consulta usa a API Overpass (3 servidores, tenta o próximo se um falhar), por blocos de mapa no zoom 14, só quando o zoom é 14 ou mais e a tela cobre no máximo 9 blocos. O resultado fica guardado no aparelho por 14 dias (`tv-poi:*`); mexer no mapa dentro da área já carregada não gera consulta. Falha de rede: aviso "Sem conexão com o OpenStreetMap" e nova tentativa depois de 60 s.
+- A consulta usa a API Overpass, em blocos de mapa no zoom 14, e só desenha com o zoom em 14 ou mais. O resultado fica guardado no aparelho por 14 dias; mexer no mapa dentro da área já carregada não gera consulta. **O jeito de consultar (servidores, tempos, avisos) foi refeito na seção 22**: a primeira versão (descrita aqui) pedia um bloco por vez e era lenta.
 - Nada é gravado até alguém tocar em **Vasculhar**. Aí o lugar vira um **pin comum** (`id osm_<tipo><número>`, campos novos opcionais `osm` e `osmTag`), do tipo equivalente (Saúde → Médico, Comércio → Suprimentos, Combustível → Combustível, Hospedagem e Locais de fé → Saque, Segurança → Munição) e o saque usa o sistema de contêineres que já existia: tabela por tipo, sorteio uma única vez, estado compartilhado, histórico e inventário do contêiner. Jogadores e mestre podem vasculhar (as regras do Firebase atuais já permitem, não precisa publicar regras novas).
 - O ponto candidato some do mapa quando o pin existe. **Excluir o pin** (mestre) apaga o inventário do lugar e o ponto volta a aparecer como inexplorado.
 - Todos os outros recursos de pin valem: o mestre pode trocar a tabela de saque, bloquear, mudar mínimo/máximo, abastecer à mão.
 
-**Limites que valem saber.** Os dados vêm de voluntários do OpenStreetMap: em cidades grandes são bons, em áreas rurais podem faltar lugares; nomes podem estar em branco ("sem nome"). O serviço Overpass público tem limite de uso justo; por isso as consultas são em blocos, guardadas no aparelho e feitas uma de cada vez. Casas e escolas não entram. Sem internet, só aparecem os blocos já guardados.
+**Limites que valem saber.** Os dados vêm de voluntários do OpenStreetMap: em cidades grandes são bons, em áreas rurais podem faltar lugares; nomes podem estar em branco ("sem nome"). O serviço Overpass público tem limite de uso justo; por isso as consultas são em blocos e guardadas no aparelho. Casas e escolas não entram. Sem internet, só aparecem os blocos já guardados.
 
 **Não testado em aparelho real nem com o Overpass de verdade** (o ambiente de desenvolvimento não alcança a API). Os testes usaram respostas simuladas no mesmo formato.
+
+## 21. Agrupamento de tokens ao afastar o mapa
+**O que é.** Com o mapa afastado, tokens, NPCs, veículos e abrigos que ficam muito perto uns dos outros viram **um círculo só com o total** (ex.: 3 tokens + 3 NPCs + 1 carro = **7**). Ao aproximar, cada um volta ao seu lugar. É só visual: nada é salvo no banco e nada muda para os outros jogadores.
+
+**Regras.**
+- Vale com o zoom em **15 ou menos** (de rua para mais longe). Do zoom 16 em diante tudo aparece separado.
+- Junta o que estiver a menos de **52 pixels** um do outro na tela. Por isso o bando se junta cedo ou tarde conforme você afasta, e quem está longe do bando continua sozinho.
+- **Conta:** tokens (uma pilha conta pelos tokens que ela guarda), NPCs, veículos e abrigos. Tokens guardados dentro de um veículo ou abrigo não aparecem no mapa e não entram na conta. Pins comuns (lugares, notas, perigos…) não entram.
+- Respeita os filtros da barra do mapa: se **Tokens** ou **Pins** estiver desligado, o que ele esconde não entra no círculo.
+- **Tocar no círculo** aproxima o mapa até enquadrar o grupo (no máximo zoom 17). No teclado: Tab até o círculo e Enter ou espaço. O círculo tem rótulo para leitor de tela, por exemplo "Grupo de 7 no mapa: 3 tokens, 3 NPCs, 1 veículo. Toque para aproximar." Acima de 99 aparece "99+".
+- **Não agrupa** enquanto você seleciona tokens (modo de seleção) nem enquanto arrasta um token ou pin. Um balão aberto num item que entra num grupo é fechado.
+- "Ir até" de pin ou token (Índice e mesa de jogo) aproxima até o zoom 16 no mínimo, então o item procurado aparece sozinho.
+
+**Desligar.** Camadas → botão **Agrupar ao afastar: ligado/desligado**. A escolha vale **só para este aparelho** (`localStorage`, chave `tv-cluster`; padrão: ligado). Não depende de campanha nem do mestre.
+
+**Como foi feito.** Os marcadores de verdade não são removidos: o app só esconde (classe `cl-hide`) os que entraram num círculo e os mostra de volta ao aproximar. Recalcula a cada mudança de zoom e a cada redesenho de tokens/pins. Código em `app.js` (bloco "agrupamento de tokens ao afastar o mapa"), estilo em `style.css` (`.cl-mk`, `.cl-badge`), botão em `index.html` (folha Camadas).
+
+**Limites.** Só o mapa principal agrupa (o mapa tático não). O agrupamento é por distância na tela, de forma simples: dois bandos vizinhos podem se juntar num jeito diferente do que você imaginou, e tocar de novo no círculo resolve. Não medi desempenho com centenas de tokens. **Não testado em celular de verdade** (só em navegador simulado).
+
+## 22. Lugares reais mais rápidos e com aviso do que deu errado
+**Por que mudou.** Na primeira versão os lugares demoravam muito ou não apareciam. Causas que encontrei no código: o app pedia **um bloco de mapa por vez** (uma tela de celular em zoom 14 cobre uns 8 a 15 blocos); se um servidor travava, esperava **22 segundos** antes de tentar o próximo; em zoom 14 num celular em pé a tela passava de 9 blocos e o app só avisava "Área grande demais"; e o aviso de falha dizia só "Sem conexão", sem o motivo. Não consigo alcançar o OpenStreetMap daqui, então **não consegui reproduzir o problema com os servidores de verdade**: o conserto foi testado com servidores simulados lentos, quebrados e vazios.
+
+**O que faz agora.**
+- **Uma consulta por tela.** Os blocos que faltam (até 8, os mais perto do centro primeiro) vão num único pedido; o resultado é repartido e guardado por bloco. Em celular em pé no zoom 14 cabem até 20 blocos (antes 9). A consulta ficou mais enxuta: só nós e vias (sem relações), prazo de 15 s no servidor, termina em `out center;`.
+- **Servidores em paralelo.** Pergunta ao primeiro; se ele falhar, o segundo é consultado **na hora**; se só demorar, o segundo entra após 1,8 s **sem cancelar o primeiro**. Vale a primeira resposta com dados. Cada tentativa tem prazo de 14 s e o conjunto 22 s. Os servidores são `overpass-api.de`, `overpass.private.coffee` e `overpass.kumi.systems`; o que respondeu por último vai primeiro na vez seguinte (guardado em `tv-op-mirror`).
+- **Respostas ruins não viram "nenhum lugar".** O Overpass às vezes responde 200 com a mensagem "runtime error: Query timed out" ou com uma página de erro em HTML; isso agora conta como falha e **não é guardado**. Uma resposta vazia só vale se um segundo servidor confirmar; área sem lugares fica guardada 1 dia (com lugares, 14 dias).
+- **Busca antecipada.** Em segundo plano o app já pede o entorno (3×3 blocos) de cada token, e do centro do mapa no zoom 13, para o ícone estar pronto quando alguém aproximar. Mexer na tela cancela a busca antecipada e atende a tela na hora.
+- **Aviso na tela** (pílula sob os chips): "Carregando lugares… N s" (os segundos aparecem a partir de 3 s); quando falha, diz o motivo ("OpenStreetMap ocupado (HTTP 503)", "Sem conexão com o OpenStreetMap" ou "OpenStreetMap demorou demais") e **vira botão: toque para tentar de novo**. Também tenta sozinho após 8 s, 20 s e 45 s.
+- **Testar conexão (mestre).** Configuração da campanha → Lugares reais → botão **Testar conexão com o OpenStreetMap**: mostra, para cada servidor, "ok", "erro HTTP …", "sem rede ou bloqueado" ou "sem resposta em 12 s", com o tempo, e quantos blocos estão guardados no aparelho. Se os lugares continuarem sem aparecer, este teste (e o texto do aviso) dizem onde está o problema.
+- **Guardado no aparelho.** Passou de `tv-poi:` para `tv-poi2:` (com validade por bloco). Ao abrir o app o guardado antigo e o vencido são apagados (o antigo podia ter gravado "área vazia" por engano); se faltar espaço, apaga os mais velhos.
+
+**O que continua sem teste de verdade.** O teste de conexão e o aviso foram feitos para você me contar o que aparece no seu celular. Se o OpenStreetMap estiver bloqueado na sua rede ou os três servidores estiverem fora do ar, nada resolve no app: aí o aviso mostra isso. Relações do OpenStreetMap (prédios cadastrados como relação, raros) não entram mais.

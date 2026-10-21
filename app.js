@@ -565,8 +565,14 @@
 
   const pinsLayer = L.layerGroup().addTo(map);
   // lugares reais (OpenStreetMap): camada própria, acima da dos pins
-  const PLACE_ZOOM = 14, PLACE_MAX_TILES = 9, PLACE_TTL = 14 * 864e5, PLACE_NEAR_M = 250;
-  const PLACE_API = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+  const PLACE_ZOOM = 14, PLACE_MAX_TILES = 20, PLACE_CHUNK = 8, PLACE_TTL = 14 * 864e5, PLACE_TTL_EMPTY = 864e5, PLACE_NEAR_M = 250;
+  // tempos da consulta: pergunta ao próximo servidor se o atual demorar PLACE_HEDGE_MS (sem cancelá-lo); cada tentativa e o total têm prazo
+  const PLACE_HEDGE_MS = 1800, PLACE_TRY_MS = 14000, PLACE_TOTAL_MS = 22000, PLACE_COOL = 6000;
+  const PLACE_API = [
+    { name:'overpass-api.de', url:'https://overpass-api.de/api/interpreter' },
+    { name:'overpass.private.coffee', url:'https://overpass.private.coffee/api/interpreter' },
+    { name:'overpass.kumi.systems', url:'https://overpass.kumi.systems/api/interpreter' }
+  ];
   const PLACE_CATS = [
     { id:'saude', label:'Saúde', type:'medico' },
     { id:'mercado', label:'Comércio', type:'suprimentos' },
@@ -581,6 +587,11 @@
     tourism:{ hotel:'hospedagem', hostel:'hospedagem', guest_house:'hospedagem', motel:'hospedagem' }
   };
   const placesLayer = L.layerGroup().addTo(map);
+  // agrupamento de tokens ao afastar o mapa: tokens, NPCs, veículos/abrigos e pilhas que ficariam colados na tela
+  // (a menos de CLUSTER_PX) viram um único círculo com o total. Só vale com o mapa afastado (zoom até CLUSTER_MAX_ZOOM).
+  const CLUSTER_MAX_ZOOM = 15, CLUSTER_PX = 52;
+  const clusterLayer = L.layerGroup().addTo(map);
+  const cl = { on:(function(){ try{ return localStorage.getItem('tv-cluster') !== '0'; }catch(e){ return true; } })(), hidden:[] };
   const tokensLayer = L.layerGroup().addTo(map);
   const shapesLayer = L.layerGroup().addTo(map);
   const routesLayer = L.layerGroup().addTo(map);
@@ -1297,7 +1308,7 @@
   // é atualizado (posição/ícone) quando o próprio dado daquele pin muda —
   // nunca quando outro pin qualquer muda. Isso é o que permite que o mapa
   // continue "vivo" pra todo mundo mesmo com alguém editando uma nota.
-  function renderPins(){ renderPinsCore(); if(mapEntitiesHook) mapEntitiesHook(); plDraw(); }
+  function renderPins(){ renderPinsCore(); if(mapEntitiesHook) mapEntitiesHook(); plDraw(); clusterUpdate(); }
   function renderPinsCore(){
     // NPCs (pins) que estão "dentro" de um veículo/abrigo, ou empilhados junto
     // com um token/outro NPC no mesmo ponto, não aparecem soltos no mapa —
@@ -1589,7 +1600,78 @@
     return container;
   }
 
-  function renderTokens(){ renderTokensCore(); if(mapEntitiesHook) mapEntitiesHook(); hudMiniChanged(); mapfRender(); plDraw(); }
+
+  // ---------- agrupamento de tokens ao afastar o mapa ----------
+  // Não mexe nos marcadores de verdade: só esconde (classe cl-hide) os que entraram num círculo de grupo e os mostra
+  // de volta ao aproximar. Roda depois de cada desenho de tokens/pins e a cada mudança de zoom.
+  function clEntities(){
+    const out = [], off = k => hudReady && hud.mapf.has(k);
+    tokensLayer.eachLayer(m => {
+      if(!m.getLatLng || !m._icon || off('tokens')) return;
+      out.push({ m, n:m._clCount || 1, ll:m.getLatLng(), kind:m._groupId ? 'pilha' : 'token' });
+    });
+    pins.forEach(p => {
+      if(p.type !== 'npc' && p.type !== 'veiculo' && p.type !== 'abrigo') return;
+      const m = pinMarkers[p.id]; if(!m || !m._icon || !pinsLayer.hasLayer(m) || off(mapfCat(p.type))) return;
+      out.push({ m, n:1, ll:m.getLatLng(), kind:p.type });
+    });
+    return out;
+  }
+  function clearClusters(){
+    clusterLayer.clearLayers();
+    cl.hidden.forEach(m => { if(m._icon) m._icon.classList.remove('cl-hide'); });
+    cl.hidden = [];
+  }
+  function clusterUpdate(){
+    if(!hudReady) return;
+    clearClusters();
+    if(!cl.on || tokenSelectMode || tokenDragActive || pinDraggingId || map.getZoom() > CLUSTER_MAX_ZOOM) return;
+    const ents = clEntities().map(e => Object.assign(e, { pt:map.latLngToLayerPoint(e.ll) }));
+    if(ents.length < 2) return;
+    ents.sort((a, b) => (a.pt.x - b.pt.x) || (a.pt.y - b.pt.y));
+    const groups = [];
+    ents.forEach(e => {
+      let g = null, best = CLUSTER_PX;
+      groups.forEach(c => { const d = Math.hypot(c.x - e.pt.x, c.y - e.pt.y); if(d < best){ best = d; g = c; } });
+      if(g){ g.items.push(e); g.n += e.n; g.x += (e.pt.x - g.x) / g.items.length; g.y += (e.pt.y - g.y) / g.items.length; }
+      else groups.push({ x:e.pt.x, y:e.pt.y, n:e.n, items:[e] });
+    });
+    groups.filter(g => g.items.length > 1).forEach(g => {
+      g.items.forEach(e => { e.m._icon.classList.add('cl-hide'); cl.hidden.push(e.m); });
+      const cnt = { token:0, npc:0, veiculo:0, abrigo:0 };
+      g.items.forEach(e => { if(e.kind === 'pilha') cnt.token += e.n; else cnt[e.kind] += e.n; });
+      const parts = [];
+      if(cnt.token) parts.push(cnt.token + (cnt.token === 1 ? ' token' : ' tokens'));
+      if(cnt.npc) parts.push(cnt.npc + (cnt.npc === 1 ? ' NPC' : ' NPCs'));
+      if(cnt.veiculo) parts.push(cnt.veiculo + (cnt.veiculo === 1 ? ' veículo' : ' veículos'));
+      if(cnt.abrigo) parts.push(cnt.abrigo + (cnt.abrigo === 1 ? ' abrigo' : ' abrigos'));
+      const label = 'Grupo de ' + g.n + ' no mapa: ' + parts.join(', ') + '. Toque para aproximar.';
+      const pts = g.items.map(e => e.ll);
+      const mk = L.marker(map.layerPointToLatLng(L.point(g.x, g.y)), {
+        icon:L.divIcon({ className:'cl-mk', iconSize:[44, 44], iconAnchor:[22, 22], html:`<div class="cl-badge"><b>${g.n > 99 ? '99+' : g.n}</b></div>` }),
+        title:label, keyboard:true, zIndexOffset:600
+      });
+      const go = () => map.fitBounds(L.latLngBounds(pts), { padding:[80, 80], maxZoom:CLUSTER_MAX_ZOOM + 2 });
+      mk.on('click', e => { L.DomEvent.stopPropagation(e); go(); });
+      mk.on('keypress', e => { const k = e.originalEvent; if(k && (k.key === 'Enter' || k.key === ' ' || k.keyCode === 13 || k.keyCode === 32)){ if(k.preventDefault) k.preventDefault(); go(); } });   // teclado: Enter ou espaço
+      mk.addTo(clusterLayer);
+    });
+    // um popup aberto num marcador que acabou de ser escondido ficaria solto na tela
+    const src = map._popup && map._popup._source;
+    if(src && cl.hidden.indexOf(src) >= 0) map.closePopup();
+  }
+  function clusterSetOn(on){
+    cl.on = !!on;
+    try{ localStorage.setItem('tv-cluster', cl.on ? '1' : '0'); }catch(e){}
+    clusterSync(); clusterUpdate();
+  }
+  function clusterSync(){
+    const b = document.getElementById('cluster-toggle'); if(!b) return;
+    b.classList.toggle('active', cl.on); b.setAttribute('aria-pressed', String(cl.on));
+    b.textContent = cl.on ? 'Agrupar ao afastar: ligado' : 'Agrupar ao afastar: desligado';
+  }
+
+  function renderTokens(){ renderTokensCore(); if(mapEntitiesHook) mapEntitiesHook(); hudMiniChanged(); mapfRender(); plDraw(); plWarmSoon(); clusterUpdate(); }
   function renderTokensCore(){
     tokensLayer.clearLayers();
     Object.keys(tokenMarkers).forEach(k => delete tokenMarkers[k]);
@@ -1630,7 +1712,7 @@
       const isLeadNpc = lead.type === 'npc';
       const icon = isLeadNpc ? npcGroupIcon(lead, members.length) : tokenIcon(lead, members.length);
       const marker = L.marker([lead.lat, lead.lng], { icon, draggable:true });
-      marker._groupId = gid;
+      marker._groupId = gid; marker._clCount = members.length;
       members.forEach(m => { tokenMarkers[m.id] = marker; });
 
       marker.on('click', (e) => { L.DomEvent.stopPropagation(e); });
@@ -5276,7 +5358,9 @@
         ${PLACE_CATS.map(pc => `<label class="check-row"><input type="checkbox" data-bind="cd.placeCats.${pc.id}" ${d.placeCats[pc.id] === false ? '' : 'checked'}> ${esc(pc.label)}</label>`).join('')}
         <label class="hub-label" for="cd-place-reveal">Quando aparecem</label>
         <select id="cd-place-reveal" data-bind="cd.placeReveal">${opt('all', 'Sempre (a partir do zoom de cidade)', d.placeReveal)}${opt('near', 'Só perto de um token (' + PLACE_NEAR_M + ' m)', d.placeReveal)}</select>
-        <p class="hub-hint">Hotéis, farmácias, postos e outros lugares reais viram pontos de saque. O primeiro Vasculhar cria o pin, e o resultado vale para toda a mesa.</p>` : ''}
+        <p class="hub-hint">Hotéis, farmácias, postos e outros lugares reais viram pontos de saque. O primeiro Vasculhar cria o pin, e o resultado vale para toda a mesa.</p>
+        <button type="button" class="inv-mini-btn" data-act="pl-test">Testar conexão com o OpenStreetMap</button>
+        <div id="pl-test-out" class="hub-hint pl-test-out" role="status" aria-live="polite"></div>` : ''}
       <div class="hub-label">Partes da ficha</div>
       ${[['identity','Identidade'],['skills','Perícias e atalhos'],['notes','Anotações'],['equip','Equipamento']].map(x => `<label class="check-row"><input type="checkbox" data-bind="cd.cardModules.${x[0]}" ${d.cardModules[x[0]] ? 'checked' : ''}> ${x[1]}</label>`).join('')}
       <div class="hub-label">Inventário</div>
@@ -6066,8 +6150,9 @@
       case 'camp-code-copy': copyJoinCode(D.id); break;
       case 'claim': claimMaster(); break;
       case 'cfg-save': saveConfig(); break;
+      case 'pl-test': plTest(); break;
       case 'clock': advanceClock(+D.m); break;
-      case 'pin-go': { const p = pins.find(x => x.id === D.id); if(p){ map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 15)); closeHub(); } break; }
+      case 'pin-go': { const p = pins.find(x => x.id === D.id); if(p){ map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 16)); closeHub(); } break; }
       case 'craft': { const r = recipes[D.id]; if(r) craftDo(r, hub.craftHolder, D.o); break; }
       case 'craft-roll': { const r = recipes[D.id]; if(r){ rollUI.skill = r.skill || r.name; rollUI.who = hub.craftHolder || ''; hub.tab = 'dados'; renderHub(); } break; }
       case 'recipe-new': hub.recipeForm = blankRecipe(); renderHub(); break;
@@ -7298,7 +7383,7 @@
       const off = hud.mapf.has(x[1]), on = map.hasLayer(x[0]);
       if(off && on) map.removeLayer(x[0]); else if(!off && !on) map.addLayer(x[0]);
     });
-    mapfRender();
+    mapfRender(); clusterUpdate();
   }
   function mapfRender(){
     if(!hudReady) return;
@@ -7356,32 +7441,124 @@
     for(const k of ['amenity', 'shop', 'tourism']){ const m = tags[k] && PLACE_TAGS[k][tags[k]]; if(m) return { cat:m, tag:k + '=' + tags[k] }; }
     return null;
   }
-  const pl = { tiles:{}, markers:{}, fail:{}, busy:false, timer:null, status:'', total:0 };
+  const pl = { tiles:{}, markers:{}, fail:{}, busy:false, cur:null, timer:null, warmTimer:null, retryTimer:null, retries:0, t0:null, tick:null, err:null, good:null, status:'', total:0 };
+  const PLACE_LS = 'tv-poi2:';
   const plTileOf = (lat, lng) => { const n = 1 << PLACE_ZOOM, r = lat * Math.PI / 180; return { x:Math.floor((lng + 180) / 360 * n), y:Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n) }; };
   const plTileBox = (x, y) => { const n = 1 << PLACE_ZOOM, lng = k => k / n * 360 - 180, lat = k => Math.atan(Math.sinh(Math.PI * (1 - 2 * k / n))) * 180 / Math.PI; return { w:lng(x), e:lng(x + 1), n:lat(y), s:lat(y + 1) }; };
+  const plKey = (x, y) => PLACE_ZOOM + '/' + x + '/' + y;
+  const plCool = k => !!pl.fail[k] && Date.now() - pl.fail[k] < PLACE_COOL;
+
+  // ---- guardados no aparelho (por bloco) ----
   function plGet(key){
     let t = pl.tiles[key];
-    if(!t){ try{ t = JSON.parse(localStorage.getItem('tv-poi:' + key) || 'null'); }catch(e){ t = null; } if(t && Date.now() - t.ts < PLACE_TTL) pl.tiles[key] = t; else t = null; }
+    if(!t){ try{ t = JSON.parse(localStorage.getItem(PLACE_LS + key) || 'null'); }catch(e){ t = null; } if(t && t.exp > Date.now()) pl.tiles[key] = t; else t = null; }
+    else if(!(t.exp > Date.now())){ delete pl.tiles[key]; t = null; }
     return t;
   }
-  function plSay(txt){
+  // apaga o que venceu e o guardado da versão antiga (que podia ter gravado "área vazia" por engano); com mais=true, também o mais velho
+  function plPurge(mais){
+    try{
+      const ks = [], rows = [];
+      for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && k.indexOf('tv-poi') === 0) ks.push(k); }
+      ks.forEach(k => {
+        if(k.indexOf(PLACE_LS) !== 0){ localStorage.removeItem(k); return; }
+        let t = null; try{ t = JSON.parse(localStorage.getItem(k)); }catch(e){}
+        if(!t || !(t.exp > Date.now())) localStorage.removeItem(k); else rows.push({ k, exp:t.exp });
+      });
+      if(mais) rows.sort((a, b) => a.exp - b.exp).slice(0, Math.max(10, Math.ceil(rows.length / 3))).forEach(r => { localStorage.removeItem(r.k); delete pl.tiles[r.k.slice(PLACE_LS.length)]; });
+    }catch(e){}
+  }
+  function plPut(key, list){
+    const rec = { exp:Date.now() + (list.length ? PLACE_TTL : PLACE_TTL_EMPTY), list };   // "nenhum lugar" vale só 1 dia: pode ter sido um servidor incompleto
+    pl.tiles[key] = rec; delete pl.fail[key];
+    const s = JSON.stringify(rec);
+    try{ localStorage.setItem(PLACE_LS + key, s); }
+    catch(e){ plPurge(true); try{ localStorage.setItem(PLACE_LS + key, s); }catch(e2){} }
+  }
+
+  // ---- aviso na tela ----
+  function plSay(txt, retry){
     pl.status = txt; const el = hudEl('pl-status'); if(!el) return;
     el.textContent = txt; el.hidden = !txt;
+    const r = !!retry && !!txt;
+    el.classList.toggle('pl-retry', r);
+    if(r){ el.setAttribute('role', 'button'); el.tabIndex = 0; } else { el.setAttribute('role', 'status'); el.removeAttribute('tabindex'); }
   }
-  async function plOverpass(b){
+  function plLoadingText(){ const s = pl.t0 ? Math.round((Date.now() - pl.t0) / 1000) : 0; return 'Carregando lugares…' + (s >= 3 ? ' ' + s + ' s' : ''); }
+  function plWhy(){
+    const d = (pl.err || []).filter(x => x.why);
+    if(!d.length) return 'Sem resposta do OpenStreetMap.';
+    const http = d.find(x => /^HTTP/.test(x.why));
+    if(http) return 'OpenStreetMap ocupado (' + http.why + ').';
+    if(d.every(x => x.why === 'sem rede')) return 'Sem conexão com o OpenStreetMap.';
+    if(d.every(x => x.why === 'tempo esgotado')) return 'OpenStreetMap demorou demais.';
+    return 'Sem resposta do OpenStreetMap.';
+  }
+
+  // ---- consulta (Overpass) ----
+  function plQuery(b){
     const f = Object.keys(PLACE_TAGS).map(k => '["' + k + '"~"^(' + Object.keys(PLACE_TAGS[k]).join('|') + ')$"]');
     const bb = '(' + [b.s, b.w, b.n, b.e].map(v => v.toFixed(5)).join(',') + ')';
-    const q = '[out:json][timeout:25];(' + f.map(x => 'nwr' + x + bb + ';').join('') + ');out center tags 500;';
-    let last = null;
-    for(const url of PLACE_API){
-      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 22000);
-      try{
-        const r = await fetch(url, { method:'POST', body:'data=' + encodeURIComponent(q), headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, signal:ctl.signal });
-        clearTimeout(t); if(!r.ok) throw new Error('HTTP ' + r.status);
-        const j = await r.json(); return Array.isArray(j.elements) ? j.elements : [];
-      }catch(e){ clearTimeout(t); last = e; }
-    }
-    throw last || new Error('sem resposta');
+    return '[out:json][timeout:15][maxsize:104857600];(' + f.map(x => 'node' + x + bb + ';way' + x + bb + ';').join('') + ');out center;';   // forma mais simples e documentada do "out": nós com lat/lon, vias com centro
+  }
+  // o servidor que respondeu bem da última vez vai primeiro
+  function plOrder(){
+    let g = pl.good; if(!g){ try{ g = localStorage.getItem('tv-op-mirror'); }catch(e){} }
+    const a = PLACE_API.slice(), i = a.findIndex(m => m.name === g);
+    if(i > 0) a.unshift(a.splice(i, 1)[0]);
+    return a;
+  }
+  // Pergunta ao primeiro servidor; se ele falhar ou demorar PLACE_HEDGE_MS, já pergunta ao próximo SEM cancelar o anterior.
+  // Vale a primeira resposta com dados. Uma resposta vazia espera a confirmação de um segundo servidor. Cada tentativa tem prazo.
+  function plRace(q, outer){
+    return new Promise((resolve, reject) => {
+      const order = plOrder(), diag = [], ctls = [], timers = [];
+      let done = false, started = 0, open = 0, empty = null, hedge = null;
+      const stop = () => { done = true; timers.forEach(clearTimeout); ctls.forEach(c => { try{ c.abort(); }catch(e){} }); };
+      const win = (els, m) => { if(done) return; stop(); pl.good = m.name; try{ localStorage.setItem('tv-op-mirror', m.name); }catch(e){} resolve(els); };
+      const lose = () => { if(done) return; stop(); const e = new Error('sem resposta'); e.diag = diag; reject(e); };
+      const next = () => {
+        if(done || started >= order.length) return false;
+        clearTimeout(hedge);
+        const m = order[started++]; open++; attempt(m);
+        hedge = setTimeout(next, PLACE_HEDGE_MS); timers.push(hedge);
+        return true;
+      };
+      const attempt = async m => {
+        const ctl = new AbortController(), t0 = Date.now(); ctls.push(ctl);
+        const tm = setTimeout(() => ctl.abort(), PLACE_TRY_MS); timers.push(tm);
+        let els = null, why = '';
+        try{
+          const r = await fetch(m.url, { method:'POST', body:'data=' + encodeURIComponent(q), headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, signal:ctl.signal });
+          if(!r.ok) why = 'HTTP ' + r.status;
+          else{
+            let j = null; try{ j = await r.json(); }catch(e2){ if(ctl.signal.aborted) throw e2; }
+            if(!j || !Array.isArray(j.elements)) why = 'resposta inválida';
+            else if(j.remark && /error|timed out|too many|rate/i.test(String(j.remark))) why = 'servidor ocupado';   // o Overpass responde 200 com "remark" quando estoura tempo ou memória
+            else els = j.elements;
+          }
+        }catch(e){ why = done ? '' : (ctl.signal.aborted ? 'tempo esgotado' : 'sem rede'); }
+        clearTimeout(tm); open--;
+        if(done) return;
+        const ms = Date.now() - t0;
+        if(els){
+          diag.push({ m:m.name, ms, n:els.length });
+          if(els.length || empty) return win(els, m);
+          empty = m;
+          if(!next() && !open) win(els, m);
+          return;
+        }
+        diag.push({ m:m.name, ms, why });
+        if(!next() && !open){ if(empty) win([], empty); else lose(); }
+      };
+      timers.push(setTimeout(() => { if(done) return; if(empty) win([], empty); else { diag.push({ m:'', why:'tempo esgotado' }); lose(); } }, PLACE_TOTAL_MS));
+      if(outer){
+        const cancel = () => { if(done) return; stop(); const e = new Error('cancelado'); e.cancelled = true; reject(e); };
+        if(outer.aborted) return cancel();
+        outer.addEventListener('abort', cancel);
+      }
+      if(!next()) lose();
+    });
   }
   function plParse(els){
     const out = [], seen = new Set();
@@ -7395,30 +7572,99 @@
     });
     return out;
   }
+  // UMA consulta para vários blocos: pega o retângulo que cobre todos e distribui o resultado por bloco (cada um fica guardado)
+  async function plFetchTiles(tiles, outer){
+    const xs = tiles.map(t => t.x), ys = tiles.map(t => t.y), x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    const a = plTileBox(x0, y0), z = plTileBox(x1, y1);
+    const list = plParse(await plRace(plQuery({ w:a.w, n:a.n, e:z.e, s:z.s }), outer)), by = {};
+    list.forEach(p => { const t = plTileOf(p.lat, p.lng), k = plKey(t.x, t.y); (by[k] = by[k] || []).push(p); });
+    for(let x = x0; x <= x1; x++) for(let y = y0; y <= y1; y++){ const k = plKey(x, y); plPut(k, by[k] || []); }
+  }
+  function plViewTiles(){
+    const b = map.getBounds(), a = plTileOf(b.getNorth(), b.getWest()), z = plTileOf(b.getSouth(), b.getEast()), out = [];
+    for(let x = a.x; x <= z.x; x++) for(let y = a.y; y <= z.y; y++) out.push({ x, y, key:plKey(x, y) });
+    return out;
+  }
+  // o que buscar agora: 1) a tela (os blocos mais perto do centro primeiro); 2) em segundo plano, o entorno dos tokens e do centro,
+  // para o ícone já estar pronto quando alguém aproximar
+  function plNextJob(){
+    const z = map.getZoom(), c = map.getCenter(), ct = plTileOf(c.lat, c.lng), dist = t => Math.hypot(t.x - ct.x, t.y - ct.y);
+    if(z >= PLACE_ZOOM){
+      const v = plViewTiles();
+      if(v.length <= PLACE_MAX_TILES){
+        const m = v.filter(t => !plGet(t.key) && !plCool(t.key)).sort((a, b) => dist(a) - dist(b)).slice(0, PLACE_CHUNK);
+        if(m.length) return { fg:true, tiles:m };
+      }
+    }
+    const foci = [], add = k => { if(!foci.some(f => f.x === k.x && f.y === k.y)) foci.push(k); };
+    tokens.forEach(t => { if(!t.containerId && isFinite(t.lat) && isFinite(t.lng)) add(plTileOf(t.lat, t.lng)); });
+    if(z === PLACE_ZOOM - 1) add(ct);   // um nível antes do zoom de cidade: o centro também já fica pronto
+    for(const f of foci.slice(0, 4)){
+      const m = [];
+      for(let dx = -1; dx <= 1; dx++) for(let dy = -1; dy <= 1; dy++){ const t = { x:f.x + dx, y:f.y + dy, key:plKey(f.x + dx, f.y + dy) }; if(!plGet(t.key) && !plCool(t.key)) m.push(t); }
+      if(m.length) return { fg:false, tiles:m };
+    }
+    return null;
+  }
   async function plPump(){
     if(pl.busy) return; pl.busy = true;
     try{
-      for(;;){
-        if(!placesEnabled() || map.getZoom() < PLACE_ZOOM) break;
-        const need = plNeed().filter(t => !plGet(t.key) && !(pl.fail[t.key] && Date.now() - pl.fail[t.key] < 60000));
-        if(!need.length) break;
-        const t = need[0]; plSay('Carregando lugares…');
+      for(let n = 0; n < 10; n++){
+        if(!placesEnabled()) break;
+        const job = plNextJob(); if(!job) break;
+        const ctl = new AbortController(); pl.cur = { fg:job.fg, ctl, tiles:job.tiles };
+        if(job.fg){
+          pl.t0 = Date.now(); clearInterval(pl.tick);
+          pl.tick = setInterval(() => { if(pl.t0 && map.getZoom() >= PLACE_ZOOM && pl.status.indexOf('Carregando') === 0) plSay(plLoadingText()); }, 1000);
+          plSay(plLoadingText());
+        }
         try{
-          const list = plParse(await plOverpass(plTileBox(t.x, t.y)));
-          const rec = { ts:Date.now(), list };
-          pl.tiles[t.key] = rec;
-          try{ localStorage.setItem('tv-poi:' + t.key, JSON.stringify(rec)); }catch(e){}
+          await plFetchTiles(job.tiles, ctl.signal);
+          pl.retries = 0; pl.err = null; pl.cur = null; pl.t0 = null; clearInterval(pl.tick);
           plDraw();
-        }catch(e){ pl.fail[t.key] = Date.now(); console.warn('Lugares reais: falha na consulta', e); }
+        }catch(e){
+          pl.cur = null; pl.t0 = null; clearInterval(pl.tick);
+          if(e && e.cancelled) continue;   // mudou de área no meio do caminho: recalcula o que falta
+          job.tiles.forEach(t => { pl.fail[t.key] = Date.now(); });
+          pl.err = e && e.diag ? e.diag : [{ m:'', why:String((e && e.message) || e) }];
+          console.warn('Lugares reais: falha na consulta', JSON.stringify(pl.err));
+          if(job.fg) plRetryLater();
+          plDraw();
+        }
       }
-    } finally { pl.busy = false; }
+    } finally { pl.busy = false; pl.cur = null; pl.t0 = null; clearInterval(pl.tick); }
     plDraw();
   }
-  function plNeed(){
-    const b = map.getBounds(), a = plTileOf(b.getNorth(), b.getWest()), z = plTileOf(b.getSouth(), b.getEast()), out = [];
-    for(let x = a.x; x <= z.x; x++) for(let y = a.y; y <= z.y; y++) out.push({ x, y, key:PLACE_ZOOM + '/' + x + '/' + y });
-    return out;
+  // tenta sozinho de novo (8 s, 20 s, 45 s) quando a tela atual ficou sem dados; depois disso, toque no aviso
+  function plRetryLater(){
+    clearTimeout(pl.retryTimer);
+    if(pl.retries >= 3) return;
+    const wait = [8000, 20000, 45000][pl.retries++];
+    pl.retryTimer = setTimeout(() => { pl.fail = {}; placesRefresh(); }, wait);
   }
+  function plRetryNow(){ clearTimeout(pl.retryTimer); pl.retries = 0; pl.fail = {}; pl.err = null; placesRefresh(); }
+  function plWarmSoon(){ if(!hudReady || !placesEnabled()) return; clearTimeout(pl.warmTimer); pl.warmTimer = setTimeout(plPump, 1200); }
+  // teste de conexão (mestre, na configuração): mostra qual servidor responde e em quanto tempo
+  async function plTest(){
+    const out = document.getElementById('pl-test-out'); if(!out) return;
+    const c = map.getCenter(), q = '[out:json][timeout:10];node["amenity"](around:1500,' + c.lat.toFixed(4) + ',' + c.lng.toFixed(4) + ');out count;';
+    out.textContent = 'Testando…';
+    const lines = await Promise.all(PLACE_API.map(async m => {
+      const ctl = new AbortController(), t0 = Date.now(), tm = setTimeout(() => ctl.abort(), 12000);
+      let res;
+      try{
+        const r = await fetch(m.url, { method:'POST', body:'data=' + encodeURIComponent(q), headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, signal:ctl.signal });
+        if(!r.ok) res = 'erro HTTP ' + r.status;
+        else{ const j = await r.json(); res = j && j.remark && /error|timed out/i.test(String(j.remark)) ? 'servidor ocupado' : 'ok'; }
+      }catch(e){ res = ctl.signal.aborted ? 'sem resposta em 12 s' : 'sem rede ou bloqueado'; }
+      clearTimeout(tm);
+      return m.name + ': ' + res + ' (' + ((Date.now() - t0) / 1000).toFixed(1).replace('.', ',') + ' s)';
+    }));
+    let blocos = 0; try{ for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && k.indexOf(PLACE_LS) === 0) blocos++; } }catch(e){}
+    out.textContent = lines.join('\n') + '\nBlocos de mapa guardados neste aparelho: ' + blocos;
+  }
+
+  // ---- desenho ----
   function placesEnabled(){ return !!cfg().modules.places; }
   function plClear(){ Object.keys(pl.markers).forEach(k => { placesLayer.removeLayer(pl.markers[k]); delete pl.markers[k]; }); pl.total = 0; }
   function plIcon(p){
@@ -7437,10 +7683,10 @@
     el.querySelector('.pl-go').addEventListener('click', e => { e.currentTarget.disabled = true; map.closePopup(); placeExplore(p); });
     return el;
   }
-  // visíveis agora: dentro da tela, categoria ligada, sem pin ainda, e (modo "perto") junto de algum token
-  function plVisible(){
-    const c = cfg().places, b = map.getBounds(), have = new Set(pins.filter(x => x.osm).map(x => x.osm)), out = [], seen = new Set();
-    plNeed().forEach(t => {
+  // visíveis agora: dentro da tela, categoria ligada, sem pin ainda, e (modo "perto") junto de algum token; os mais perto do centro primeiro
+  function plVisible(view){
+    const c = cfg().places, b = map.getBounds(), ct = map.getCenter(), have = new Set(pins.filter(x => x.osm).map(x => x.osm)), out = [], seen = new Set();
+    view.forEach(t => {
       const rec = plGet(t.key); if(!rec) return;
       rec.list.forEach(p => {
         if(seen.has(p.k) || have.has(p.k) || c.cats[p.cat] === false || !b.contains([p.lat, p.lng])) return;
@@ -7448,13 +7694,16 @@
         seen.add(p.k); out.push(p);
       });
     });
+    if(out.length > 300){ const d = p => (p.lat - ct.lat) * (p.lat - ct.lat) + (p.lng - ct.lng) * (p.lng - ct.lng); out.sort((a, b2) => d(a) - d(b2)); }
     return out.slice(0, 300);
   }
   function plDraw(){
     if(!hudReady) return;
     const on = placesEnabled() && map.getZoom() >= PLACE_ZOOM;
     if(!on){ plClear(); mapfRender(); return; }
-    const vis = plVisible(), want = new Set(vis.map(p => p.k));
+    const view = plViewTiles();
+    if(view.length > PLACE_MAX_TILES){ plClear(); plSay('Área grande demais. Aproxime o mapa.'); mapfRender(); return; }
+    const vis = plVisible(view), want = new Set(vis.map(p => p.k));
     Object.keys(pl.markers).forEach(k => { if(!want.has(k)){ placesLayer.removeLayer(pl.markers[k]); delete pl.markers[k]; } });
     vis.forEach(p => {
       if(pl.markers[p.k]) return;
@@ -7463,23 +7712,31 @@
       m.addTo(placesLayer); pl.markers[p.k] = m;
     });
     pl.total = vis.length;
-    const pend = plNeed().some(t => !plGet(t.key) && !(pl.fail[t.key] && Date.now() - pl.fail[t.key] < 60000));
-    const failed = plNeed().some(t => !plGet(t.key) && pl.fail[t.key]);
-    if(pend || pl.busy) plSay('Carregando lugares…');
-    else if(failed && !vis.length) plSay('Sem conexão com o OpenStreetMap. Tentarei de novo ao mover o mapa.');
-    else plSay(vis.length ? vis.length + (vis.length === 1 ? ' lugar para explorar nesta área' : ' lugares para explorar nesta área') : 'Nenhum lugar encontrado nesta área.');
+    const missing = view.filter(t => !plGet(t.key));
+    const loading = pl.t0 != null || missing.some(t => !pl.fail[t.key]);
+    const cnt = vis.length ? vis.length + (vis.length === 1 ? ' lugar para explorar nesta área' : ' lugares para explorar nesta área') : 'Nenhum lugar encontrado nesta área.';
+    if(loading) plSay(plLoadingText());
+    else if(missing.length) plSay((vis.length ? vis.length + (vis.length === 1 ? ' lugar' : ' lugares') + ' (parte da área sem dados). ' : '') + plWhy() + ' Toque para tentar de novo.', true);
+    else plSay(cnt);
     mapfRender();
   }
   function placesRefresh(){
     if(!hudReady) return;
     const on = placesEnabled(), chip = document.querySelector('[data-mf="lugares"]');
     if(chip) chip.hidden = !on;
-    if(!on){ plClear(); plSay(''); return; }
-    if(map.getZoom() < PLACE_ZOOM){ plClear(); plSay('Aproxime o mapa para ver lugares reais (zoom ' + PLACE_ZOOM + ' ou mais).'); return; }
-    if(plNeed().length > PLACE_MAX_TILES){ plClear(); plSay('Área grande demais. Aproxime o mapa.'); return; }
-    plDraw(); plPump();
+    if(!on){ plClear(); plSay(''); clearTimeout(pl.retryTimer); if(pl.cur) pl.cur.ctl.abort(); return; }
+    const z = map.getZoom(), big = z >= PLACE_ZOOM && plViewTiles().length > PLACE_MAX_TILES;
+    if(z < PLACE_ZOOM){ plClear(); plSay('Aproxime o mapa para ver lugares reais (zoom ' + PLACE_ZOOM + ' ou mais).'); }
+    else if(big){ plClear(); plSay('Área grande demais. Aproxime o mapa.'); }
+    else plDraw();
+    // a tela atual passa na frente: cancela a busca antecipada, ou a de uma área que já saiu da tela
+    if(pl.cur){
+      const v = new Set(plViewTiles().map(t => t.key)), nj = (z >= PLACE_ZOOM && !big) ? plNextJob() : null;
+      if(pl.cur.fg ? !pl.cur.tiles.some(t => v.has(t.key)) : !!(nj && nj.fg)) pl.cur.ctl.abort();
+    }
+    plPump();
   }
-  function placesLater(){ clearTimeout(pl.timer); pl.timer = setTimeout(placesRefresh, 450); }
+  function placesLater(){ clearTimeout(pl.timer); pl.timer = setTimeout(placesRefresh, 250); }
   // O lugar vira um pin comum no primeiro "Vasculhar": a partir daí tudo (contêiner, estado, histórico) é o do app.
   async function placeExplore(p){
     const c = PLACE_CATS.find(x => x.id === p.cat), id = 'osm_' + p.k;
@@ -7507,8 +7764,13 @@
     document.querySelectorAll('[data-ic]').forEach(e => { e.innerHTML = ic(e.dataset.ic, +e.dataset.icSize || 16); });   // ícones das partes estáticas do HTML
     hudLoadPrefs(); mapfLoad();
     hudReady = true;
+    plPurge();
     mapfApply();
     map.on('moveend', placesLater); placesRefresh();
+    { const ps = hudEl('pl-status'); if(ps){ ps.addEventListener('click', () => { if(ps.classList.contains('pl-retry')) plRetryNow(); }); ps.addEventListener('keydown', e => { if((e.key === 'Enter' || e.key === ' ') && ps.classList.contains('pl-retry')){ e.preventDefault(); plRetryNow(); } }); } }
+    map.on('zoomend', clusterUpdate); clusterSync();
+    const ctg = document.getElementById('cluster-toggle'); if(ctg) ctg.addEventListener('click', () => clusterSetOn(!cl.on));
+    clusterUpdate();
     map.on('click', () => { hudCloseSheets(); if(!hudCol() && hud.feed.sheet) hudFeedOpen(false); });
     hudRenderIndex(); hudFeedLayout(); hudDockSync();
     // o mapa recalcula o tamanho quando as colunas do desktop abrem ou fecham
