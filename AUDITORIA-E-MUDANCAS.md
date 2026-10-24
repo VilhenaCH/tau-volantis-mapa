@@ -196,7 +196,7 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 - Na folha **Rolar** há "Atributo desta rolagem": vale só para aquela folha aberta (não altera a ficha) e volta ao padrão ao fechar.
 - Condições seguem o atributo escolhido (ex.: Debilitado pesa em AGI/FOR/VIG, não em INT).
 - Interpretações: ataques usam o mesmo critério (atributo do ataque define os dados); o crítico vale para o d20 que **ficou**; limite de 20 dados.
-- Cache: `app.js?v=f8` / `style.css?v=f8` — nas próximas atualizações troque `f8` por outro texto.
+- Cache: `app.js?v=f9` / `style.css?v=f9` — nas próximas atualizações troque `f9` por outro texto.
 
 ## 19. Painel do personagem recolhível (tela larga)
 - A mini-ficha da esquerda ganhou um botão X (recolher). Recolhida, o mapa ocupa a largura toda e aparece uma aba com o ícone de personagem na borda esquerda para reabrir. A escolha é lembrada por campanha neste aparelho. Em telas estreitas o painel não existe (como antes). O feed da direita já era recolhível.
@@ -247,3 +247,45 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 - **Guardado no aparelho.** Passou de `tv-poi:` para `tv-poi2:` (com validade por bloco). Ao abrir o app o guardado antigo e o vencido são apagados (o antigo podia ter gravado "área vazia" por engano); se faltar espaço, apaga os mais velhos.
 
 **O que continua sem teste de verdade.** O teste de conexão e o aviso foram feitos para você me contar o que aparece no seu celular. Se o OpenStreetMap estiver bloqueado na sua rede ou os três servidores estiverem fora do ar, nada resolve no app: aí o aviso mostra isso. Relações do OpenStreetMap (prédios cadastrados como relação, raros) não entram mais.
+
+## 23. Catálogo ampliado: 1.200 itens com texto próprio e ficha de jogo
+**O que mudou.** O catálogo passou de 940 para **1.200 itens** (os 260 novos vêm da sua lista) e **todo item ganhou texto novo e ficha**. Os 940 antigos mantêm **id, nome, categoria, locais, calibre e `fish`** (um teste compara item por item), então inventários, receitas e registros salvos continuam apontando para o mesmo item. Os novos têm ids 941 a 1200, na ordem da sua lista. Categorias novas: **Higiene e Itens Pessoais** e **Lazer e Itens Pessoais**.
+
+**Textos.** Os 1.200 são diferentes entre si (90 a 235 caracteres). Cada um diz o que o item é e em que estado está, para que serve na prática e o limite ou risco (estraga, quebra, esquenta, faz barulho). Itens de lore e anômalos terminam com um gancho para o mestre ("Pista:" ou "Risco:"), sem inventar regra. Nada de frase-modelo ("componente essencial para…"). Os textos antigos não foram aproveitados.
+
+**Ficha de cada item** (tudo opcional e só informativo; **nenhum número é aplicado sozinho**):
+- **Volume** 0 a 4 (espaço que ocupa: 0 = bilhete ou comprimido, 1 = mão cheia, 2 = volumoso, 3 = muito volumoso, 4 = enorme).
+- **Raridade** comum, incomum ou raro. Agora pesa no sorteio do saque (veja abaixo).
+- **Capacidades** (as "tags", 66 no total, no estilo Zomboid/Rust): o que o item faz ou é, como Corta, Acende fogo, Filtra água, Ilumina, Remédio, Isolante, Escambo, Anômalo, Pista; e o material (Metal, Madeira, Tecido…).
+- **Efeito sugerido nas necessidades** (só comida, bebida, remédio, higiene, lazer, estimulante, álcool): "Alivia fome 2", "Agrava sede 1"… 263 itens têm.
+- **Cura** em dado (1d4, 1d6, 2d6, 2d8): 15 itens (curativos, ataduras, suturas, kits, antibióticos fortes).
+- **Estraga em ~N dias** (101 itens perecíveis; conservas e secos não têm).
+- **Isolamento** 0 a 4 e **Proteção** 0 a 3 (roupas e proteção).
+- **Dano, crítico, alcance e tipo** sugeridos em 96 armas (todas as armas de fogo e brancas, mais ferramentas que viram arma: machado, marreta, pé de cabra, martelo, foice grande, garfo de feno etc.).
+- Novos calibres: `.223` e `.45 ACP` (o app já avisa "nenhuma arma catalogada usa esse calibre" para munição sem arma par).
+
+**Onde aparece.** Cartas do saque (e embed do Discord, no campo "Ficha"), pesca, tabela completa, inventário (linha e "Inspecionar"). Na **tabela completa** há um novo filtro **Qualquer capacidade** (Capacidades e Materiais) e a busca agora olha nome, tipo, capacidades e texto ("acende fogo", "congelado", "hipotermia").
+
+**Raridade no sorteio.** Peso por item: comum = 10, incomum = 5,5, raro = 2,2. Armas de fogo, munição e anômalos já eram raros por tipo e local; para eles o campo só reduz mais um pouco (×0,75 incomum, ×0,45 raro). O selo Comum/Incomum/Raro da carta é o mais raro entre o do tipo e o do item. Distribuição do catálogo: 62% comum, 32% incomum, 6% raro.
+
+**O que o mestre pode ligar (tudo desligado por padrão).**
+1. **Efeito sugerido ao Usar.** Com o módulo **Necessidades** ligado, em token que você pode editar, o painel Usar mostra "Aplicar à ficha o efeito sugerido: Fome −2". A caixa **começa desmarcada**. Marcada, sobe ou desce as necessidades (0 a 4) e escreve no registro "Necessidades: Fome −2" (dentro da observação, máx. 140 caracteres). NPCs e contêineres não têm ficha, então não mostram a opção.
+2. **Carga por volume.** Configuração da campanha → Inventário → **Carga por peso** → caixa **Usar o volume de cada item**. Volume 0 conta 0,25; 1 conta 1; 2 conta 2; 3 conta 3; 4 conta 4. O padrão de 20 de capacidade continua servindo.
+3. **Receitas de exemplo.** O botão de exemplos da aba Ofício agora cria **29 receitas** (as 4 antigas + 25 novas, estilo Rust: tala de bambu, tocha de resina, forninho de lata, arapuca, rede de dormir, tijolo de adobe, colete de couro cru…), 7 delas com ferramenta. Apertar de novo **não duplica** (confere pelo nome).
+
+**Ícones.** As 2 categorias novas têm ícone, e 13 regras extras reconhecem nomes novos (guia, manual, aveia, salame, pipoca, colchonete, toldo, megafone, balaclava…). Os outros ~100 itens novos usam o ícone da categoria.
+
+**PDF.** `catalogo-1200-itens-tau-volantis-v2.pdf` (113 páginas) traz os 1.200 itens na **ordem e numeração da sua lista**, com texto, ficha, capacidades e locais de saque. Itens novos têm a marca NOVO.
+
+**Como foi escrito e conferido.** Os textos e fichas saíram em 35 lotes, cada um validado por script (campos, faixas, tags do vocabulário, dados válidos, repetição de começos e de frases, texto parecido, armas completas, calibre dos novos, distribuição de raridade). Depois li uma amostra de cerca de 120 itens de todas as categorias e corrigi o que vi. **Não li os 1.200 um por um**: o script garante forma e variedade, não gosto nem exatidão. Se algum texto ou número não servir, me diga o nome do item.
+
+**O que NÃO foi verificado — leia antes de jogar.**
+- Os números de **arma, cura, isolamento e efeito** são palpites coerentes com o modelo, **sem teste de equilíbrio em mesa**. A mesa decide.
+- **Capacidade de mochila** (bônus de espaços ao equipar) **não foi feita**: mochilas só têm texto, volume e tags. Fica para uma próxima etapa se você quiser.
+- **Fabricação:** a receita só aceita **uma ferramenta** por vez e não "desmonta" itens. As capacidades (tags) já estão no catálogo para uma próxima versão escolher a ferramenta por função.
+- Itens que valem como arma mas ficam em Ferramentas só têm números de arma na lista acima; outros (ex.: tesoura, serrote) não.
+- O texto de "Necessidades:" no registro vai no campo de observação que já existia; as regras sugeridas (v1 a v3) não validam os campos do registro, então não deve ser barrado, mas com o Firebase de verdade **não testei** a gravação (nos testes o banco é simulado).
+- Tradução de gosto: alguns remédios comuns (ex.: antiácido) têm efeito sugerido discutível; é só sugestão.
+
+**Para mexer num item.** Os dados ficam em `index.html`, no bloco `loot-data`, numa linha só. É difícil de editar no celular; peça a mudança pelo nome do item.
+

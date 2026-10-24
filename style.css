@@ -1967,3 +1967,15 @@ body:has(.app-popover.open) #feed-chip{ visibility:hidden; }
 #pl-status.pl-retry::before{ content:""; position:absolute; left:0; right:0; top:-10px; bottom:-10px; }   /* alvo de toque de 44px */
 #pl-status.pl-retry:focus-visible{ outline:2px solid var(--frost); outline-offset:2px; }
 .pl-test-out{ white-space:pre-line; min-height:1.2em; }
+
+/* ===== catálogo ampliado: ficha do item (volume, capacidades, efeitos sugeridos, validade, dano) ===== */
+.item-facts{ display:flex; flex-wrap:wrap; gap:0.25rem; margin:0.4rem 0 0.1rem; }
+.fact{ font-family:'Space Mono',monospace; font-size:0.58rem; line-height:1.35; letter-spacing:0.02em; padding:0.1rem 0.45rem; border:1px solid var(--line); border-radius:var(--r-pill); color:var(--ink-dim); background:rgba(143,215,232,0.04); }
+.fact-vol{ color:var(--ice-300); border-color:var(--ice-500); white-space:nowrap; }
+.fact-weapon{ color:var(--hazard); border-color:#5a2c1c; }
+.fact-good{ color:var(--safe); border-color:#3f6a49; white-space:nowrap; }
+.fact-bad{ color:#d9c07f; border-color:#7a6a3a; white-space:nowrap; }
+.fact-iso{ color:var(--frost); border-color:var(--ice-500); white-space:nowrap; }
+.fact-tag{ color:var(--ink); white-space:nowrap; }
+.fact-mat{ font-style:italic; }
+#saque-drawer .filter-row select{ max-width:100%; }

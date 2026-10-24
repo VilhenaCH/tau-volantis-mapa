@@ -2472,8 +2472,16 @@
   // Ícones de verdade (game-icons.net, CC BY 3.0), vindos de tv-icons.js. Nome
   // reconhecível → ícone específico; o resto usa o ícone do tipo do item.
   const GI = window.TV_ICONS || {};
-  const CAT_ICONS = window.TV_CAT_ICONS || {};
-  const ICON_RULES = (window.TV_ICON_RULES || []).map(r => [new RegExp(r[0]), r[1]]);
+  // categorias novas do catálogo ampliado ganham ícone aqui; as regras extras só valem para nomes que as de tv-icons.js não reconhecem
+  const CAT_ICONS = Object.assign({ 'Higiene e Itens Pessoais':'rolled-cloth', 'Lazer e Itens Pessoais':'book-pile' }, window.TV_CAT_ICONS || {});
+  const EXTRA_ICON_RULES = [
+    ['\\b(guia|manual|cartilha|revista)\\b', 'book-pile'], ['\\b(calendario|recibo)\\b', 'notebook'],
+    ['\\b(aveia|lentilha|granola|castanhas?|grao-de-bico)\\b', 'bowl-of-rice'], ['\\bpipoca\\b', 'corn'], ['\\bsalame\\b', 'sausage'],
+    ['\\bpasta de amendoim\\b', 'honey-jar'], ['\\b(colchonete|forro termico)\\b', 'sleeping-bag'], ['\\btoldo\\b', 'camping-tent'],
+    ['\\bmegafone\\b', 'aerial-signal'], ['\\bcarregador portatil\\b', 'battery-75'], ['\\bbalaclava\\b', 'hood'],
+    ['\\bmacacao\\b', 'hoodie'], ['\\btoalha\\b', 'rolled-cloth']
+  ];
+  const ICON_RULES = (window.TV_ICON_RULES || []).concat(EXTRA_ICON_RULES.filter(r => GI[r[1]])).map(r => [new RegExp(r[0]), r[1]]);
   const ICON_CACHE = {};
   function normName(s){ return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
   function itemIconName(item){
@@ -2509,6 +2517,46 @@
     }
     return '';
   }
+
+  // ---------- ficha do item: volume, capacidades, efeitos sugeridos, validade, isolamento, dano ----------
+  // Todos os campos são opcionais e só informam: nenhum número é aplicado sozinho (a mesa decide).
+  const TAG_LABELS = { corte:'Corta', perfurar:'Fura', martelar:'Martela', serrar:'Serra', escavar:'Escava', alavanca:'Alavanca', arrombar:'Arromba', aperto:'Aperta e solta',
+    solda:'Solda', fogo:'Acende fogo', calor:'Dá calor', cozinhar:'Cozinha', luz:'Ilumina', sinalizar:'Sinaliza', filtrar:'Filtra água', recipiente:'Guarda líquido',
+    carregar:'Carrega', amarrar:'Amarra', costurar:'Costura', reparo:'Reparo', energia:'Energia', combustivel:'Combustível', inflamavel:'Inflamável', explosivo:'Explosivo',
+    comunicar:'Comunica', orientar:'Orienta', observar:'Observa', registrar:'Registra', pescar:'Pesca', cacar:'Caça', armadilha:'Armadilha', cultivo:'Cultivo',
+    curativo:'Trata ferida', desinfetar:'Desinfeta', medicamento:'Remédio', imobilizar:'Imobiliza', toxico:'Tóxico', isolante:'Isolante', impermeavel:'Impermeável',
+    protecao:'Proteção', abrigo:'Abrigo', barricada:'Barricada', comestivel:'Comida', bebivel:'Bebida', perecivel:'Estraga', enlatado:'Conserva', cru:'Cru',
+    alcoolico:'Alcoólico', estimulante:'Estimulante', arma:'Arma', municao:'Munição', anomalo:'Anômalo', pista:'Pista', valioso:'Escambo', conforto:'Conforto',
+    veiculo:'Veículo', material:'Material', madeira:'Madeira', metal:'Metal', tecido:'Tecido', couro:'Couro', plastico:'Plástico', vidro:'Vidro', borracha:'Borracha',
+    papel:'Papel', eletronico:'Eletrônico' };
+  const MATERIAL_TAGS = ['madeira','metal','tecido','couro','plastico','vidro','borracha','papel','eletronico'];
+  const FACT_HIDE_TAGS = ['arma','perecivel','municao','anomalo','comestivel','bebivel'];
+  const NEED_WORD = { fome:'fome', sede:'sede', fadiga:'fadiga', exposicao:'exposição', estresse:'estresse', ferimentos:'ferimentos' };
+  function tagLabel(t){ return TAG_LABELS[t] || t; }
+  function itemFactParts(item, o){
+    const out = [];
+    if(!item) return out;
+    const full = !!(o && o.full);
+    if(typeof item.esp === 'number') out.push({ t:item.esp === 0 ? 'Sem volume' : 'Volume ' + item.esp, c:'vol', h:'Espaço que ocupa, de 0 a 4' });
+    if(item.dano) out.push({ t:'Dano ' + item.dano + ' · ' + (item.crit || '20/x2') + ' · ' + (item.alc || 'corpo a corpo') + (item.dtipo ? ' · ' + item.dtipo : ''), c:'weapon', h:'Números sugeridos; a mesa ajusta' });
+    if(item.cura) out.push({ t:'Cura ~' + item.cura + ' PV', c:'good', h:'Sugestão; a mesa decide' });
+    if(item.fx) Object.keys(item.fx).forEach(k => {
+      const v = item.fx[k];
+      if(v && NEED_WORD[k]) out.push({ t:(v < 0 ? 'Alivia ' : 'Agrava ') + NEED_WORD[k] + ' ' + Math.abs(v), c:v < 0 ? 'good' : 'bad', h:'Sugestão; a mesa decide' });
+    });
+    if(item.iso > 0) out.push({ t:'Isolamento ' + item.iso + '/4', c:'iso', h:'Quanto segura o calor do corpo' });
+    if(item.prot > 0) out.push({ t:'Proteção ' + item.prot + '/3', c:'iso', h:'Proteção contra dano físico' });
+    if(item.perece) out.push({ t:'Estraga em ~' + item.perece + (item.perece === 1 ? ' dia' : ' dias'), c:'bad', h:'Sem conservar' });
+    const tags = item.tags || [];
+    tags.filter(t => !FACT_HIDE_TAGS.includes(t) && !MATERIAL_TAGS.includes(t)).slice(0, full ? 6 : 4).forEach(t => out.push({ t:tagLabel(t), c:'tag' }));
+    if(full){ const m = tags.filter(t => MATERIAL_TAGS.includes(t)); if(m.length) out.push({ t:m.map(tagLabel).join(', '), c:'mat', h:'Material' }); }
+    return out;
+  }
+  function itemFactsHtml(item, o){
+    const p = itemFactParts(item, o);
+    return p.length ? `<div class="item-facts">${p.map(x => `<span class="fact fact-${x.c}"${x.h ? ` title="${escapeHtml(x.h)}"` : ''}>${escapeHtml(x.t)}</span>`).join('')}</div>` : '';
+  }
+  function itemFactsText(item){ return itemFactParts(item, {}).filter(x => x.c !== 'tag').map(x => x.t).join(' · '); }
 
   function buildSaqueLocGrid(container, keys, extraClass){
     keys.forEach(key => {
@@ -2579,7 +2627,7 @@
 
   // Armas de fogo e munição são de posse civil muito restrita no Brasil, então
   // ficam raras fora de bases militares ou do fundo do mato. Itens anômalos também são incomuns.
-  function getWeight(item, locKey){
+  function baseWeight(item, locKey){
     if (item.category === "Armas de Fogo" || item.category === "Munição") {
       return locKey === "bases" ? 6 : (RURAL_LOCS.includes(locKey) ? 2 : 1);
     }
@@ -2588,10 +2636,19 @@
     }
     return 10;
   }
+  // `rar` (1 comum, 2 incomum, 3 raro) vem do catálogo ampliado e só reduz o peso: o que já era raro por categoria continua raro
+  function getWeight(item, locKey){
+    const w = baseWeight(item, locKey);
+    if (item.rar === 3) return w * (w < 10 ? 0.45 : 0.22);
+    if (item.rar === 2) return w * (w < 10 ? 0.75 : 0.55);
+    return w;
+  }
   function rarityInfo(item, locKey){
-    const w = getWeight(item, locKey);
-    if (w <= 1) return {label:"Raro", cls:"rarity-raro"};
-    if (w <= 3) return {label:"Incomum", cls:"rarity-incomum"};
+    const w = baseWeight(item, locKey);
+    let lvl = w <= 1 ? 3 : (w <= 3 ? 2 : 1);
+    if (item.rar === 2 || item.rar === 3) lvl = Math.max(lvl, item.rar);
+    if (lvl === 3) return {label:"Raro", cls:"rarity-raro"};
+    if (lvl === 2) return {label:"Incomum", cls:"rarity-incomum"};
     return {label:"Comum", cls:"rarity-comum"};
   }
   function weightedPick(pool, locKey){
@@ -2770,6 +2827,7 @@
           <div class="result-name">${iconHtml(item)}${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span></div>
           <span class="result-cat">${item.category}</span>
           <div class="result-utility"><b>Utilidade:</b> ${item.utility}</div>
+          ${itemFactsHtml(item)}
           ${compatLine(item)}`;
         row.appendChild(buildItemDecision(entry, i, its.length === 1));
         box.appendChild(row);
@@ -2845,7 +2903,7 @@
         const item = its[0], rarity = rarityInfo(item, locKey);
         payload = { username: "Tau Volantis — Registro de Saque", embeds: [{ title: item.name, description: item.utility,
           color: anyAnom ? 0xd3572a : 0x3d6c8a,
-          fields: [base[0], { name: "Categoria", value: item.category, inline: true }, { name: "Raridade", value: rarity.label, inline: true }].concat(base.slice(1)),
+          fields: [base[0], { name: "Categoria", value: item.category, inline: true }, { name: "Raridade", value: rarity.label, inline: true }].concat(base.slice(1)).concat(itemFactsText(item) ? [{ name: "Ficha", value: itemFactsText(item).slice(0, 1024) }] : []),
           footer: { text: "Tau Volantis: Ano 0" }, timestamp: new Date().toISOString() }] };
       } else {
         payload = { username: "Tau Volantis — Registro de Saque", embeds: [{
@@ -2854,7 +2912,7 @@
           color: anyAnom ? 0xd3572a : 0x3d6c8a,
           fields: base.concat(its.map(item => ({
             name: item.name.slice(0, 256),
-            value: `${item.category} · ${rarityInfo(item, locKey).label}\n${item.utility}`.slice(0, 1024)
+            value: `${item.category} · ${rarityInfo(item, locKey).label}\n${item.utility}${itemFactsText(item) ? '\n' + itemFactsText(item) : ''}`.slice(0, 1024)
           }))).slice(0, 25),
           footer: { text: "Tau Volantis: Ano 0" }, timestamp: new Date().toISOString() }] };
       }
@@ -2930,6 +2988,7 @@
         </div>
         <div class="fish-name">${isNothing ? '<span class="item-icon" aria-hidden="true">' + svgIcon('hole') + '</span>Nada fisgou a isca desta vez' : iconHtml(entry.item) + entry.item.name}</div>
         <div class="fish-desc">${isNothing ? 'A linha voltou vazia. Vale tentar de novo em outro ponto do rio.' : entry.item.utility}</div>
+        ${isNothing ? '' : itemFactsHtml(entry.item)}
         ${coordHtml(entry)}
         <div class="send-row">
           <button class="send-btn" data-action="send">Enviar ao Discord</button>
@@ -2959,8 +3018,9 @@
   const CATEGORY_ORDER = ['Comida','Bebidas','Itens Médicos','Armas de Fogo','Armas Brancas e Improvisadas','Munição','Ferramentas','Ferramentas Agrícolas',
     'Roupas e Proteção contra Frio','Mochilas e Contêineres','Componentes e Materiais de Crafting','Peças de Veículos','Eletrônicos e Comunicação',
     'Combustível e Aquecimento','Iluminação','Acampamento e Utilidades','Abrigo Rural e Construção','Floresta e Caça','Pesca e Rio',
-    'Animais e Produtos de Fazenda','Plantas, Ervas e Cultivos','Documentos e Itens de Lore','Itens Anômalos e Paranormais'];
+    'Animais e Produtos de Fazenda','Plantas, Ervas e Cultivos','Higiene e Itens Pessoais','Lazer e Itens Pessoais','Documentos e Itens de Lore','Itens Anômalos e Paranormais'];
   const itemFilterCat = document.getElementById('item-filter-cat');
+  const itemFilterTag = document.getElementById('item-filter-tag');
   const collapsedCats = new Set();
   (function(){
     const cats = Array.from(new Set(ITEMS.map(i => i.category)));
@@ -2976,6 +3036,24 @@
     });
   })();
 
+  // filtro por capacidade (tags do catálogo): capacidades primeiro, materiais depois
+  (function(){
+    if(!itemFilterTag) return;
+    const cnt = {};
+    ITEMS.forEach(i => (i.tags || []).forEach(t => { cnt[t] = (cnt[t] || 0) + 1; }));
+    const mk = list => list.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(tagLabel(t))} (${cnt[t]})</option>`).join('');
+    const byLabel = (a, b) => tagLabel(a).localeCompare(tagLabel(b), 'pt-BR');
+    const keys = Object.keys(cnt);
+    itemFilterTag.insertAdjacentHTML('beforeend',
+      '<optgroup label="Capacidades">' + mk(keys.filter(t => !MATERIAL_TAGS.includes(t)).sort(byLabel)) + '</optgroup>' +
+      '<optgroup label="Materiais">' + mk(keys.filter(t => MATERIAL_TAGS.includes(t)).sort(byLabel)) + '</optgroup>');
+  })();
+  const ITEM_SEARCH = new Map();
+  function itemSearchText(i){
+    let t = ITEM_SEARCH.get(i.id);
+    if(t == null){ t = normName([i.name, i.category, (i.tags || []).map(tagLabel).join(' '), i.utility].join(' ')); ITEM_SEARCH.set(i.id, t); }
+    return t;
+  }
   const itemTbody = document.getElementById('item-table-body');
   function buildItemTable(){
     renderItemTable(ITEMS);
@@ -2987,7 +3065,7 @@
       const ia = CATEGORY_ORDER.indexOf(a), ib = CATEGORY_ORDER.indexOf(b);
       return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
     });
-    const searching = itemSearchInput.value.trim() !== '' || itemFilterCat.value !== '';
+    const searching = itemSearchInput.value.trim() !== '' || itemFilterCat.value !== '' || !!(itemFilterTag && itemFilterTag.value !== '');
     itemTbody.innerHTML = cats.map(cat => {
       const closed = !searching && collapsedCats.has(cat);
       const rows = groups[cat].slice().sort((a, b) => a.name.localeCompare(b.name)).map(item => {
@@ -2996,7 +3074,7 @@
         return `
       <tr class="item-row" data-cat="${escapeHtml(cat)}" ${closed ? 'hidden' : ''}>
         <td>${iconHtml(item)}${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span>${compatLine(item)}</td>
-        <td>${item.utility}</td>
+        <td>${item.utility}${itemFactsHtml(item, { full:true })}</td>
         <td><button type="button" class="inv-add-btn" data-id="${item.id}">＋ Inventário</button></td>
       </tr>`;
       }).join('');
@@ -3015,13 +3093,16 @@
   function applyItemFilters(){
     const q = itemSearchInput.value.trim().toLowerCase();
     const cat = itemFilterCat.value;
+    const tg = itemFilterTag ? itemFilterTag.value : '';
     let list = ITEMS;
     if(cat) list = list.filter(i => i.category === cat);
-    if(q) list = list.filter(i => i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
+    if(tg) list = list.filter(i => (i.tags || []).includes(tg));
+    if(q){ const nq = normName(q); list = list.filter(i => itemSearchText(i).includes(nq)); }
     renderItemTable(list);
   }
   itemSearchInput.addEventListener('input', applyItemFilters);
   itemFilterCat.addEventListener('change', applyItemFilters);
+  if(itemFilterTag) itemFilterTag.addEventListener('change', applyItemFilters);
 
   // ---------- abrir/fechar a gaveta ----------
   const saqueDrawer = document.getElementById('saque-drawer');
@@ -3051,7 +3132,7 @@
   // ou os dois acontecem, ou nenhum. O registro só recebe entradas novas.
   const ITEMS_BY_ID = {};
   ITEMS.forEach(i => { ITEMS_BY_ID[i.id] = i; });
-  const CONSUMABLE_CATS = new Set(['Comida','Bebidas','Itens Médicos','Munição','Combustível e Aquecimento','Plantas, Ervas e Cultivos']);
+  const CONSUMABLE_CATS = new Set(['Comida','Bebidas','Itens Médicos','Munição','Combustível e Aquecimento','Plantas, Ervas e Cultivos','Higiene e Itens Pessoais']);
   function consumableByDefault(inv){
     const ref = ITEMS_BY_ID[inv.itemId];
     return CONSUMABLE_CATS.has(inv.category) || !!(ref && typeof ref.fish === 'number');
@@ -3144,7 +3225,7 @@
   function simCount(hid, ops){ return Object.keys(stateOf(hid, ops)).length; }
 
   // ---------- itens: pilhas, condição e equipamento ----------
-  const STACKABLE_CATS = new Set(['Comida','Bebidas','Itens Médicos','Munição','Combustível e Aquecimento','Plantas, Ervas e Cultivos','Componentes e Materiais de Crafting']);
+  const STACKABLE_CATS = new Set(['Comida','Bebidas','Itens Médicos','Munição','Combustível e Aquecimento','Plantas, Ervas e Cultivos','Componentes e Materiais de Crafting','Higiene e Itens Pessoais']);
   function isStackable(item){
     if(!item) return false;
     const ref = ITEMS_BY_ID[item.id != null ? item.id : item.itemId];
@@ -3509,13 +3590,34 @@
     const q = instQty(inst);
     return n >= q ? null : Object.assign({}, inst, { qty:q - n, v:DATA_SCHEMA });
   }
-  async function doUse(hid, uid, consume, note){
+  // efeitos sugeridos pelo catálogo (campo `fx`): só valem com o módulo de necessidades ligado, em token que o usuário pode editar, e se marcados ao usar
+  function usableFx(hid, ref){
+    if(!ref || !ref.fx || !cfg().modules.needs) return [];
+    const h = holderById(hid);
+    if(!h || h.type !== 'token' || !canEditHolder(h)) return [];
+    return NEED_LIST.filter(n => ref.fx[n[0]]).map(n => [n[0], n[1], ref.fx[n[0]]]);
+  }
+  function fxText(list){ return list.map(x => x[1] + ' ' + (x[2] < 0 ? '−' : '+') + Math.abs(x[2])).join(', '); }
+  function applyNeedsFx(hid, list){
+    const card = ensureCard(hid);
+    list.forEach(x => { card.needs[x[0]] = Math.min(4, Math.max(0, (card.needs[x[0]] || 0) + x[2])); });
+    scheduleSaveCard(hid);
+    if(hubIsOpen()) renderHub();
+  }
+  async function doUse(hid, uid, consume, note, applyFx){
     const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
     if(!holder || !inst){ toast('Item não encontrado.', true); return; }
     const ops = consume ? { [hid + '/' + uid]: takeUnits(inst, 1) } : {};
+    const fxList = applyFx ? usableFx(hid, ITEMS_BY_ID[inst.itemId]) : [];
+    const fullNote = [note, fxList.length ? 'Necessidades: ' + fxText(fxList) : ''].filter(Boolean).join(' · ').slice(0, 140) || null;
     const ok = await commitInv(ops,
-      [mkLog('usar', holder, { item:itemRef(inst, 1), consumed:!!consume, note:note || null, source:'inventario', invAfter:simCount(hid, ops) })]);
-    if(ok){ invUI.panel = null; toast(consume ? `${inst.name} usado e consumido.` : `${inst.name} usado.`); renderInvDrawer(); }
+      [mkLog('usar', holder, { item:itemRef(inst, 1), consumed:!!consume, note:fullNote, source:'inventario', invAfter:simCount(hid, ops) })]);
+    if(ok){
+      if(fxList.length) applyNeedsFx(hid, fxList);
+      invUI.panel = null;
+      toast((consume ? `${inst.name} usado e consumido.` : `${inst.name} usado.`) + (fxList.length ? ' Necessidades ajustadas.' : ''));
+      renderInvDrawer();
+    }
   }
   async function doDiscard(hid, uid, note, amount){
     const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
@@ -3895,7 +3997,7 @@
       row.innerHTML = `
         <div class="inv-item-name">${iconHtml({ id:inv.itemId, name:inv.name, category:inv.category })}${escapeHtml(inv.name)}${instQty(inv) > 1 ? ` <span class="qty-chip">×${instQty(inv)}</span>` : ''}${inv.slot ? ` <span class="eq-chip">${escapeHtml(slotLabel(inv.slot))}</span>` : ''}</div>
         <span class="inv-item-cat">${escapeHtml(inv.category)}</span>${inv.cond != null ? `<span class="inv-item-cat cond-${inv.cond}">${escapeHtml(COND_LEVELS[inv.cond])}</span>` : ''}
-        ${ref ? `<div class="inv-item-util">${escapeHtml(ref.utility)}</div>${compatLine(ref)}` : ''}
+        ${ref ? `<div class="inv-item-util">${escapeHtml(ref.utility)}</div>${itemFactsHtml(ref)}${compatLine(ref)}` : ''}
         ${inv.foundAt ? `<div class="inv-item-util">${ic('pin', 13)} Achado em: ${escapeHtml(inv.foundAt)}</div>` : ''}
         <div class="inv-item-actions">
           ${isCont ? `<button type="button" class="inv-mini-btn primary" data-act="cont-take" ${containerOpenFor(hid) ? '' : 'disabled'}>Pegar</button>` : `
@@ -3949,13 +4051,16 @@
       const ref = ITEMS_BY_ID[inv.itemId];
       const hist = itemHistory(inv.uid);
       box.innerHTML = `<div class="inv-item-util"><b>Categoria:</b> ${escapeHtml(inv.category)}${q > 1 ? ` · <b>Quantidade:</b> ${q}` : ''}${inv.cond != null ? ` · <b>Condição:</b> ${escapeHtml(COND_LEVELS[inv.cond])}` : ''}${inv.slot ? ` · <b>Equipado:</b> ${escapeHtml(slotLabel(inv.slot))}` : ''}</div>
-        ${ref ? `<div class="inv-item-util"><b>Utilidade:</b> ${escapeHtml(ref.utility)}</div>${compatLine(ref)}` : ''}
+        ${ref ? `<div class="inv-item-util"><b>Utilidade:</b> ${escapeHtml(ref.utility)}</div>${itemFactsHtml(ref, { full:true })}${compatLine(ref)}` : ''}
         <div class="inv-item-util"><b>Origem:</b> ${escapeHtml(SOURCE_LABELS[inv.source] || inv.source || '—')}${inv.addedBy ? ' · por ' + escapeHtml(inv.addedBy) : ''}${inv.addedAt ? ' · ' + escapeHtml(fmtTs(inv.addedAt)) : ''}${inv.foundAt ? '<br>📍 ' + escapeHtml(inv.foundAt) : ''}</div>
         <div class="hub-label">Histórico deste item</div>${hist.length ? hist.map(e => `<div class="log-row"><div class="log-meta"><span class="log-badge ${escapeHtml(e.action)}">${escapeHtml(ACTION_LABELS[e.action] || e.action)}</span><span>${escapeHtml(fmtTs(e.ts))}</span></div><div>${logText(e)}</div></div>`).join('') : '<div class="inv-item-util">Sem movimentações registradas para esta unidade.</div>'}
         <div class="inv-inline-actions"><button type="button" class="inv-mini-btn" data-act="cancel">Fechar</button></div>`;
     } else if(pn.type === 'use'){
-      box.innerHTML = `<label><input type="checkbox" data-role="consume" ${pn.consume ? 'checked' : ''}> Consumir (${q > 1 ? 'gasta 1 unidade' : 'remove do inventário'})</label>${noteField}${actions('Confirmar uso')}`;
+      const fxList = usableFx(hid, ITEMS_BY_ID[inv.itemId]);
+      box.innerHTML = `<label><input type="checkbox" data-role="consume" ${pn.consume ? 'checked' : ''}> Consumir (${q > 1 ? 'gasta 1 unidade' : 'remove do inventário'})</label>
+        ${fxList.length ? `<label><input type="checkbox" data-role="applyfx" ${pn.applyFx ? 'checked' : ''}> Aplicar à ficha o efeito sugerido: ${escapeHtml(fxText(fxList))}</label>` : ''}${noteField}${actions('Confirmar uso')}`;
       box.querySelector('[data-role="consume"]').addEventListener('change', e => { pn.consume = e.target.checked; });
+      const afx = box.querySelector('[data-role="applyfx"]'); if(afx) afx.addEventListener('change', e => { pn.applyFx = e.target.checked; });
     } else if(pn.type === 'discard'){
       box.innerHTML = `<p>Descartar remove ${q > 1 ? 'unidades' : 'o item'} do inventário de vez. A ação fica registrada.</p>
         ${q > 1 ? `<label class="hub-label">Quantidade a descartar (1 a ${q})</label><input type="number" min="1" max="${q}" data-role="amount" value="${pn.amount || q}">` : ''}${noteField}${actions('Confirmar descarte', 'danger')}`;
@@ -3980,7 +4085,7 @@
     const cancel = box.querySelector('[data-act="cancel"]'); if(cancel) cancel.addEventListener('click', () => { invUI.panel = null; renderInvDrawer(); });
     const ok = box.querySelector('[data-act="ok"]');
     if(ok) ok.addEventListener('click', () => {
-      if(pn.type === 'use') doUse(hid, inv.uid, pn.consume, pn.note);
+      if(pn.type === 'use') doUse(hid, inv.uid, pn.consume, pn.note, pn.applyFx);
       else if(pn.type === 'discard') doDiscard(hid, inv.uid, pn.note, pn.amount);
       else if(pn.type === 'split') doSplit(hid, inv.uid, pn.split);
       else if(pn.type === 'equip') doEquip(hid, inv.uid, pn.slot);
@@ -4241,6 +4346,7 @@
       lootMin: Number.isInteger(c.lootMin) ? Math.min(8, Math.max(0, c.lootMin)) : 1,
       lootMax: Math.max(Number.isInteger(c.lootMin) ? Math.min(8, Math.max(0, c.lootMin)) : 1, Number.isInteger(c.lootMax) ? Math.min(8, Math.max(1, c.lootMax)) : 5),
       weights: c.weights || {},
+      espMode: !!c.espMode,
       equipSlots: Object.assign({}, DEFAULT_SLOT_CAP, (c.equipSlots && typeof c.equipSlots === 'object') ? c.equipSlots : {}),
       resources: Array.isArray(c.resources) ? c.resources.filter(r => r && r.key && r.label) : [],
       modules: Object.assign({}, DEFAULT_MODULES, c.modules || {}),
@@ -4260,7 +4366,17 @@
     refreshLootPins();
     placesRefresh();
   }
-  function itemWeight(inv){ const w = cfg().weights[catKey(inv.category)]; return typeof w === 'number' ? w : 1; }
+  // volume do catálogo (0 a 4) vira peso quando a mesa liga a opção; volume 0 pesa um pouco, para pilhas grandes contarem
+  const ESP_W = [0.25, 1, 2, 3, 4];
+  function itemWeight(inv){
+    const c = cfg();
+    if(c.espMode){
+      const ref = ITEMS_BY_ID[inv.itemId];
+      if(ref && typeof ref.esp === 'number') return ESP_W[Math.min(4, Math.max(0, ref.esp))];
+    }
+    const w = c.weights[catKey(inv.category)];
+    return typeof w === 'number' ? w : 1;
+  }
   function invWeight(hid){ return invItems(hid).reduce((a, i) => a + itemWeight(i) * instQty(i), 0); }
   function fmtNum(n){ return String(Math.round(n * 100) / 100).replace('.', ','); }
   function weightBand(w, cap){ const r = w / cap; return r <= 0.5 ? 'leve' : (r <= 1 ? 'carregado' : 'sobrecarregado'); }
@@ -4524,7 +4640,7 @@
       decimals:Math.min(6, Math.max(0, parseInt(d.decimals, 10) || 0)),
       lootMin:Math.min(8, Math.max(0, parseInt(d.lootMin, 10) || 0)),
       lootMax:Math.min(8, Math.max(1, parseInt(d.lootMax, 10) || 1)),
-      weights, modules:d.modules, cardModules:d.cardModules,
+      weights, espMode:!!d.espMode, modules:d.modules, cardModules:d.cardModules,
       places:{ cats:d.placeCats || {}, reveal:d.placeReveal === 'near' ? 'near' : 'all' },
       equipSlots:cfg().equipSlots, resources:cfg().resources
     });
@@ -5073,18 +5189,46 @@
       ['Tala improvisada','primeiros-socorros','Talas improvisadas (madeira + tecido)',[['Retalhos de tecido',1],['Tábua de madeira empenada',1]],''],
       ['Filtro de água improvisado','sobrevivencia','Filtro de água de rio improvisado',[['Garrafa de água mineral',1],['Carvão',1],['Retalhos de tecido',1]],''],
       ['Isqueiro de pederneira','reparo','Isqueiro de pederneira caseiro',[['Isqueiro sem gás',1]],''],
-      ['Botas improvisadas','reparo','Botas improvisadas com panos e fita',[['Retalhos de tecido',2],['Fita adesiva',1]],'']
+      ['Botas improvisadas','reparo','Botas improvisadas com panos e fita',[['Retalhos de tecido',2],['Fita adesiva',1]],''],
+      ['Torniquete de campo','primeiros-socorros','Torniquete improvisado (cinto)',[['Retalhos de tecido',1],['Galho pontiagudo endurecido no fogo',1]],''],
+      ['Tala de bambu','primeiros-socorros','Tala de imobilização',[['Bambu recém-cortado',1],['Retalhos de tecido',1]],''],
+      ['Colar cervical de toalha','primeiros-socorros','Colar cervical improvisado',[['Retalhos de tecido',2],['Fita adesiva reforçada (duct tape)',1]],''],
+      ['Sutura de campo','primeiros-socorros','Kit de sutura improvisado',[['Agulha hipodérmica',1],['Linha de pesca',1],['Álcool líquido para desinfecção',1]],''],
+      ['Bandagem fervida','primeiros-socorros','Bandagem de gaze',[['Retalhos de tecido',2],['Álcool líquido para desinfecção',1]],''],
+      ['Tocha de resina','sobrevivencia','Tocha improvisada',[['Bambu recém-cortado',1],['Retalhos de tecido',1],['Resina de árvore em bloco pegajoso',1]],''],
+      ['Forninho de lata','sobrevivencia','Forninho improvisado feito de lata',[['Lata vazia',1],['Arame de cerca reaproveitado',1]],'Alicate universal'],
+      ['Lamparina de lata','sobrevivencia','Lamparina a óleo',[['Lata vazia',1],['Pavio de algodão para lamparina',1],['Óleo de lamparina',1]],''],
+      ['Laço de caça','sobrevivencia','Armadilha caseira de laço',[['Corda de couro cru trançada',1],['Galho pontiagudo endurecido no fogo',1]],''],
+      ['Arapuca de bambu','sobrevivencia','Arapuca de bambu montada',[['Bambu recém-cortado',2],['Corda de embira (fibra vegetal)',1]],''],
+      ['Rede de dormir de juta','sobrevivencia','Rede de dormir (hammock)',[['Corda de embira (fibra vegetal)',2],['Saco de juta vazio',2]],''],
+      ['Corda de couro trançada','sobrevivencia','Corda de couro cru trançada',[['Couro cru',2]],'Faca multiuso (canivete suíço)'],
+      ['Corda de bananeira','sobrevivencia','Corda de embira (fibra vegetal)',[['Fibra de bananeira seca',2]],''],
+      ['Carvão de forno de barro','sobrevivencia','Carvão',[['Lenha cortada',2]],''],
+      ['Camuflagem de folhas','sobrevivencia','Camuflagem improvisada de folhas amarradas',[['Folha larga usada como cobertura improvisada',3],['Barbante grosso',1]],''],
+      ['Filtro de carvão e tecido','sobrevivencia','Filtro de água portátil',[['Tubo de PVC',1],['Carvão',2],['Retalhos de tecido',1]],''],
+      ['Lança de bambu','sobrevivencia','Taquara afiada na ponta',[['Bambu recém-cortado',1]],'Faca multiuso (canivete suíço)'],
+      ['Briquetes caseiros','sobrevivencia','Briquetes de carvão para fogareiro',[['Carvão',2],['Serragem',1]],''],
+      ['Escada de tábuas','reparo','Escada de madeira improvisada',[['Tábua de madeira empenada',2],['Prego enferrujado (punhado)',1]],'Martelo comum'],
+      ['Tijolo de adobe','reparo','Tijolo de adobe seco ao sol',[['Barro para reboco',2],['Palha de milho seca para artesanato',1]],''],
+      ['Toldo de lona','reparo','Toldo leve de emergência',[['Lona plástica para cobertura de rancho',1],['Cordas de varal para secar roupas',1]],''],
+      ['Palha para telhado','reparo','Palha trançada para cobertura',[['Palha de milho seca para artesanato',3]],''],
+      ['Isca de penas','reparo','Isca artificial',[['Anzol de pesca',1],['Pena de gavião encontrada no chão',1]],''],
+      ['Colete de couro cru','reparo','Colete de couro',[['Couro cru',3],['Corda de couro cru trançada',1]],'Faca multiuso (canivete suíço)'],
+      ['Gorro de retalhos','reparo','Gorro de lã',[['Retalhos de tecido',2]],'Agulhas de tricô']
     ];
     const path = scopedKey(KEY_RECIPES); let n = 0;
+    const have = new Set(Object.keys(recipes).map(k => String(recipes[k].name).toLowerCase()));
     for(const d of defs){
+      if(have.has(d[0].toLowerCase())) continue;
       const res = itemByName(d[2]); const ings = d[3].map(x => [itemByName(x[0]), x[1]]);
-      if(!res || ings.some(x => !x[0])) continue;
+      const tl = d[4] ? itemByName(d[4]) : null;
+      if(!res || ings.some(x => !x[0]) || (d[4] && !tl)) continue;
       const id = DB.newId(path);
       await DB.set(path + '/' + id, { id, name:d[0], family:d[1], result:{ itemId:res.id, qty:1 }, ingredients:ings.map(x => ({ itemId:x[0].id, qty:x[1] })),
-        tool:null, station:'', skill:'', time:'', noise:'', risk:'', resolution:'Resolver na mesa (rolagem ou decisão do mestre).', wasteOnFail:false, notes:'Exemplo editável.' });
+        tool:tl ? tl.id : null, station:'', skill:'', time:'', noise:'', risk:'', resolution:'Resolver na mesa (rolagem ou decisão do mestre).', wasteOnFail:false, notes:'Exemplo editável.' });
       n++;
     }
-    toast(n ? `${n} receitas de exemplo adicionadas. Edite como quiser.` : 'Nenhum exemplo pôde ser montado com este catálogo.', !n);
+    toast(n ? `${n} receitas de exemplo adicionadas. Edite como quiser.` : (have.size ? 'Os exemplos já estão na lista.' : 'Nenhum exemplo pôde ser montado com este catálogo.'), !n && !have.size);
   }
 
   // ---------- painel "Mesa de jogo" ----------
@@ -5328,7 +5472,7 @@
     if(!hub.cfgDraft){
       const c = cfg();
       hub.cfgDraft = { name:campaignMeta ? campaignMeta.name : '', system:campaignMeta ? campaignMeta.system || '' : '', invMode:c.invMode, invLimit:c.invLimit, decimals:c.decimals, lootMin:c.lootMin, lootMax:c.lootMax,
-        weights:Object.assign({}, c.weights), modules:Object.assign({}, c.modules), cardModules:Object.assign({}, c.cardModules), progressionMode:c.progressionMode,
+        weights:Object.assign({}, c.weights), espMode:c.espMode, modules:Object.assign({}, c.modules), cardModules:Object.assign({}, c.cardModules), progressionMode:c.progressionMode,
         placeCats:Object.assign({}, c.places.cats), placeReveal:c.places.reveal };
     }
     const d = hub.cfgDraft;
@@ -5366,7 +5510,7 @@
       <div class="hub-label">Inventário</div>
       <select data-bind="cd.invMode" data-rerender>${opt('slots', 'Limite de itens', d.invMode)}${opt('carga', 'Carga por peso (faixas)', d.invMode)}${opt('livre', 'Lista livre, sem limite', d.invMode)}</select>
       ${d.invMode !== 'livre' ? `<label class="hub-label">${d.invMode === 'slots' ? 'Máximo de itens' : 'Capacidade de carga'}</label><input type="number" min="1" data-bind="cd.invLimit" value="${esc(d.invLimit)}">` : ''}
-      ${d.invMode === 'carga' ? '<div class="hub-label">Peso por categoria (padrão 1)</div>' + cats.map(c => `<div class="bonus-row"><span class="w-cat">${esc(c)}</span><input type="number" step="0.1" min="0" data-bind="cd.weights.${esc(catKey(c))}" value="${esc(d.weights[catKey(c)] != null ? d.weights[catKey(c)] : 1)}"></div>`).join('') : ''}
+      ${d.invMode === 'carga' ? `<label class="check-row"><input type="checkbox" data-bind="cd.espMode" data-rerender ${d.espMode ? 'checked' : ''}> Usar o volume de cada item (0 a 4, da ficha do catálogo) em vez do peso por categoria</label>` + (d.espMode ? '<p class="hub-hint">Volume 0 conta 0,25; 1 conta 1; 2 conta 2; 3 conta 3; 4 conta 4. Ajuste a capacidade de carga acima (padrão 20).</p>' : '<div class="hub-label">Peso por categoria (padrão 1)</div>' + cats.map(c => `<div class="bonus-row"><span class="w-cat">${esc(c)}</span><input type="number" step="0.1" min="0" data-bind="cd.weights.${esc(catKey(c))}" value="${esc(d.weights[catKey(c)] != null ? d.weights[catKey(c)] : 1)}"></div>`).join('')) : ''}
       <div class="hub-label">Itens por busca de saque (mínimo e máximo, 0 a 8)</div>
       <div class="expr-row"><input type="number" min="0" max="8" data-bind="cd.lootMin" value="${esc(d.lootMin)}" aria-label="Mínimo de itens por saque"><input type="number" min="1" max="8" data-bind="cd.lootMax" value="${esc(d.lootMax)}" aria-label="Máximo de itens por saque"></div>
       <label class="hub-label">Casas decimais das coordenadas do saque (0 a 6)</label><input type="number" min="0" max="6" data-bind="cd.decimals" value="${esc(d.decimals)}">
