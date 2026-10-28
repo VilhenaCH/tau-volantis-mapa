@@ -1,4 +1,172 @@
 (function(){
+  // ================= SOM (efeitos sonoros) =================
+  // Todos os sons vêm de UM arquivo (tv-sons.mp3: 27 efeitos dos pacotes CC0 da Kenney, cortados por tempo no MAP).
+  // Desligar tudo pelo código: window.TV_SOUND = false no index.html. O jogador liga/desliga e escolhe o volume em Menu → Som.
+  // Regras: só toca depois do primeiro toque na tela (política dos navegadores), nunca com a aba escondida; eventos de outros
+  // jogadores ficam mudos nos primeiros segundos e têm limite de um por segundo. Se o arquivo não carregar, usa bips simples.
+  const TVSound = (() => {
+    const MAP = {"tick1":[0.05,0.011],"tick2":[0.181,0.02],"tick3":[0.322,0.055],"land":[0.497,0.205],"found1":[0.822,0.287],"found2":[1.229,0.317],"found3":[1.666,0.528],"glass":[2.314,0.655],"anom":[3.089,0.761],"empty":[3.97,0.229],"erro":[4.319,0.104],"dado1":[4.543,0.534],"dado2":[5.197,0.645],"dado3":[5.961,0.572],"guardar":[6.654,0.231],"descarta":[7.004,0.306],"troca":[7.431,0.7],"craftok":[8.251,0.848],"craftno":[9.219,0.296],"pesca":[9.635,0.495],"trovao":[10.251,1.998],"vez":[12.368,0.484],"passo1":[12.972,0.219],"passo2":[13.311,0.222],"abrir":[13.653,0.146],"fechar":[13.919,0.146],"click":[14.185,0.1]};
+    const KEY = 'tv-map:sound', GAIN = [0, 0.4, 0.7, 1];
+    const FB = { tick1:[1800,'square',.025,.35], tick2:[2200,'square',.02,.35], tick3:[1500,'square',.03,.35], land:[260,'triangle',.09,.8],
+      found1:[660,'sine',.18,.8], found2:[880,'sine',.22,.8], found3:[1175,'sine',.3,.8], anom:[130,'sawtooth',.5,.4], empty:[240,'triangle',.25,.7,120],
+      erro:[190,'square',.1,.35], dado1:[420,'triangle',.07,.8], dado2:[380,'triangle',.07,.8], dado3:[460,'triangle',.07,.8], vez:[784,'sine',.25,.8], click:[1200,'square',.02,.3] };
+    const st = { on:true, vol:1 };
+    try{ const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if(s){ st.on = s.on !== false; if(s.vol === 1 || s.vol === 2 || s.vol === 3) st.vol = s.vol; } }catch(e){}
+    let ctx = null, master = null, buf = null, loading = false, failed = false, quietUntil = Date.now() + 6000, lastRemote = 0;
+    const live = new Set(), last = {}, stats = { n:0, last:[] };
+    const enabled = () => window.TV_SOUND !== false;
+    const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(st)); }catch(e){} };
+    const rnd = a => a[Math.floor(Math.random() * a.length)];
+    function setupCtx(){
+      if(ctx) return true;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC){ failed = true; return false; }
+      try{
+        ctx = new AC();
+        master = ctx.createGain(); master.gain.value = st.on ? GAIN[st.vol] : 0; master.connect(ctx.destination);
+        const b = ctx.createBuffer(1, 1, 22050), s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(0);   // iOS: som mudo dentro do primeiro toque destrava o áudio
+      }catch(e){ ctx = null; failed = true; return false; }
+      return true;
+    }
+    function load(){
+      if(buf || loading || failed || !ctx) return;
+      if(location.protocol === 'file:'){ failed = true; return; }   // aberto direto do arquivo: o navegador não deixa buscar o MP3; usa os bips
+      loading = true;
+      fetch('tv-sons.mp3').then(r => { if(!r.ok) throw new Error('http ' + r.status); return r.arrayBuffer(); })
+        .then(ab => new Promise((ok, no) => { const p = ctx.decodeAudioData(ab, ok, no); if(p && p.catch) p.catch(no); }))
+        .then(b => { buf = b; loading = false; })
+        .catch(() => { failed = true; loading = false; });
+    }
+    function unlock(){
+      if(!enabled()) return;
+      if(setupCtx()){ try{ if(ctx.state !== 'running') ctx.resume(); }catch(e){} load(); }
+    }
+    ['pointerdown', 'touchend', 'click', 'keydown'].forEach(ev => document.addEventListener(ev, unlock, { capture:true, passive:true }));
+    function synth(name, t0, o){
+      const f = FB[name]; if(!f) return null;
+      const osc = ctx.createOscillator(), g = ctx.createGain(), v = f[3] * (o.v == null ? 1 : o.v) * 0.5;
+      osc.type = f[1]; osc.frequency.setValueAtTime(f[0], t0);
+      if(f[4]) osc.frequency.exponentialRampToValueAtTime(f[4], t0 + f[2]);
+      g.gain.setValueAtTime(v, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + f[2]);
+      osc.connect(g); g.connect(master); osc.start(t0); osc.stop(t0 + f[2] + 0.02);
+      return { src:osc, g };
+    }
+    function start(name, o){
+      const t0 = ctx.currentTime + (o.delay || 0), m = MAP[name];
+      let node = null;
+      if(buf && m){
+        const src = ctx.createBufferSource(), g = ctx.createGain();
+        src.buffer = buf; src.playbackRate.value = o.rate || 1; g.gain.value = o.v == null ? 1 : o.v;
+        src.connect(g); g.connect(master);
+        src.start(t0, m[0], m[1] + 0.06);
+        node = { src, g };
+      } else if(failed){ node = synth(name, t0, o); }
+      if(!node) return null;
+      live.add(node);
+      node.src.onended = () => { live.delete(node); try{ node.g.disconnect(); }catch(e){} };
+      stats.n++; stats.last.push(name); if(stats.last.length > 150) stats.last.shift();
+      return node;
+    }
+    // o: v = volume 0..1, rate = velocidade, delay = segundos de espera, gap = intervalo mínimo (ms) entre dois iguais, remote = evento de outra pessoa
+    function play(name, o){
+      o = o || {};
+      if(!enabled() || !st.on || !ctx || document.hidden) return null;
+      const now = Date.now();
+      if(o.remote){ if(now < quietUntil || now - lastRemote < 1000) return null; lastRemote = now; }
+      if(now - (last[name] || 0) < (o.gap == null ? 35 : o.gap)) return null;
+      last[name] = now;
+      if(live.size > 14) return null;
+      if(ctx.state !== 'running'){
+        try{ ctx.resume().then(() => { if(ctx.state === 'running' && Date.now() - now < 400) start(name, o); }); }catch(e){}
+        return null;
+      }
+      return start(name, o);
+    }
+    function stop(){
+      if(!ctx) return;
+      live.forEach(n => { try{ n.g.gain.cancelScheduledValues(0); n.g.gain.setTargetAtTime(0, ctx.currentTime, 0.015); n.src.stop(ctx.currentTime + 0.08); }catch(e){} });
+      live.clear();
+    }
+    function buzz(p){ try{ if(st.on && enabled() && !document.hidden && navigator.vibrate) navigator.vibrate(p); }catch(e){} }
+    function found(kind, delay){
+      delay = delay || 0;
+      if(kind === 'anomalo'){ play('anom', { v:0.9, delay }); return; }
+      if(kind === 'raro'){ play('found3', { delay }); play('glass', { delay:delay + 0.04, v:0.8 }); buzz(40); return; }
+      play(kind === 'incomum' ? 'found2' : 'found1', { delay });
+    }
+    function dice(n){
+      n = Math.max(1, Math.min(6, n | 0));
+      const names = ['dado1', 'dado2', 'dado3'], a = rnd(names);
+      play(a, {});
+      if(n > 1) play(rnd(names.filter(x => x !== a)), { delay:0.09, v:0.8 });
+      if(n > 3) play(rnd(names), { delay:0.19, v:0.7, gap:0 });
+    }
+    function setOn(v){
+      st.on = !!v; save();
+      if(master) master.gain.setTargetAtTime(st.on ? GAIN[st.vol] : 0, ctx.currentTime, 0.02);
+      if(!st.on) stop();
+    }
+    function setVol(v){
+      st.vol = (v === 1 || v === 2 || v === 3) ? v : 1; save();
+      if(master && st.on) master.gain.setTargetAtTime(GAIN[st.vol], ctx.currentTime, 0.02);
+    }
+    function bindUI(){
+      const sec = document.getElementById('sound-section'), b = document.getElementById('sound-toggle'), v = document.getElementById('sound-vol');
+      if(!sec || !b || !v) return;
+      if(!enabled()){ sec.hidden = true; return; }
+      const paint = () => {
+        b.classList.toggle('active', st.on); b.setAttribute('aria-pressed', String(st.on)); b.textContent = st.on ? 'Som ligado' : 'Som desligado';
+        v.querySelectorAll('button').forEach(x => { const on = +x.dataset.v === st.vol; x.classList.toggle('active', on); x.setAttribute('aria-pressed', String(on)); x.disabled = !st.on; });
+      };
+      b.addEventListener('click', () => { setOn(!st.on); paint(); if(st.on) play('found1', { v:0.8, gap:0 }); });
+      v.addEventListener('click', e => { const x = e.target.closest('button[data-v]'); if(!x) return; setVol(+x.dataset.v); paint(); play('found1', { v:0.8, gap:0 }); });
+      paint();
+    }
+    bindUI();
+    return {
+      play, stop, found, dice, setOn, setVol, stats,
+      quiet(ms){ quietUntil = Math.max(quietUntil, Date.now() + ms); },
+      tick(){ play(rnd(['tick1', 'tick2', 'tick3']), { rate:0.95 + Math.random() * 0.12, v:0.9, gap:30 }); },
+      lootKind(it, rar){
+        if(it && it.category === 'Itens Anômalos e Paranormais') return 'anomalo';
+        if(rar && rar.cls === 'rarity-raro') return 'raro';
+        if(rar && rar.cls === 'rarity-incomum') return 'incomum';
+        return 'comum';
+      },
+      rolled(rs, crit){
+        dice((rs || []).reduce((a, t) => a + ((t && t.dice && t.dice.length) || 1), 0));
+        if(crit) found('raro', 0.3);
+      },
+      get state(){ return { on:st.on, vol:st.vol, ctx:ctx ? ctx.state : null, loaded:!!buf, failed }; }
+    };
+  })();
+  window.__TVSound = TVSound;   // gancho de teste (só leitura do que tocou)
+  let rollsSeen = null, lastWx = null, dockAny = null;
+  // som do resultado quando a animação do rolo está desligada ("reduzir movimento"): toca só o melhor item achado
+  function soundLootResult(its, locKey){
+    if(!its.length){ TVSound.play('empty'); return; }
+    const rank = { comum:0, incomum:1, raro:2, anomalo:3 }; let best = 'comum';
+    its.forEach(it => { const k = TVSound.lootKind(it, locKey ? rarityInfo(it, locKey) : null); if(rank[k] > rank[best]) best = k; });
+    TVSound.found(best);
+  }
+  // rolagens de OUTRAS pessoas (a primeira carga do histórico não conta; no máximo um som por segundo)
+  function soundRolls(nv){
+    if(rollsSeen === null){ rollsSeen = new Set(Object.keys(nv)); return; }
+    const me = currentUser ? currentUser.uid : null;
+    let fresh = 0;
+    Object.keys(nv).forEach(k => {
+      if(rollsSeen.has(k)) return;
+      rollsSeen.add(k);
+      const r = nv[k];
+      if(r && me && r.actorId !== me) fresh++;
+    });
+    if(fresh) TVSound.play('dado2', { remote:true, v:0.6 });
+  }
+  function tacTurnKey(sid){
+    const sc = tacScene(sid), id = tacTurnId(sc);
+    return sc && id ? sid + ':' + id + ':' + sc.turn.round : null;
+  }
+
   const PIN_ICONS = {
     saque:        '<path d="M6 8a6 6 0 0 1 12 0v11a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><path d="M9 13h6"/>',
     perigo:       '<path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v5"/><path d="M12 18h.01"/>',
@@ -564,6 +732,11 @@
   });
 
   const pinsLayer = L.layerGroup().addTo(map);
+  // ===== LUGARES REAIS (OpenStreetMap): INTERRUPTOR GERAL =====
+  // O index.html define window.TV_PLACES. Só "true" liga. Desligado: nenhuma consulta de rede, nenhum aviso na tela, nenhuma camada,
+  // nenhum botão ou categoria na configuração, e o guardado dos blocos de mapa é apagado do aparelho. Pins que já nasceram de um
+  // lugar (campo "osm") continuam sendo pins comuns. Para tirar o módulo de vez, veja o "mapa de remoção" no começo do módulo (mais abaixo).
+  const PLACES_ON = window.TV_PLACES === true;
   // lugares reais (OpenStreetMap): camada própria, acima da dos pins
   const PLACE_ZOOM = 14, PLACE_MAX_TILES = 20, PLACE_CHUNK = 8, PLACE_TTL = 14 * 864e5, PLACE_TTL_EMPTY = 864e5, PLACE_NEAR_M = 250;
   // tempos da consulta: pergunta ao próximo servidor se o atual demorar PLACE_HEDGE_MS (sem cancelá-lo); cada tentativa e o total têm prazo
@@ -1217,6 +1390,11 @@
     labelEl.textContent = cfg.label;
     badge.title = cfg.eff.length ? cfg.label + ': ' + cfg.eff.join('; ') : cfg.label;
     if(document.getElementById('weather-popover').classList.contains('open')) renderWeatherOptions();
+    if(lastWx !== null && lastWx !== weather.state){
+      if(weather.state === 'tempestade') TVSound.play('trovao', { remote:true, v:0.9 });
+      else if(weather.state === 'espectral') TVSound.play('anom', { remote:true });
+    }
+    lastWx = weather.state;
     if(hudReady){ hubChanged(); hudMiniChanged(); hudQRChanged(); if(tacUI.open) tacChanged(); }   // totais da ficha e terreno do tático acompanham o clima
   }
 
@@ -1251,6 +1429,7 @@
   async function weatherLightning(){
     const w = weatherDef(); if(!isMaster() || !w.lightning) return;
     const t = rollTerm({ sign:1, n:1, sides:100 }, makeSource(null)), hit = t.dice[0].v <= w.lightning.chance;
+    if(hit) TVSound.play('trovao', { v:0.9 });
     await opRecord(null, `Raio da ${w.label} (${w.lightning.chance}%): ${hit ? 'CAIU' : 'não caiu'}`, [t], [], { kind:'weather', hit });
     if(hit){
       const pe = parseExpr(w.lightning.dice), res = pe.terms.map(x => rollTerm(x, makeSource(null)));
@@ -2713,18 +2892,18 @@
         stage.hidden = true; stage.innerHTML = '';
         resolve();
       };
-      stage.querySelector('.ss-skip').addEventListener('click', () => { skipped = true; finish(); });
+      stage.querySelector('.ss-skip').addEventListener('click', () => { skipped = true; TVSound.stop(); finish(); });
       async function spinTo(target, steps, endDelay){
         let cur = rand(null), nxt = rand(cur), prv = rand(cur);
         for(let i = 0; i < steps && !skipped; i++){
           const t = steps > 1 ? i / (steps - 1) : 1;
           prv = cur; cur = nxt; nxt = rand(cur);
           paint(prv, cur, nxt, false);
-          reel.classList.remove('ss-tick'); void reel.offsetWidth; reel.classList.add('ss-tick');
+          reel.classList.remove('ss-tick'); void reel.offsetWidth; reel.classList.add('ss-tick'); TVSound.tick();
           await wait(55 + (endDelay - 55) * t * t);   // desacelera até parar
         }
         if(skipped) return;
-        paint(rand(target._icon ? null : target), target, rand(target._icon ? null : target), true);
+        paint(rand(target._icon ? null : target), target, rand(target._icon ? null : target), true); TVSound.play('land');
       }
       (async () => {
         for(let k = 0; k < found.length && !skipped; k++){
@@ -2736,11 +2915,13 @@
           chip.className = 'ss-chip' + (it.category === 'Itens Anômalos e Paranormais' ? ' ss-anom' : '');
           chip.innerHTML = `${iconHtml(it)}<span class="ss-chip-name">${escapeHtml(it.name)}</span>${rar ? `<span class="rarity-tag ${rar.cls}">${rar.label}</span>` : ''}`;
           foundBox.appendChild(chip);
+          TVSound.found(TVSound.lootKind(it, rar));
           await wait(380);
         }
         if(!found.length && !skipped){
           await spinTo({ name: opts.emptyText || 'Nada de útil aqui', _icon: 'hole', category: '' }, 14, 220);
           if(skipped) return;
+          TVSound.play('empty');
           await wait(380);
         }
         if(skipped) return;
@@ -2777,8 +2958,9 @@
     logFound(entry);
     if (autoSendBox.checked) sendLootToDiscord(entry);
     const show = () => { lootHistory.unshift(entry); renderLootResults(); };
-    if(!animEnabled()){ show(); return; }
+    if(!animEnabled()){ soundLootResult(items.map(x => x.item), locKey); show(); return; }
     setSearchBusy(true);
+    TVSound.play('click');
     playSearch({ stage:lootStage, title:`Vasculhando ${LOC_NAMES[locKey]}…`, pool:byLoc[locKey], found:items.map(x => x.item),
       rarity:it => rarityInfo(it, locKey), emptyText:'Nada de útil aqui' }).then(() => { setSearchBusy(false); show(); });
   }
@@ -2958,8 +3140,9 @@
     logFound(entry);
     if (autoSendBox.checked) sendLootToDiscord(entry);
     const showFish = () => { fishHistory.unshift(entry); renderFishResults(); };
-    if(!animEnabled()){ showFish(); return; }
+    if(!animEnabled()){ if(caught) TVSound.found('comum'); else TVSound.play('empty'); showFish(); return; }
     setSearchBusy(true);
+    TVSound.play('pesca');
     playSearch({ stage:fishStage, title:'Lançando a linha…', pool:FISH_POOL, found:caught ? [caught] : [],
       rarity:null, emptyText:'Nada fisgou' }).then(() => { setSearchBusy(false); showFish(); });
   }
@@ -3153,6 +3336,7 @@
   let lastHolderSig = '';
 
   function toast(msg, isErr){
+    if(isErr) TVSound.play('erro', { gap:250 });
     const el = document.createElement('div');
     el.className = 'inv-toast' + (isErr ? ' err' : '');
     el.setAttribute('role', isErr ? 'alert' : 'status');
@@ -3502,6 +3686,7 @@
     const ok = await commitInv(ops, logs);
     take.forEach(i => { entry.items[i].decision = ok ? 'kept' : 'pending'; });
     if(ok){
+      TVSound.play('guardar');
       if(take.length < idxs.length) toast(`Inventário cheio: guardei ${take.length}, sobraram ${idxs.length - take.length}.`, true);
       else toast(take.length > 1 ? `${take.length} itens → inventário de ${holder.name}` : `${insts[0].name} → inventário de ${holder.name}`);
     }
@@ -3511,6 +3696,7 @@
     idxs = idxs.filter(i => entry.items[i] && entry.items[i].decision === 'pending');
     if(!idxs.length) return;
     idxs.forEach(i => { entry.items[i].decision = 'declined'; });
+    TVSound.play('descarta');
     rerenderLoot();
     const holder = holderById(entry.holderId);
     await commitInv({}, idxs.map(i => mkLog('recusar', holder, { item:itemRef(entry.items[i].item), source:lootSource(entry), searchId:entry.searchId, reason:reason || null })));
@@ -3710,7 +3896,7 @@
       note:t.note || null, source:'inventario', invAfter:aAfter, counterpartInvAfter:bAfter
     })]);
     if(!ok) await restoreClaims(claimed);
-    if(ok){ invUI.trade = null; toast('Troca concluída.'); renderInvDrawer(); }
+    if(ok){ invUI.trade = null; TVSound.play('troca'); toast('Troca concluída.'); renderInvDrawer(); }
   }
   // dono removido do mapa: o inventário some, mas o conteúdo fica registrado
   function removeHolderInventory(hid, reason){
@@ -4438,6 +4624,7 @@
     inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {}; journal = {}; gmJournal = {};
     hub.resDraft = null; hub.slotDraft = null; hub.cfgDraft = null;
     tacReset();
+    rollsSeen = null;
     lootHistory = []; fishHistory = [];
     renderPins(); renderTokens(); renderShapes(); renderRoutes(); applyWeatherVisual();
     renderLootResults(); renderFishResults();
@@ -4445,7 +4632,7 @@
   function attachModuleSync(){
     const on = (key, cb, limit) => syncOff.push(DB.on(scopedKey(key), cb, limit));
     on(KEY_CHARS, v => { characters = v || {}; hubChanged(); hudMiniChanged(); hudQRChanged(); });
-    on(KEY_ROLLS, v => { rolls = v || {}; hubChanged(); hudFeedChanged(); }, 300);
+    on(KEY_ROLLS, v => { soundRolls(v || {}); rolls = v || {}; hubChanged(); hudFeedChanged(); }, 300);
     on(KEY_RECIPES, v => { recipes = v || {}; hubChanged(); });
     on(KEY_CLOCK, v => { clock = v; updateHud(); hubChanged(); });
     on(KEY_SHORTCUTS, v => { campShortcuts = v || {}; hubChanged(); });
@@ -4461,6 +4648,7 @@
     try{ localStorage.setItem('tv-map:active-campaign', id); }catch(e){}
     document.getElementById('map-loading').style.display = '';
     resetCampaignState();
+    TVSound.quiet(6000);
     campaignMeta = campaigns[id] || null;
     applyConfig();
     hudCampaignChanged();
@@ -4883,6 +5071,7 @@
       whoName:holder ? holder.name : a.actorName, actorId:a.actorId, actorName:a.actorName,
       sessionId:(campaignMeta && campaignMeta.activeSessionId) || null };
     rollUI.last = Object.assign({ ts:Date.now() }, rec);
+    TVSound.rolled(results, false);
     if(rollUI.record){
       const path = scopedKey(KEY_ROLLS);
       const id = DB.newId(path);
@@ -5151,6 +5340,7 @@
     }
     const ok = await commitInv(ops, [mkLog('craft', holder, {
       recipe:rec.name, outcome, used, made, source:'inventario', invAfter:after })]);
+    if(ok) TVSound.play(outcome === 'sucesso' ? 'craftok' : 'craftno');
     if(ok){ hub.craftMsg = outcome === 'sucesso' ? `Fabricado: ${made.map(m => m.name + (m.qty > 1 ? ' ×' + m.qty : '')).join(', ')}.` : (consume ? 'Falhou: os materiais foram perdidos.' : 'Falhou: nada foi consumido.'); renderHub(); }
   }
   function blankRecipe(){ return { id:null, name:'', family:'sobrevivencia', resultName:'', resultQty:1, ingredients:[{ name:'', qty:1 }], toolName:'', station:'', skill:'', time:'', noise:'', risk:'', resolution:'', wasteOnFail:false, notes:'' }; }
@@ -5478,6 +5668,7 @@
     const d = hub.cfgDraft;
     const cats = Array.from(new Set(ITEMS.map(i => i.category))).sort();
     const modLabels = { card:'Ficha leve', clock:'Relógio da campanha', needs:'Necessidades (registro)', explore:'Exploração dos locais', crafting:'Ofício (crafting)', places:'Lugares reais no mapa (OpenStreetMap)' };
+    if(!PLACES_ON) delete modLabels.places;   // interruptor geral desligado: a opção nem aparece (o valor salvo na campanha não é mexido)
     return `<div class="hub-sec"><div class="hub-label">Suas campanhas</div>${act.map(row).join('') || '<div class="inv-empty">Nenhuma.</div>'}
       ${arch.length ? '<div class="hub-label">Arquivadas</div>' + arch.map(row).join('') : ''}
       ${isUnclaimed() && firebaseReady ? '<button type="button" class="inv-mini-btn primary" data-act="claim">Assumir como mestre desta campanha</button>' : ''}
@@ -5498,7 +5689,7 @@
       <p class="hub-hint">NEX vai de 5% a 99%, de 5 em 5. O segundo recurso é o PD (Pontos de Determinação). Escolha uma vez; trocar depois não apaga nada.</p>
       <div class="hub-label">Módulos</div>
       ${Object.keys(modLabels).map(k => `<label class="check-row"><input type="checkbox" data-bind="cd.modules.${k}"${k === 'places' ? ' data-rerender' : ''} ${d.modules[k] ? 'checked' : ''}> ${modLabels[k]}</label>`).join('')}
-      ${d.modules.places ? `<div class="hub-label">Lugares reais: categorias</div>
+      ${PLACES_ON && d.modules.places ? `<div class="hub-label">Lugares reais: categorias</div>
         ${PLACE_CATS.map(pc => `<label class="check-row"><input type="checkbox" data-bind="cd.placeCats.${pc.id}" ${d.placeCats[pc.id] === false ? '' : 'checked'}> ${esc(pc.label)}</label>`).join('')}
         <label class="hub-label" for="cd-place-reveal">Quando aparecem</label>
         <select id="cd-place-reveal" data-bind="cd.placeReveal">${opt('all', 'Sempre (a partir do zoom de cidade)', d.placeReveal)}${opt('near', 'Só perto de um token (' + PLACE_NEAR_M + ' m)', d.placeReveal)}</select>
@@ -5950,6 +6141,7 @@
       tokenId:h ? h.id : null, whoName:h ? h.name : a.actorName, actorId:a.actorId, actorName:a.actorName,
       sessionId:(campaignMeta && campaignMeta.activeSessionId) || null, sheet:extra || {} };
     rollUI.last = Object.assign({ ts:Date.now() }, rec);
+    if(!(extra && extra.kind === 'weather')) TVSound.rolled(termResults, !!(extra && extra.crit));
     const path = scopedKey(KEY_ROLLS), id = DB.newId(path);
     const ok = await DB.set(path + '/' + id, Object.assign({ id, ts:DB.ts() }, JSON.parse(JSON.stringify(rec))));
     if(!ok) toast(dbFailMsg('A rolagem'), true);
@@ -6596,6 +6788,7 @@
     tacUI.last = { sid, id:t.id, c:c0, r:r0, mv:+t.mv || 0 };
     const ok = await DB.update({ [p + '/c']:cell.c, [p + '/r']:cell.r, [p + '/mv']:used });
     if(!ok){ tacUI.last = null; toast(master ? 'Não foi possível mover (as regras do Firebase v3 já foram publicadas?).' : 'Não foi possível mover. Avise o mestre.', true); }
+    if(ok) TVSound.play(Math.random() < 0.5 ? 'passo1' : 'passo2', { v:0.8, gap:120 });
     tacRenderBar();
     return ok;
   }
@@ -7028,10 +7221,15 @@
     }
   }
   function tacOnData(v){
-    const prev = tac.active;
+    const prev = tac.active, turnBefore = tacTurnKey(prev);
     tac = { active:(v && v.active) || null, scenes:(v && v.scenes) || {} };
     if(tacUI.seen && tac.active && tac.active !== prev && !tacUI.open && !isMaster() && tac.scenes[tac.active]) toast('Cena tática ativa: ' + (tac.scenes[tac.active].name || 'Cena') + ' (botão Tático)');
     tacUI.seen = true;
+    const turnAfter = tacTurnKey(tac.active);
+    if(turnAfter && turnAfter !== turnBefore && !isMaster()){
+      const tid = tacTurnId(tacScene(tac.active)), tk = tacTokensOf(tac.active).find(x => x.id === tid);
+      if(tk && tacCanMove(tk)) TVSound.play('vez', { remote:true });
+    }
     tacRenderArea();
     tacChanged();
   }
@@ -7159,6 +7357,9 @@
     const st = { 'dock-roll':hudIsOpen('qr-sheet'), 'dock-loot':saqueDrawer.classList.contains('open'), 'dock-inv':invDrawer.classList.contains('open'), 'dock-tac':tacUI.open, 'dock-more':hudIsOpen('idx-sheet') };
     Object.keys(st).forEach(k => { const b = hudEl(k); if(b){ b.classList.toggle('active', !!st[k]); b.setAttribute('aria-pressed', String(!!st[k])); } });
     hudEl('dock-more').setAttribute('aria-expanded', String(hudIsOpen('idx-sheet')));
+    const anyOpen = Object.keys(st).some(k => st[k]) || [hubDrawer, navDrawer].some(el => el.classList.contains('open'));
+    if(dockAny !== null && anyOpen !== dockAny) TVSound.play(anyOpen ? 'abrir' : 'fechar', { v:0.8 });
+    dockAny = anyOpen;
     const lc = hudEl('mchip-layers'); if(lc){ lc.classList.toggle('active', hudIsOpen('lay-sheet')); lc.setAttribute('aria-expanded', String(hudIsOpen('lay-sheet'))); }
     document.body.classList.toggle('tac-on', !!tacUI.open);
     document.body.classList.toggle('panel-open', [saqueDrawer, invDrawer, hubDrawer, navDrawer].some(el => el.classList.contains('open')));
@@ -7577,6 +7778,20 @@
 
 
   // ---- lugares reais (OpenStreetMap) ----
+  // MAPA DE REMOÇÃO (para tirar o módulo de vez: apagar do app.js, do index.html e do style.css; nada mais depende dele):
+  //  app.js    1) constantes PLACES_ON, PLACE_* e placesLayer (perto do pinsLayer)
+  //            2) este módulo inteiro, de "lugares reais (OpenStreetMap)" até placeExplore() (a função hudCampaignChanged() vem logo depois)
+  //            3) chamadas soltas: plDraw() em renderPins/renderTokens, plWarmSoon() em renderTokens, placesRefresh() em applyConfig,
+  //               plClear()/placesRefresh() em hudCampaignChanged, plPurge()/plDropAll()/moveend/pl-status em hudInit
+  //            4) filtro do mapa: ['lugares', 'Lugares'] em MAPF e lugares:pl.total em mapfCounts
+  //            5) configuração: DEFAULT_MODULES.places, "places" em cfg(), em saveConfig() e em hub.cfgDraft (placeCats/placeReveal),
+  //               modLabels.places, o bloco "Lugares reais: categorias" e o case 'pl-test'
+  //  index.html  o chip data-mf="lugares", o <div id="pl-status"> e o <script> do window.TV_PLACES
+  //  style.css   .pl-mk, .pl-badge, .pl-pop, .pl-name, .pl-meta, #pl-status, .pl-test-out e .mk-lugares/.hf-lugares
+  //  Fica de propósito: o texto "Lugar real · OpenStreetMap" no popup de pins antigos (campo pin.osm) e os pins já criados.
+  // FONTE DE DADOS: só plQuery, plOrder, plRace, plParse, plFetchTiles, plTest e PLACE_API falam com o OpenStreetMap (Overpass).
+  // O resto (guardado por bloco, desenho, filtro, aviso, criação do pin no Vasculhar) não sabe de onde vêm os lugares: para trocar de fonte,
+  // basta plFetchTiles(tiles, outer) continuar chamando plPut(bloco, lista) com itens { k, lat, lng, name, cat, tag, addr }.
   // Pontos de interesse reais (hospital, farmácia, hotel, posto…) aparecem no mapa e viram locais de saque.
   // Nada é gravado até alguém tocar em "Vasculhar": aí o lugar vira um pin comum (id osm_<tipo><id>) e o saque usa
   // o sistema de contêineres que já existe, então o estado vale para a mesa toda. Consulta pela API Overpass,
@@ -7610,6 +7825,14 @@
         if(!t || !(t.exp > Date.now())) localStorage.removeItem(k); else rows.push({ k, exp:t.exp });
       });
       if(mais) rows.sort((a, b) => a.exp - b.exp).slice(0, Math.max(10, Math.ceil(rows.length / 3))).forEach(r => { localStorage.removeItem(r.k); delete pl.tiles[r.k.slice(PLACE_LS.length)]; });
+    }catch(e){}
+  }
+  // interruptor desligado: libera o espaço do aparelho (blocos de mapa e servidor lembrado). É só guardado, nada da mesa.
+  function plDropAll(){
+    try{
+      const ks = [];
+      for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && (k.indexOf('tv-poi') === 0 || k === 'tv-op-mirror')) ks.push(k); }
+      ks.forEach(k => localStorage.removeItem(k));
     }catch(e){}
   }
   function plPut(key, list){
@@ -7790,7 +8013,7 @@
   function plWarmSoon(){ if(!hudReady || !placesEnabled()) return; clearTimeout(pl.warmTimer); pl.warmTimer = setTimeout(plPump, 1200); }
   // teste de conexão (mestre, na configuração): mostra qual servidor responde e em quanto tempo
   async function plTest(){
-    const out = document.getElementById('pl-test-out'); if(!out) return;
+    const out = document.getElementById('pl-test-out'); if(!PLACES_ON || !out) return;
     const c = map.getCenter(), q = '[out:json][timeout:10];node["amenity"](around:1500,' + c.lat.toFixed(4) + ',' + c.lng.toFixed(4) + ');out count;';
     out.textContent = 'Testando…';
     const lines = await Promise.all(PLACE_API.map(async m => {
@@ -7809,7 +8032,7 @@
   }
 
   // ---- desenho ----
-  function placesEnabled(){ return !!cfg().modules.places; }
+  function placesEnabled(){ return PLACES_ON && !!cfg().modules.places; }
   function plClear(){ Object.keys(pl.markers).forEach(k => { placesLayer.removeLayer(pl.markers[k]); delete pl.markers[k]; }); pl.total = 0; }
   function plIcon(p){
     const c = PLACE_CATS.find(x => x.id === p.cat), t = PIN_TYPES.find(x => x.id === c.type) || {}, col = t.color || 'var(--frost)';
@@ -7908,9 +8131,9 @@
     document.querySelectorAll('[data-ic]').forEach(e => { e.innerHTML = ic(e.dataset.ic, +e.dataset.icSize || 16); });   // ícones das partes estáticas do HTML
     hudLoadPrefs(); mapfLoad();
     hudReady = true;
-    plPurge();
+    if(PLACES_ON) plPurge(); else plDropAll();
     mapfApply();
-    map.on('moveend', placesLater); placesRefresh();
+    if(PLACES_ON){ map.on('moveend', placesLater); placesRefresh(); }
     { const ps = hudEl('pl-status'); if(ps){ ps.addEventListener('click', () => { if(ps.classList.contains('pl-retry')) plRetryNow(); }); ps.addEventListener('keydown', e => { if((e.key === 'Enter' || e.key === ' ') && ps.classList.contains('pl-retry')){ e.preventDefault(); plRetryNow(); } }); } }
     map.on('zoomend', clusterUpdate); clusterSync();
     const ctg = document.getElementById('cluster-toggle'); if(ctg) ctg.addEventListener('click', () => clusterSetOn(!cl.on));

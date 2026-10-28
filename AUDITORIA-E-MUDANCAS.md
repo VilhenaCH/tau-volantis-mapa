@@ -196,12 +196,14 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 - Na folha **Rolar** há "Atributo desta rolagem": vale só para aquela folha aberta (não altera a ficha) e volta ao padrão ao fechar.
 - Condições seguem o atributo escolhido (ex.: Debilitado pesa em AGI/FOR/VIG, não em INT).
 - Interpretações: ataques usam o mesmo critério (atributo do ataque define os dados); o crítico vale para o d20 que **ficou**; limite de 20 dados.
-- Cache: `app.js?v=f9` / `style.css?v=f9` — nas próximas atualizações troque `f9` por outro texto.
+- Cache: `app.js?v=f10` / `style.css?v=f10` — nas próximas atualizações troque `f9` por outro texto.
 
 ## 19. Painel do personagem recolhível (tela larga)
 - A mini-ficha da esquerda ganhou um botão X (recolher). Recolhida, o mapa ocupa a largura toda e aparece uma aba com o ícone de personagem na borda esquerda para reabrir. A escolha é lembrada por campanha neste aparelho. Em telas estreitas o painel não existe (como antes). O feed da direita já era recolhível.
 
 ## 20. Lugares reais do OpenStreetMap (hotel, farmácia, posto…) como locais de saque
+**Atenção (f10): este módulo vem DESLIGADO por um interruptor geral no `index.html`. Veja a seção 24.**
+
 **O que é.** Com o módulo ligado, hotéis, hospitais, farmácias, mercados, postos, delegacias e locais de fé que existem de verdade na região do mapa aparecem como pontos para explorar. Tocar no ponto abre um cartão (nome, marcação do OpenStreetMap, endereço, estado) com o botão **Vasculhar**.
 
 **Como liga.** Mestre: Mesa de jogo → Campanhas → Configuração desta campanha → módulo **Lugares reais no mapa (OpenStreetMap)**. Aparecem as categorias (Saúde, Comércio, Combustível e oficinas, Hospedagem, Segurança, Locais de fé) e o modo **Quando aparecem**: sempre (a partir do zoom de cidade) ou só perto de um token (250 m). Escolha de módulo, categorias e modo ficam em `campaign-meta/<campanha>/config` (campos novos e opcionais; campanhas antigas não mudam). Chip **Lugares** na barra do mapa mostra/oculta a camada só para quem tocar (fica neste aparelho).
@@ -288,4 +290,55 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 - Tradução de gosto: alguns remédios comuns (ex.: antiácido) têm efeito sugerido discutível; é só sugestão.
 
 **Para mexer num item.** Os dados ficam em `index.html`, no bloco `loot-data`, numa linha só. É difícil de editar no celular; peça a mudança pelo nome do item.
+
+## 24. Lugares reais (OpenStreetMap): interruptor geral e preparo para remover
+**Por que mudou.** Os pins automáticos de lugares reais não funcionaram bem no seu celular (consulta lenta ou sem resposta). Por isso a geração automática ficou **desligada**, e o módulo foi preparado para ser tirado de vez, sem mexer no resto do app.
+
+**Pergunta: dá para pegar os pontos que já aparecem no mapa do Leaflet?** Não. O Leaflet só mostra **imagens prontas** (blocos de mapa em PNG): o hotel, a farmácia e o nome da rua que você vê são pixels desenhados nessa imagem. Não existe uma lista de lugares dentro do Leaflet para ler. Para ter dados de verdade, só há três caminhos: (1) uma API de consulta, que é o que tínhamos (Overpass, do OpenStreetMap); (2) mapa em vetor (OpenFreeMap + MapLibre), que usa os mesmos dados do OpenStreetMap e precisaria de uma biblioteca nova; (3) uma **lista própria** (pins que o mestre põe, ou um arquivo `lugares.json` que vai junto do app, sem consulta nenhuma e instantâneo). Em qualquer caminho, o que o OpenStreetMap não tem em área rural continua faltando: isso é do dado, não do app.
+
+**O que mudou.**
+- **Interruptor geral** no `index.html`: a linha `<script>window.TV_PLACES = false;</script>`. Entregue **desligado**. Para ligar de novo, troque `false` por `true` (e suba o `index.html`).
+- **Desligado:** nenhum pedido de rede para o OpenStreetMap/Overpass, nenhum aviso na tela, nenhuma camada de lugares, o chip "Lugares" some, e na configuração da campanha **não aparecem** a opção "Lugares reais no mapa", as categorias nem o botão de testar conexão. O que estava guardado no aparelho (blocos de mapa, servidor lembrado) é apagado para liberar espaço; é só cache.
+- **Nada da mesa é perdido.** Pins que já nasceram de um lugar (campo `osm`) continuam pins comuns, com o saque, o estado e o histórico, e o popup ainda diz "Lugar real · OpenStreetMap". A escolha "Lugares reais" que a campanha já tinha salva **não é mexida**: ligando o interruptor de novo, volta como estava.
+- **Fonte de dados separada.** Só `plQuery`, `plOrder`, `plRace`, `plParse`, `plFetchTiles`, `plTest` e `PLACE_API` falam com o OpenStreetMap. Guardado, desenho, filtro, aviso e a criação do pin no "Vasculhar" não sabem de onde vêm os lugares. Para trocar de fonte, basta `plFetchTiles` continuar entregando `plPut(bloco, lista)` com itens `{ k, lat, lng, name, cat, tag, addr }`.
+
+**Mapa de remoção (para tirar o módulo de vez).** Está escrito como comentário no `app.js`, logo acima do módulo ("MAPA DE REMOÇÃO"):
+1. `app.js`: as constantes (`PLACES_ON`, `PLACE_*`, `placesLayer`); o módulo inteiro (de "lugares reais (OpenStreetMap)" até `placeExplore`); as chamadas soltas (`plDraw`, `plWarmSoon`, `placesRefresh`, `plClear`, `plPurge`/`plDropAll`, `moveend`, `pl-status` no `hudInit`); o filtro `['lugares', 'Lugares']` e `lugares:pl.total`; na configuração, `places` em `DEFAULT_MODULES`, `cfg()`, `saveConfig()` e `hub.cfgDraft`, o texto do módulo, o bloco de categorias e o `case 'pl-test'`.
+2. `index.html`: o chip `data-mf="lugares"`, o `<div id="pl-status">` e o `<script>` do `TV_PLACES`.
+3. `style.css`: `.pl-*`, `#pl-status`, `.pl-test-out` e `.hf-lugares .mk-lugares`.
+4. Fica: o texto "Lugar real · OpenStreetMap" no popup de pins antigos.
+
+**Ensaio da remoção.** Fiz essa remoção completa numa **cópia** por script (a cópia não é a que você sobe). O script confirmou que o trecho tirado só tinha funções do módulo, que o `app.js` continua válido e que não sobra nenhum nome do módulo. Resultado na cópia: as **26 suítes** que não são do módulo (catálogo, inventário, campanhas, tático, clima, filtros do mapa, ofício etc.) passaram **sem nenhuma falha**; as 3 suítes de lugares deixam de existir junto com o módulo. Quando você decidir, é só pedir "remove": o app entregue fica igual a essa cópia.
+
+**O que continua sendo do OpenStreetMap e NÃO foi mexido.** (a) O **mapa-base** "Ruas" (blocos do openstreetmap.org) e o crédito "© OpenStreetMap" no rodapé. (b) A **busca por endereço** na barra de busca do mapa (Nominatim), que é outra coisa: procura um endereço digitado e não gera pins. Se também quiser tirar uma delas, é outro pedido.
+
+**Testes.** Nova suíte `t_f10off` (desligado, como entregue): zero pedidos em todos os zooms, aviso vazio, chip escondido, guardado limpo, outras chaves do aparelho intactas, pin antigo com popup, configuração sem a opção e sem erro no console. As suítes de lugares antigas rodam com o interruptor ligado pelo ambiente de teste.
+
+**Não testado:** em aparelho real; e o app ligado de novo com o Overpass de verdade (o ambiente de desenvolvimento não alcança a API).
+
+## 21. Efeitos sonoros (f11)
+
+**O que é.** Sons nos pontos que já existiam no app, vindos de **um único arquivo**, `tv-sons.mp3` (116 KB, 27 efeitos), montado a partir dos pacotes **CC0 da Kenney** (Casino Audio, RPG Audio, Interface Sounds e Sci-Fi Sounds; a licença CC0 está dentro de cada ZIP). Crédito não é obrigatório; mesmo assim o Menu mostra "Sons: pacotes CC0 de Kenney.nl".
+
+**Onde toca.**
+- **Vasculhar e pesca:** clique ao começar; um tique por passo do rolo (desacelera junto com ele); trava quando para; som por raridade (Comum, Incomum, Raro com brilho extra); drone grave para item anômalo; nota que cai quando não acha nada. "Pular" corta o som. No modo "reduzir movimento" (sem animação) toca só o som do melhor resultado.
+- **Dados:** som de dado (1 a 3 camadas conforme a quantidade); crítico do ataque ganha o som de "raro". Rolagens da ficha e da aba Dados.
+- **Avisos de erro** (`toast` com erro): um bip curto. Avisos de sucesso ficam mudos.
+- **Guardar, descartar, trocar, fabricar** (sucesso e falha).
+- **Clima:** trovão ao virar Tempestade e quando o raio cai; drone ao virar Nevasca Espectral.
+- **Tático:** aviso quando chega a vez de um token seu; passos ao mover.
+- **Painéis:** som curto ao abrir e ao fechar o dock/painéis.
+- **Outras pessoas rolando:** um som discreto, no máximo um por segundo.
+
+**Regras.** Só toca depois do primeiro toque na tela (regra dos navegadores de celular); nunca com a aba escondida; eventos de outras pessoas ficam mudos nos 6 primeiros segundos depois de entrar (não toca o histórico antigo); vibração curta só em item raro e crítico (Android). **Padrão: ligado, volume Baixo.** Menu → **Som** liga/desliga e troca o volume (Baixo, Médio, Alto); a escolha fica guardada no aparelho.
+
+**Interruptores.** No `index.html`, `window.TV_SOUND = true` (troque por `false` para desligar de vez e esconder o menu Som). Se o `tv-sons.mp3` não estiver no repositório, o app não quebra: usa bips simples de reserva.
+
+**Arquivos que mudam:** `app.js`, `index.html`, `style.css` e o **novo** `tv-sons.mp3`. Os links `?v=` foram para `f11`.
+
+**Como o arquivo foi feito.** Cada clipe foi cortado (silêncio nas pontas), nivelado pelo volume médio, convertido para **MP3 mono 64 kbps** e colocado num arquivo só, com 0,12 s de silêncio entre eles; o código guarda o início e a duração de cada um. MP3 porque OGG só toca no iPhone a partir do iOS 18.4.
+
+**Testes.** Suíte nova `t_f11sound` (31 verificações, 3 execuções seguidas sem falha): o áudio só nasce no primeiro toque; o MP3 carrega e decodifica; ticks, parada, resultado, dados, erro, trovão, abrir/fechar; mudo e volume (guardados); "reduzir movimento"; arquivo ausente (bips de reserva, sem erro); `TV_SOUND=false` (nada é criado). A bateria antiga continua igual: f10off 18, f6places 33, f9items 39, f3b 77, regress 11, inv2 25, craft 5, f4t 12, f4w 67, f4m 78, f5mini 11, tac 52, tac2 35, camp 8, race 6, nav 15.
+
+**Não verificado.** Eu **não consigo ouvir**: o teste prova que cada som é disparado na hora certa e que o arquivo decodifica, mas se o timbre combina, se algum som incomoda ou se o volume Baixo está baixo demais só se sabe ao ouvir, de preferência no seu celular e no de um jogador com iPhone. Também não testei em aparelho real nem no Safari. Os ajustes finos (qual som usar em cada evento, volume de cada um) são fáceis de trocar: o mapa de sons está no começo do `app.js`.
 

@@ -1979,3 +1979,10 @@ body:has(.app-popover.open) #feed-chip{ visibility:hidden; }
 .fact-tag{ color:var(--ink); white-space:nowrap; }
 .fact-mat{ font-style:italic; }
 #saque-drawer .filter-row select{ max-width:100%; }
+
+/* ---- Som (Menu → Som) ---- */
+.hud-sound{ display:flex; flex-direction:column; gap:0.5rem; }
+.sound-vol{ display:flex; gap:0.35rem; }
+.sound-vol .tool-btn{ flex:1; justify-content:center; }
+.hud-sound .tool-btn:disabled{ opacity:0.45; cursor:default; transform:none; }
+.sound-credit{ font-size:0.62rem; color:var(--ink-dim); opacity:0.8; }
