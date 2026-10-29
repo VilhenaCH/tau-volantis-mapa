@@ -4,9 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tau Volantis — Mapa de Campo</title>
+<meta name="description" content="Mapa de sobrevivência do Tau Volantis: pins, tokens, saque, inventário, dados, clima e mapa tático para a mesa.">
+<meta name="theme-color" content="#0b1014">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tau Volantis">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-<link rel="stylesheet" href="style.css?v=f11">
+<link rel="stylesheet" href="style.css?v=f12">
 </head>
 <body>
 
@@ -57,6 +66,12 @@
             <div>Camada<b id="stat-layer">Ruas</b></div>
           </div>
           <div class="sync-status" id="sync-status">Conectando...</div>
+        </div>
+
+        <div class="popover-section" id="install-section" hidden>
+          <div class="vs-group-label">Instalar</div>
+          <button class="tool-btn" id="install-btn" type="button">Instalar o app neste aparelho</button>
+          <div class="install-hint" id="install-hint" hidden>No iPhone: toque em Compartilhar e depois em “Adicionar à Tela de Início”.</div>
         </div>
 
         <div class="popover-section" id="sound-section">
@@ -394,6 +409,6 @@
 <!-- Efeitos sonoros: para desligar de vez, troque true por false. O jogador também liga/desliga em Menu → Som. -->
 <script>window.TV_SOUND = true;</script>
 <script src="tv-icons.js"></script>
-  <script src="app.js?v=f11"></script>
+  <script src="app.js?v=f12"></script>
 </body>
 </html>

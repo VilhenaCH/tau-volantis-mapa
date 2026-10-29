@@ -321,14 +321,15 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 **O que é.** Sons nos pontos que já existiam no app, vindos de **um único arquivo**, `tv-sons.mp3` (116 KB, 27 efeitos), montado a partir dos pacotes **CC0 da Kenney** (Casino Audio, RPG Audio, Interface Sounds e Sci-Fi Sounds; a licença CC0 está dentro de cada ZIP). Crédito não é obrigatório; mesmo assim o Menu mostra "Sons: pacotes CC0 de Kenney.nl".
 
 **Onde toca.**
-- **Vasculhar e pesca:** clique ao começar; um tique por passo do rolo (desacelera junto com ele); trava quando para; som por raridade (Comum, Incomum, Raro com brilho extra); drone grave para item anômalo; nota que cai quando não acha nada. "Pular" corta o som. No modo "reduzir movimento" (sem animação) toca só o som do melhor resultado.
+- **Vasculhar e pesca:** um tique por passo do rolo (desacelera junto com ele); trava quando para; som por raridade (Comum, Incomum, Raro com brilho extra); drone grave para item anômalo; nota que cai quando não acha nada. "Pular" corta o som. No modo "reduzir movimento" (sem animação) toca só o som do melhor resultado.
 - **Dados:** som de dado (1 a 3 camadas conforme a quantidade); crítico do ataque ganha o som de "raro". Rolagens da ficha e da aba Dados.
 - **Avisos de erro** (`toast` com erro): um bip curto. Avisos de sucesso ficam mudos.
 - **Guardar, descartar, trocar, fabricar** (sucesso e falha).
 - **Clima:** trovão ao virar Tempestade e quando o raio cai; drone ao virar Nevasca Espectral.
 - **Tático:** aviso quando chega a vez de um token seu; passos ao mover.
-- **Painéis:** som curto ao abrir e ao fechar o dock/painéis.
 - **Outras pessoas rolando:** um som discreto, no máximo um por segundo.
+
+**Menus e botões são silenciosos** (o som de abrir/fechar painéis e o clique ao começar a busca foram tirados: soavam como chiado e cansavam de repetir). Som só em acontecimentos do jogo.
 
 **Regras.** Só toca depois do primeiro toque na tela (regra dos navegadores de celular); nunca com a aba escondida; eventos de outras pessoas ficam mudos nos 6 primeiros segundos depois de entrar (não toca o histórico antigo); vibração curta só em item raro e crítico (Android). **Padrão: ligado, volume Baixo.** Menu → **Som** liga/desliga e troca o volume (Baixo, Médio, Alto); a escolha fica guardada no aparelho.
 
@@ -338,7 +339,39 @@ Os três arquivos dependem um do outro (o `index.html` novo tem a barra de filtr
 
 **Como o arquivo foi feito.** Cada clipe foi cortado (silêncio nas pontas), nivelado pelo volume médio, convertido para **MP3 mono 64 kbps** e colocado num arquivo só, com 0,12 s de silêncio entre eles; o código guarda o início e a duração de cada um. MP3 porque OGG só toca no iPhone a partir do iOS 18.4.
 
-**Testes.** Suíte nova `t_f11sound` (31 verificações, 3 execuções seguidas sem falha): o áudio só nasce no primeiro toque; o MP3 carrega e decodifica; ticks, parada, resultado, dados, erro, trovão, abrir/fechar; mudo e volume (guardados); "reduzir movimento"; arquivo ausente (bips de reserva, sem erro); `TV_SOUND=false` (nada é criado). A bateria antiga continua igual: f10off 18, f6places 33, f9items 39, f3b 77, regress 11, inv2 25, craft 5, f4t 12, f4w 67, f4m 78, f5mini 11, tac 52, tac2 35, camp 8, race 6, nav 15.
+**Testes.** Suíte nova `t_f11sound` (31 verificações, 3 execuções seguidas sem falha): o áudio só nasce no primeiro toque; o MP3 carrega e decodifica; tiques, parada, resultado, dados, erro, trovão, painéis silenciosos; mudo e volume (guardados); "reduzir movimento"; arquivo ausente (bips de reserva, sem erro); `TV_SOUND=false` (nada é criado). A bateria antiga continua igual: f10off 18, f6places 33, f9items 39, f3b 77, regress 11, inv2 25, craft 5, f4t 12, f4w 67, f4m 78, f5mini 11, tac 52, tac2 35, camp 8, race 6, nav 15.
 
 **Não verificado.** Eu **não consigo ouvir**: o teste prova que cada som é disparado na hora certa e que o arquivo decodifica, mas se o timbre combina, se algum som incomoda ou se o volume Baixo está baixo demais só se sabe ao ouvir, de preferência no seu celular e no de um jogador com iPhone. Também não testei em aparelho real nem no Safari. Os ajustes finos (qual som usar em cada evento, volume de cada um) são fáceis de trocar: o mapa de sons está no começo do `app.js`.
 
+
+## 25. App instalável (f12)
+
+O Tau Volantis agora pode ser instalado no celular ou no computador, com ícone próprio, tela cheia (sem barra do navegador) e abertura mesmo sem sinal.
+
+**Arquivos novos (na raiz, junto do `index.html`):** `manifest.webmanifest` (nome, cores, ícones, modo "standalone"), `sw.js` (o service worker, que guarda cópias para abrir offline), `icon-192.png`, `icon-512.png` (serve também de ícone "maskable" do Android) e `apple-touch-icon.png` (iPhone).
+
+**Arquivos que mudam:** `index.html` (cabeçalho com manifest, cor do tema e ícones; seção **Instalar** no menu; links `?v=f12`), `app.js` (registro do service worker e botão de instalar, no fim do arquivo) e `style.css` (estilo da seção Instalar). O `tv-sons.mp3` não muda.
+
+**Como instalar.**
+- **Android (Chrome):** menu ⋮ → "Instalar app" (ou "Adicionar à tela inicial"); ou abra o **Menu** do app e toque em **Instalar o app neste aparelho** (o botão só aparece quando o navegador permite instalar).
+- **iPhone (Safari):** botão Compartilhar → "Adicionar à Tela de Início". No iPhone o app mostra esse aviso no Menu, porque o Safari não tem botão automático. Tem que ser o Safari; em outros navegadores do iPhone a opção pode não existir.
+- **Computador (Chrome/Edge):** ícone de instalar na barra de endereço, ou o botão do Menu.
+- O site precisa estar em **https** (GitHub Pages já está). Abrindo o `index.html` direto do arquivo (file://) o app funciona como antes, mas sem instalar e sem offline.
+
+**Como o service worker funciona.**
+- Arquivos do próprio app (`index.html`, `app.js`, `style.css`, sons, ícones): **rede primeiro**. Com internet, sempre pega a versão mais nova, então subir uma atualização no GitHub vale na hora, sem mexer no `sw.js`. Sem internet, abre a última cópia guardada. As cópias de versões antigas (`?v=f11` etc.) são apagadas sozinhas.
+- Bibliotecas de CDN (Leaflet, Leaflet Draw, Firebase SDK 10.13.2, fontes do Google): **cache primeiro**, porque o endereço já traz a versão.
+- **Não passam pelo service worker:** blocos do mapa-base (OpenStreetMap), Firebase em tempo real, Discord e login do Google. Sem internet o app abre, mas o mapa-base fica vazio e a mesa não sincroniza.
+- Só requisições GET são tocadas. Nada que grava dados passa por ali.
+- Para forçar todo mundo a baixar tudo de novo (raro), troque `tau-app-v1` por `tau-app-v2` no começo do `sw.js`.
+
+**Cuidado que mantive de propósito:** o `viewport` do `index.html` continua sem `viewport-fit=cover`, para não mexer em nenhum espaçamento do layout atual.
+
+**Testes.** Suíte nova `t_pwa` (38 verificações, 2 execuções seguidas sem falha): manifest válido e ícones com o tamanho certo; o Chrome não aponta nenhum impedimento de instalação (consulta de instalabilidade); o service worker guarda os arquivos e as bibliotecas; **recarregar com os servidores desligados** abre o app (Leaflet, `app.js`, CSS e sons vêm do cache); atualização "rede primeiro" troca a cópia e apaga a antiga; botão Instalar aparece só quando permitido; já instalado, o botão some; aviso do iPhone; `file://` não registra service worker. A bateria antiga continua igual (f10off 18, f6places 33, f9items 39, f3b 77, regress 11, inv2 25, craft 5, f4t 12, tac 52) e `t_f11sound` 31.
+
+**Não verificado (importante).**
+- **Login com Google no app instalado.** O login usa janela popup (`signInWithPopup`). No Android costuma funcionar; no **iPhone** o app instalado tem armazenamento separado do Safari e popups podem falhar. Se o login não funcionar no app instalado, o jogador ainda consegue entrar pelo navegador. Se isso acontecer, a correção é trocar para login por redirecionamento (peça que eu faço).
+- Nada foi testado em aparelho real nem no Safari; o teste usou o Chrome do ambiente.
+- Offline: o app abre e mostra os dados já carregados, mas sem sinal não há mapa-base nem sincronização.
+- No iPhone, o app instalado não compartilha dados com o Safari: quem instalar precisa entrar de novo na conta/campanha dentro do app (os dados da mesa continuam no Firebase). No Android o armazenamento costuma ser o mesmo do Chrome.
+- A aparência do ícone (floco de neve sobre fundo escuro) só dá para julgar vendo na tela inicial; trocar é só substituir os três PNGs mantendo os nomes e tamanhos.

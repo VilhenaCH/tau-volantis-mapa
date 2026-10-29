@@ -5,11 +5,11 @@
   // Regras: só toca depois do primeiro toque na tela (política dos navegadores), nunca com a aba escondida; eventos de outros
   // jogadores ficam mudos nos primeiros segundos e têm limite de um por segundo. Se o arquivo não carregar, usa bips simples.
   const TVSound = (() => {
-    const MAP = {"tick1":[0.05,0.011],"tick2":[0.181,0.02],"tick3":[0.322,0.055],"land":[0.497,0.205],"found1":[0.822,0.287],"found2":[1.229,0.317],"found3":[1.666,0.528],"glass":[2.314,0.655],"anom":[3.089,0.761],"empty":[3.97,0.229],"erro":[4.319,0.104],"dado1":[4.543,0.534],"dado2":[5.197,0.645],"dado3":[5.961,0.572],"guardar":[6.654,0.231],"descarta":[7.004,0.306],"troca":[7.431,0.7],"craftok":[8.251,0.848],"craftno":[9.219,0.296],"pesca":[9.635,0.495],"trovao":[10.251,1.998],"vez":[12.368,0.484],"passo1":[12.972,0.219],"passo2":[13.311,0.222],"abrir":[13.653,0.146],"fechar":[13.919,0.146],"click":[14.185,0.1]};
+    const MAP = {"tick1":[0.05,0.011],"tick2":[0.181,0.02],"tick3":[0.322,0.055],"land":[0.497,0.205],"found1":[0.822,0.287],"found2":[1.229,0.317],"found3":[1.666,0.528],"glass":[2.314,0.655],"anom":[3.089,0.761],"empty":[3.97,0.229],"erro":[4.319,0.104],"dado1":[4.543,0.534],"dado2":[5.197,0.645],"dado3":[5.961,0.572],"guardar":[6.654,0.231],"descarta":[7.004,0.306],"troca":[7.431,0.7],"craftok":[8.251,0.848],"craftno":[9.219,0.296],"pesca":[9.635,0.495],"trovao":[10.251,1.998],"vez":[12.368,0.484],"passo1":[12.972,0.219],"passo2":[13.311,0.222]};
     const KEY = 'tv-map:sound', GAIN = [0, 0.4, 0.7, 1];
     const FB = { tick1:[1800,'square',.025,.35], tick2:[2200,'square',.02,.35], tick3:[1500,'square',.03,.35], land:[260,'triangle',.09,.8],
       found1:[660,'sine',.18,.8], found2:[880,'sine',.22,.8], found3:[1175,'sine',.3,.8], anom:[130,'sawtooth',.5,.4], empty:[240,'triangle',.25,.7,120],
-      erro:[190,'square',.1,.35], dado1:[420,'triangle',.07,.8], dado2:[380,'triangle',.07,.8], dado3:[460,'triangle',.07,.8], vez:[784,'sine',.25,.8], click:[1200,'square',.02,.3] };
+      erro:[190,'square',.1,.35], dado1:[420,'triangle',.07,.8], dado2:[380,'triangle',.07,.8], dado3:[460,'triangle',.07,.8], vez:[784,'sine',.25,.8] };
     const st = { on:true, vol:1 };
     try{ const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if(s){ st.on = s.on !== false; if(s.vol === 1 || s.vol === 2 || s.vol === 3) st.vol = s.vol; } }catch(e){}
     let ctx = null, master = null, buf = null, loading = false, failed = false, quietUntil = Date.now() + 6000, lastRemote = 0;
@@ -141,7 +141,7 @@
     };
   })();
   window.__TVSound = TVSound;   // gancho de teste (só leitura do que tocou)
-  let rollsSeen = null, lastWx = null, dockAny = null;
+  let rollsSeen = null, lastWx = null;
   // som do resultado quando a animação do rolo está desligada ("reduzir movimento"): toca só o melhor item achado
   function soundLootResult(its, locKey){
     if(!its.length){ TVSound.play('empty'); return; }
@@ -2960,7 +2960,6 @@
     const show = () => { lootHistory.unshift(entry); renderLootResults(); };
     if(!animEnabled()){ soundLootResult(items.map(x => x.item), locKey); show(); return; }
     setSearchBusy(true);
-    TVSound.play('click');
     playSearch({ stage:lootStage, title:`Vasculhando ${LOC_NAMES[locKey]}…`, pool:byLoc[locKey], found:items.map(x => x.item),
       rarity:it => rarityInfo(it, locKey), emptyText:'Nada de útil aqui' }).then(() => { setSearchBusy(false); show(); });
   }
@@ -7357,9 +7356,6 @@
     const st = { 'dock-roll':hudIsOpen('qr-sheet'), 'dock-loot':saqueDrawer.classList.contains('open'), 'dock-inv':invDrawer.classList.contains('open'), 'dock-tac':tacUI.open, 'dock-more':hudIsOpen('idx-sheet') };
     Object.keys(st).forEach(k => { const b = hudEl(k); if(b){ b.classList.toggle('active', !!st[k]); b.setAttribute('aria-pressed', String(!!st[k])); } });
     hudEl('dock-more').setAttribute('aria-expanded', String(hudIsOpen('idx-sheet')));
-    const anyOpen = Object.keys(st).some(k => st[k]) || [hubDrawer, navDrawer].some(el => el.classList.contains('open'));
-    if(dockAny !== null && anyOpen !== dockAny) TVSound.play(anyOpen ? 'abrir' : 'fechar', { v:0.8 });
-    dockAny = anyOpen;
     const lc = hudEl('mchip-layers'); if(lc){ lc.classList.toggle('active', hudIsOpen('lay-sheet')); lc.setAttribute('aria-expanded', String(hudIsOpen('lay-sheet'))); }
     document.body.classList.toggle('tac-on', !!tacUI.open);
     document.body.classList.toggle('panel-open', [saqueDrawer, invDrawer, hubDrawer, navDrawer].some(el => el.classList.contains('open')));
@@ -8158,5 +8154,29 @@
   if(auditQueue.length) pumpAudit();
   applyConfig();
   updateHud();
+
+  // ================= APP INSTALÁVEL (PWA) =================
+  // manifest.webmanifest + sw.js + ícones: o navegador oferece "Instalar app". O service worker deixa o app abrir sem internet
+  // (o mapa-base e a sincronização da mesa continuam precisando de sinal). Só registra em http(s), nunca ao abrir o HTML como arquivo.
+  if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  }
+  (function(){
+    const sec = document.getElementById('install-section'), btn = document.getElementById('install-btn'), hint = document.getElementById('install-hint');
+    if(!sec || !btn || !hint) return;
+    const standalone = () => { try{ return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }catch(e){ return false; } };
+    if(standalone()) return;
+    let deferred = null;
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; sec.hidden = false; btn.hidden = false; hint.hidden = true; });
+    window.addEventListener('appinstalled', () => { deferred = null; sec.hidden = true; toast('App instalado. Abra pelo ícone na tela inicial.'); });
+    btn.addEventListener('click', async () => {
+      if(!deferred) return;
+      const ev = deferred; deferred = null; sec.hidden = true;
+      try{ ev.prompt(); await ev.userChoice; }catch(err){}
+    });
+    // iPhone/iPad não têm o aviso automático: mostra o passo a passo
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if(ios){ sec.hidden = false; btn.hidden = true; hint.hidden = false; }
+  })();
 
 })();

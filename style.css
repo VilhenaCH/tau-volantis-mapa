@@ -1986,3 +1986,7 @@ body:has(.app-popover.open) #feed-chip{ visibility:hidden; }
 .sound-vol .tool-btn{ flex:1; justify-content:center; }
 .hud-sound .tool-btn:disabled{ opacity:0.45; cursor:default; transform:none; }
 .sound-credit{ font-size:0.62rem; color:var(--ink-dim); opacity:0.8; }
+
+/* ---- Instalar o app (Menu → Instalar) ---- */
+#install-section[hidden], .install-hint[hidden], #install-btn[hidden]{ display:none; }
+.install-hint{ font-size:0.7rem; line-height:1.4; color:var(--ink-dim); }
