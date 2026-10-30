@@ -66,6 +66,21 @@
   #map.dark-streets .leaflet-tile-pane{
     filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.6);
   }
+  /* Mapa base "Nevado": os mesmos blocos de rua, tingidos de gelo (chão claro azulado, água de aço, estradas brancas).
+     O filtro age só nos blocos; pins, tokens e desenhos ficam como estão. A bordinha de geada não pega toques. */
+  #map.snow-map{ background:#dbe9f2; }
+  #map.snow-map .leaflet-tile-pane{
+    filter: grayscale(1) brightness(0.66) contrast(2.4) sepia(0.55) hue-rotate(172deg) saturate(1.25);
+  }
+  #map.snow-map::after{
+    content:""; position:absolute; inset:0; z-index:401; pointer-events:none;
+    background:radial-gradient(ellipse at 50% 50%, transparent 58%, rgba(214,234,246,0.42) 100%);
+  }
+  /* o título do cabeçalho fica direto sobre o mapa: no chão claro ele sumiria, então uma sombra escura desce do topo */
+  #map.snow-map::before{
+    content:""; position:absolute; left:0; right:0; top:0; height:8.4rem; z-index:402; pointer-events:none;
+    background:linear-gradient(to bottom, rgba(11,16,20,0.80), rgba(11,16,20,0.58) 55%, rgba(11,16,20,0));
+  }
 
   .map-loading{
     position:absolute; inset:0;
@@ -1896,7 +1911,7 @@ body:has(.app-popover.open) #feed-chip{ visibility:hidden; }
 /* folha Camadas */
 #lay-sheet .hud-layer{ position:static; top:auto; right:auto; padding:0; display:block; }
 #lay-sheet .hud-layer-body{ display:flex; flex-direction:row; flex-wrap:wrap; gap:0.4rem; max-height:none; overflow:visible; opacity:1; }
-#lay-sheet .hud-layer-body .tool-btn{ flex:1 1 30%; min-height:44px; justify-content:center; }
+#lay-sheet .hud-layer-body .tool-btn{ flex:1 1 44%; min-height:44px; justify-content:center; }
 #lay-sheet{ max-height:calc(100vh - var(--sheet-b) - 7.6rem); max-height:calc(100dvh - var(--sheet-b) - 7.6rem); }   /* deixa os chips de filtro à vista */
 #lay-sheet .vs-group-label{ margin-top:0.9rem; }
 #lay-sheet .section-label{

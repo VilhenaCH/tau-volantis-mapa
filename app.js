@@ -807,6 +807,7 @@
   document.getElementById('layer-streets').addEventListener('click', () => setLayer('streets'));
   document.getElementById('layer-topo').addEventListener('click', () => setLayer('topo'));
   document.getElementById('layer-sat').addEventListener('click', () => setLayer('sat'));
+  document.getElementById('layer-snow').addEventListener('click', () => setLayer('snow'));
 
   try{ localStorage.removeItem('tv-map:hud-layer-collapsed'); }catch(e){}   // o antigo painel recolhível de camadas virou a folha "Camadas"
 
@@ -814,18 +815,25 @@
   function activeLayerBtnId(){
     if(map.hasLayer(topoLayer)) return 'layer-topo';
     if(map.hasLayer(satLayer)) return 'layer-sat';
+    if(mapEl.classList.contains('snow-map')) return 'layer-snow';
     return 'layer-streets';
   }
 
   function setLayer(which){
-    document.querySelectorAll('#layer-streets, #layer-topo, #layer-sat').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#layer-streets, #layer-topo, #layer-sat, #layer-snow').forEach(b => b.classList.remove('active'));
     ALL_BASE_LAYERS.forEach(l => { if(map.hasLayer(l)) map.removeLayer(l); });
-    mapEl.classList.remove('dark-streets');
+    mapEl.classList.remove('dark-streets', 'snow-map');
     if(which === 'streets'){
       streetsLayer.addTo(map);
       mapEl.classList.add('dark-streets');
       document.getElementById('layer-streets').classList.add('active');
       document.getElementById('stat-layer').textContent = 'Ruas';
+    } else if(which === 'snow'){
+      // Nevado: os mesmos blocos de rua, só que com o filtro de neve do CSS (#map.snow-map). Não baixa nada novo.
+      streetsLayer.addTo(map);
+      mapEl.classList.add('snow-map');
+      document.getElementById('layer-snow').classList.add('active');
+      document.getElementById('stat-layer').textContent = 'Nevado';
     } else if(which === 'sat'){
       satLayer.addTo(map);
       satLabelsLayer.addTo(map);
