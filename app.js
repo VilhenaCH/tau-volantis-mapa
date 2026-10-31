@@ -502,6 +502,88 @@
     try{ if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false; }catch(e){}
     try{ return localStorage.getItem('tv-map:area-anim') !== 'off'; }catch(e){ return true; }
   }
+  // ================= MOLDURAS (f15) =================
+  // Moldura = anel decorativo ao redor do avatar de personagem, NPC e token tático.
+  // Modelo: entidade.fr = { s:'metal', c:'#aabbcc' } (c vazio = usa a cor do token). Sem fr = visual de sempre.
+  // No mapa tático, tokens ligados a um personagem/NPC do mapa herdam a moldura dele; os criados ali (inimigo, aliado, objeto) guardam a própria em t.fr.
+  const FRAMES = [
+    ['', 'Padrão', ''], ['fino', 'Anel', ''], ['duplo', 'Duplo', ''], ['grosso', 'Aro grosso', ''], ['tracejado', 'Tracejado', ''],
+    ['pontos', 'Pontilhado', ''], ['metal', 'Metálica', ''], ['dentes', 'Dentada', ''], ['alerta', 'Alerta', ''], ['brilho', 'Brilho', ''],
+    ['pulso', 'Pulso', ''], ['orbita', 'Órbita', ''], ['hex', 'Hexágono', 'hex'], ['octo', 'Octógono', 'octo'], ['escudo', 'Escudo', 'escudo']
+  ];
+  const FRAME_NAME = {}, FRAME_SHAPE = {};
+  FRAMES.forEach(f => { FRAME_NAME[f[0]] = f[1]; if(f[2]) FRAME_SHAPE[f[0]] = f[2]; });
+  const frHex = v => /^#[0-9a-f]{6}$/i.test(v || '');
+  // normaliza o que vier do banco: devolve { s, c } ou null (sem moldura)
+  function frSt(fr){
+    if(!fr || typeof fr !== 'object' || !fr.s || !Object.prototype.hasOwnProperty.call(FRAME_NAME, fr.s)) return null;
+    return { s:fr.s, c:frHex(fr.c) ? fr.c : '' };
+  }
+  const frSig = st => st ? st.s + '.' + st.c : '';
+  // pedaços de HTML de uma moldura: o anel (vai como irmão ANTES do avatar), o atributo de forma (vai no avatar) e a classe do contêiner
+  function frParts(fr, base, o){
+    const st = frSt(fr);
+    if(!st) return { ring:'', sh:'', wrap:'' };
+    o = o || {};
+    const sh = FRAME_SHAPE[st.s] || '', col = st.c || base || '#8fd7e8';
+    return {
+      ring:`<i class="fr-ring${o.cls || ''}" data-fr="${st.s}" style="--fc:${escapeHtml(col)};--fd:${o.fd || 5}px${o.style || ''}"></i>`,
+      sh: sh ? ` data-sh="${sh}"` : '',
+      wrap:' has-fr' + (sh ? ' fr-sh' : '')
+    };
+  }
+  // seletor de moldura (popups e painel tático): HTML + ligação. O estado fica no próprio elemento (data-s, caixa de cor).
+  function frPickerHtml(fr, base, id){
+    const st = frSt(fr) || { s:'', c:'' }, col = st.c || (frHex(base) ? base : '#8fd7e8');
+    return `<details class="fr-pick"${id ? ` id="${id}"` : ''} data-s="${st.s}" style="--fr-pc:${col}">
+      <summary class="fr-sum"><span class="token-field-label">Moldura</span><span class="fr-nm">${FRAME_NAME[st.s]}</span></summary>
+      <div class="fr-grid" role="radiogroup" aria-label="Moldura">${FRAMES.map(f => {
+        const on = f[0] === st.s;
+        return `<button type="button" class="fr-chip${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-v="${f[0]}" title="${f[1]}" aria-label="${f[1]}"><span class="fr-demo">${f[0] ? `<i class="fr-ring" data-fr="${f[0]}" style="--fd:4px;--fc:var(--fr-pc)"></i>` : ''}<b${f[2] ? ` data-sh="${f[2]}"` : ''}></b></span></button>`;
+      }).join('')}</div>
+      <div class="fr-meta">
+        <label class="fr-cc"><input type="checkbox" class="fr-same"${st.c ? '' : ' checked'}> usar a cor do token</label>
+        <input type="color" class="fr-color" value="${col}"${st.c ? '' : ' disabled'} aria-label="Cor da moldura"></div></details>`;
+  }
+  function frPickerGet(root){
+    if(!root || !root.dataset.s) return null;
+    const same = root.querySelector('.fr-same'), c = root.querySelector('.fr-color');
+    return frSt({ s:root.dataset.s, c:same && same.checked ? '' : (c ? c.value : '') });
+  }
+  // getBase() devolve a cor atual do token (hex); onChange(fr, cor) é chamado a cada mudança (prévia ao vivo)
+  function frPickerWire(root, getBase, onChange){
+    if(!root) return;
+    const same = root.querySelector('.fr-same'), colorIn = root.querySelector('.fr-color'), nm = root.querySelector('.fr-nm');
+    const base = () => { const b = getBase ? getBase() : ''; return frHex(b) ? b : '#8fd7e8'; };
+    const paint = () => {
+      const s = root.dataset.s || '', col = same.checked ? base() : colorIn.value;
+      root.style.setProperty('--fr-pc', col);
+      colorIn.disabled = same.checked;
+      nm.textContent = FRAME_NAME[s] || '';
+      root.querySelectorAll('.fr-chip').forEach(b => { const on = b.dataset.v === s; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+      if(onChange) onChange(frPickerGet(root), col);
+    };
+    root.addEventListener('click', ev => { const b = ev.target.closest && ev.target.closest('.fr-chip'); if(!b || !root.contains(b)) return; root.dataset.s = b.dataset.v; paint(); });
+    same.addEventListener('change', () => { if(!same.checked) colorIn.value = base(); paint(); });
+    colorIn.addEventListener('input', paint);
+    // abrir o seletor aumenta o popup: reajusta a posição para ele não ficar por trás do cabeçalho
+    root.addEventListener('toggle', () => { try{ const pp = map._popup; if(pp && pp.isOpen() && pp._container && pp._container.contains(root)){ pp._updateLayout(); pp._updatePosition(); pp._adjustPan(); } }catch(e){} });
+    root.__paint = paint;
+    paint();
+  }
+  // prévia (64px) no popup: anel + forma aplicados ao quadrado de exemplo
+  function frPreview(wrap, prev, fr, base){
+    if(!wrap || !prev) return;
+    const old = wrap.querySelector('.fr-ring'); if(old) old.remove();
+    const fp = frParts(fr, base, { fd:6 });
+    if(fp.ring) wrap.insertAdjacentHTML('afterbegin', fp.ring);
+    const st = frSt(fr), sh = st && FRAME_SHAPE[st.s];
+    if(sh) prev.setAttribute('data-sh', sh); else prev.removeAttribute('data-sh');
+  }
+  // animações das molduras seguem o mesmo botão das áreas (Camadas) e o "reduzir movimento" do aparelho
+  function frAnimSync(){ document.documentElement.classList.toggle('tv-still', !areaAnimOn()); }
+  frAnimSync();
+
   // compatibilidade: antes havia um estilo único para todas as áreas
   const SHAPE_STYLE = { color: AREA_DEF.c, weight: 2, fillColor: AREA_DEF.c, fillOpacity: AREA_DEF.op, dashArray: '6 4' };
   const area = { draw:null, edit:null, sheetId:null, paths:{}, items:[], pv:null, saveT:null, renderT:null, rafL:0, lastPreset:'perigo' };
@@ -851,6 +933,23 @@
 
   // Tokens/áreas/rotas ainda usam a trava por camada inteira (mais simples,
   // e edições nesses são bem mais raras que mover peças no tabuleiro).
+  // popups altos (ficha, moldura…) não podem abrir por trás do cabeçalho nem do dock: o auto-ajuste do Leaflet
+  // passa a respeitar a faixa ocupada por eles (lida na hora de abrir, então acompanha rotação e redimensionamento)
+  (function popupPadding(){
+    const pad = (top) => {
+      try{
+        const mr = document.getElementById('map').getBoundingClientRect(), ch = document.getElementById('map-chips'), dk = document.getElementById('dock');
+        if(top){
+          const b = ch ? Math.ceil(ch.getBoundingClientRect().bottom - mr.top) : 0;
+          return [8, b > 0 && b < mr.height * 0.4 ? b + 8 : 8];
+        }
+        const h = dk && dk.offsetParent ? Math.ceil(mr.bottom - dk.getBoundingClientRect().top) : 0;
+        return [8, h > 0 && h < mr.height * 0.25 ? h + 8 : 8];
+      }catch(e){ return [5, 5]; }
+    };
+    Object.defineProperty(L.Popup.prototype.options, 'autoPanPaddingTopLeft', { get(){ return pad(true); }, set(){}, configurable:true });
+    Object.defineProperty(L.Popup.prototype.options, 'autoPanPaddingBottomRight', { get(){ return pad(false); }, set(){}, configurable:true });
+  })();
   let tokenPopupActive = false;
   let shapePopupActive = false;
   let routePopupActive = false;
@@ -868,9 +967,11 @@
     // ao fechar, libera a trava e recupera qualquer atualização remota que
     // tenha chegado enquanto o popup estava aberto
     if(src._pinId !== undefined && src._pinId === editingPinId){ editingPinId = null; renderPins(); }
-    if(tokensLayer.hasLayer(src)){ tokenPopupActive = false; renderTokens(); }
-    if(shapesLayer.hasLayer(src)){ shapePopupActive = false; renderShapes(); }
-    if(routesLayer.hasLayer(src)){ routePopupActive = false; renderRoutes(); }
+    // marcador que já saiu do mapa: o popup fecha DENTRO do clearLayers() de um redesenho em andamento;
+    // redesenhar de novo aqui (reentrância) deixava o token duplicado depois de salvar no popup
+    if(tokensLayer.hasLayer(src)){ tokenPopupActive = false; if(map.hasLayer(src)) renderTokens(); }
+    if(shapesLayer.hasLayer(src)){ shapePopupActive = false; if(map.hasLayer(src)) renderShapes(); }
+    if(routesLayer.hasLayer(src)){ routePopupActive = false; if(map.hasLayer(src)) renderRoutes(); }
   });
 
   document.getElementById('layer-streets').addEventListener('click', () => setLayer('streets'));
@@ -1074,9 +1175,10 @@
     // NPC ganha etiqueta de nome abaixo do badge, seguindo a mesma regra dos
     // tokens: só a primeira palavra do nome, pra não tampar o mapa
     const npcNameTag = isNpc ? `<span class="pin-name-tag">${escapeHtml((pin.title || 'NPC').trim().split(/\s+/)[0])}</span>` : '';
+    const fp = isNpc ? frParts(pin.fr, color) : { ring:'', sh:'', wrap:'' };
     return L.divIcon({
       className: 'mk-' + mapfCat(typeId),
-      html: `<div class="pin-wrap${lockCls}${sizeCls}">${ping}${occupancyBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
+      html: `<div class="pin-wrap${lockCls}${sizeCls}${fp.wrap}">${ping}${fp.ring}${occupancyBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}"${fp.sh} style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
       iconSize: isBig ? [36,36] : [26,26],
       iconAnchor: isBig ? [18,31] : [13,23],
       popupAnchor: isBig ? [0,-29] : [0,-21]
@@ -1100,9 +1202,10 @@
     // o NPC lidera um empilhamento
     const npcShortName = escapeHtml((pin.title || 'NPC').trim().split(/\s+/)[0]);
     const npcNameTag = `<span class="pin-name-tag">${stackCount && stackCount > 1 ? `${npcShortName} +${stackCount - 1}` : npcShortName}</span>`;
+    const fp = frParts(pin.fr, color);
     return L.divIcon({
       className: 'mk-tokens',
-      html: `<div class="pin-wrap pin-wrap-npc">${stackBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}" style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
+      html: `<div class="pin-wrap pin-wrap-npc${fp.wrap}">${fp.ring}${stackBadge}<div class="pin-badge${hasPhoto ? ' pin-badge-photo' : ''}"${fp.sh} style="${badgeStyle}">${badgeInner}</div>${npcNameTag}</div>`,
       iconSize: [36,36],
       iconAnchor: [18,31],
       popupAnchor: [0,-29]
@@ -1123,10 +1226,11 @@
     const isStack = stackCount && stackCount > 1;
     const stackAttrs = isStack ? ` data-count="${stackCount}"` : '';
     const nameLabel = isStack ? `${shortName} +${stackCount - 1}` : shortName;
+    const fp = frParts(token.fr, borderColor, { cls: isSelected ? ' sel' : '' });
     return L.divIcon({
       className: 'mk-tokens',
-      html: `<div class="token-wrap">
-               <div class="token-icon${isSelected ? ' selected' : ''}${isStack ? ' is-stack' : ''}"${stackAttrs} style="border-color:${escapeHtml(borderColor)}; color:${escapeHtml(borderColor)}">${inner}</div>
+      html: `<div class="token-wrap${fp.wrap}">${fp.ring}
+               <div class="token-icon${isSelected ? ' selected' : ''}${isStack ? ' is-stack' : ''}"${fp.sh}${stackAttrs} style="border-color:${escapeHtml(borderColor)}; color:${escapeHtml(borderColor)}">${inner}</div>
                <span class="token-name-tag">${nameLabel}</span>
              </div>`,
       iconSize: [36,56],
@@ -1169,7 +1273,8 @@
           <input type="file" accept="image/*" class="pin-image-input">
           ${pin.image ? '<button type="button" class="pin-image-clear">Remover imagem</button>' : ''}
         </div>
-      </div>` : ''}
+      </div>
+      ${frPickerHtml(pin.fr, npcColor)}` : ''}
       ${isNpc ? `<button type="button" class="inv-open-btn">${ic('bag', 14)} Inventário (${capTxt(pin.id)})</button>` : ''}
       ${isContainerPin(pin) ? `<button type="button" class="inv-open-btn">${ic('box', 16)} Abrir contêiner · ${escapeHtml(CONT_STATE_LABELS[containerState(pin.id)] || '')}</button>` : ''}
       ${canSearchPin(pin) ? `<button type="button" class="inv-open-btn pin-search-btn">${ic('search', 16)} Vasculhar</button>` : ''}
@@ -1233,8 +1338,11 @@
         });
       }
       const colorInput = container.querySelector('.pin-color-input');
+      const frRoot = container.querySelector('.fr-pick'), prevWrap = container.querySelector('.token-preview-wrap');
+      frPickerWire(frRoot, () => colorInput.value, (fr, col) => frPreview(prevWrap, preview, fr, col));
       colorInput.addEventListener('input', () => {
         preview.style.borderColor = colorInput.value;
+        if(frRoot.__paint) frRoot.__paint();
       });
     }
     const pinInvBtn = container.querySelector('.inv-open-btn');
@@ -1277,6 +1385,8 @@
       if(isNpc){
         pin.color = container.querySelector('.pin-color-input').value;
         pin.image = pendingPinImage;
+        const fr = frPickerGet(container.querySelector('.fr-pick'));
+        if(fr) pin.fr = fr; else delete pin.fr;
       }
       renderPins();
       map.closePopup();
@@ -1351,6 +1461,7 @@
           ${token.image ? '<button type="button" class="token-image-clear">Remover imagem</button>' : ''}
         </div>
       </div>
+      ${frPickerHtml(token.fr, currentColor)}
       <button type="button" class="inv-open-btn">${ic('bag', 14)} Inventário (${capTxt(token.id)})</button>
       <button type="button" class="inv-open-btn ficha-open-btn">${ic('user', 14)} Ficha e dados</button>
       <div class="popup-actions">
@@ -1362,7 +1473,9 @@
     container.querySelector('.ficha-open-btn').addEventListener('click', () => { map.closePopup(); hub.charToken = token.id; rollUI.who = token.id; openHub('ficha'); });
     const preview = container.querySelector('.token-preview');
     const colorInput = container.querySelector('.token-color-input');
-    colorInput.addEventListener('input', () => { preview.style.borderColor = colorInput.value; });
+    const frRoot = container.querySelector('.fr-pick'), prevWrap = container.querySelector('.token-preview-wrap');
+    frPickerWire(frRoot, () => colorInput.value, (fr, col) => frPreview(prevWrap, preview, fr, col));
+    colorInput.addEventListener('input', () => { preview.style.borderColor = colorInput.value; if(frRoot.__paint) frRoot.__paint(); });
 
     let pendingImage = token.image || null;
     const fileInput = container.querySelector('.token-image-input');
@@ -1391,6 +1504,8 @@
       token.label = container.querySelector('.token-label').value.trim() || 'Token';
       token.color = colorInput.value;
       token.image = pendingImage;
+      const fr = frPickerGet(frRoot);
+      if(fr) token.fr = fr; else delete token.fr;
       renderTokens();
       map.closePopup();
       saveKey(KEY_TOKENS, tokens);
@@ -2845,7 +2960,7 @@
     });
     const tg = areaEl('area-anim-toggle');
     if(tg){
-      const sync = () => { const on = areaAnimOn(); tg.classList.toggle('active', on); tg.setAttribute('aria-pressed', String(on)); tg.textContent = 'Animar áreas: ' + (on ? 'ligado' : 'desligado'); };
+      const sync = () => { const on = areaAnimOn(); tg.classList.toggle('active', on); tg.setAttribute('aria-pressed', String(on)); tg.textContent = 'Animar áreas e molduras: ' + (on ? 'ligado' : 'desligado'); frAnimSync(); };
       sync();
       tg.addEventListener('click', () => { try{ localStorage.setItem('tv-map:area-anim', areaAnimOn() ? 'off' : 'on'); }catch(e){} sync(); renderShapes(); });
     }
@@ -7160,10 +7275,16 @@
     const im = o && o.image;
     return (typeof im === 'string' && /^(data:image\/|https?:|\.?\/?[\w\-./]+\.(png|jpe?g|gif|webp|svg)$)/i.test(im)) ? im : '';
   }
+  // moldura do token tático: se está ligado a um personagem/NPC do mapa, acompanha a dele; senão usa a própria (t.fr)
+  function tacFrOf(t){
+    if(!t) return null;
+    const o = t.mapTokenId ? (tokens.find(x => x.id === t.mapTokenId) || pins.find(x => x.id === t.mapTokenId && x.type === 'npc')) : null;
+    return frSt(o ? o.fr : t.fr);
+  }
   let tacImgSig = '';
   function tacImgSigNow(){
     const sc = tacScene(tacCurId()); if(!sc) return '';
-    return tacTokensOf(tacCurId()).map(t => { const im = tacImgOf(t); return t.id + ':' + im.length + ':' + im.slice(-24); }).join('|');
+    return tacTokensOf(tacCurId()).map(t => { const im = tacImgOf(t); return t.id + ':' + im.length + ':' + im.slice(-24) + ':' + frSig(tacFrOf(t)); }).join('|');
   }
   mapEntitiesHook = () => { if(typeof tacUI === 'undefined' || !tacUI.open) return; const s = tacImgSigNow(); if(s !== tacImgSig){ tacImgSig = s; tacDrawTokens(); } };
   function tacDrawTokens(){
@@ -7187,8 +7308,9 @@
       const label = tacX(String(t.em || t.name || '?').slice(0, 2).toUpperCase());
       const img = tacImgOf(t);
       const cls = 'tac-tok' + (img ? ' has-img' : '') + (t.hidden ? ' hid' : '') + (tacUI.sel === t.id ? ' sel' : '') + (cur === t.id ? ' turn' : '') + (over ? ' over' : '');
+      const fp = frParts(tacFrOf(t), col, { fd:Math.max(4, Math.round(px * 0.12)), style:';--tc:' + tacX(col), cls:(t.hidden ? ' hid' : '') + (tacUI.sel === t.id ? ' sel' : '') + (cur === t.id ? ' turn' : '') });
       const icon = L.divIcon({ className:'', iconSize:[px, px], iconAnchor:[px / 2 - off, px / 2 - off],
-        html:`<div class="${cls}" style="width:${px}px;height:${px}px;--tc:${tacX(col)};font-size:${Math.round(px * 0.36)}px">${img ? `<img src="${tacX(img)}" alt="">` : `<span>${label}</span>`}</div><span class="tac-nm">${tacX(String(t.name || '').split(/\s+/)[0])}${t.hidden ? ' · oculto' : ''}</span>` });
+        html:`${fp.ring}<div class="${cls}"${fp.sh} style="width:${px}px;height:${px}px;--tc:${tacX(col)};font-size:${Math.round(px * 0.36)}px">${img ? `<img src="${tacX(img)}" alt="">` : `<span>${label}</span>`}</div><span class="tac-nm">${tacX(String(t.name || '').split(/\s+/)[0])}${t.hidden ? ' · oculto' : ''}</span>` });
       const kname = (TAC_KINDS[t.kind] || TAC_KINDS.obj)[0], aria = `${t.name || 'Token'}, ${kname}${t.hidden ? ', oculto' : ''}${cur === t.id ? ', vez atual' : ''}, coluna ${c + 1}, linha ${r + 1}`;
       const m = L.marker(tacCenter(sc, c, r), { icon, draggable:tacCanMove(t), keyboard:true, title:aria, zIndexOffset:cur === t.id ? 500 : (tacUI.sel === t.id ? 300 : 0) });
       m.on('click', ev => { L.DomEvent.stopPropagation(ev); if(tacUI.ruler){ tacRulerPoint(m.getLatLng()); return; } tacSelect(t.id); });
@@ -7347,6 +7469,10 @@
     let fk = null;
     if(ae && sh.contains(ae) && ae.dataset && ae.dataset.tac) fk = { a:ae.dataset.tac, dc:ae.dataset.dc, dr:ae.dataset.dr, id:ae.dataset.id };
     sh.innerHTML = h; sh.hidden = false; sh.dataset.p = p;
+    if(p === 'token'){
+      const fr = sh.querySelector('.fr-pick'), tc = tacEl('tt-color');
+      if(fr){ frPickerWire(fr, () => tc ? tc.value : ''); if(tc) tc.addEventListener('input', () => fr.__paint()); }
+    }
     if(fk){ const nb = Array.from(sh.querySelectorAll('[data-tac]')).find(x => x.dataset.tac === fk.a && x.dataset.dc === fk.dc && x.dataset.dr === fk.dr && x.dataset.id === fk.id); if(nb) nb.focus({ preventScroll:true }); }
   }
   function tacPanelToken(sid, sc){
@@ -7370,6 +7496,7 @@
         <label>Deslocamento (casas)<input type="number" id="tt-speed" min="0" max="99" value="${t.speed != null ? tacX(t.speed) : ''}" placeholder="padrão ${sc.rule.speed}"></label>
         <label>Iniciativa<input type="number" id="tt-ini" value="${t.ini != null ? tacX(t.ini) : ''}" placeholder="—"></label>
         <label>Cor<input type="color" id="tt-color" value="${tacX(/^#[0-9a-f]{6}$/i.test(t.color || '') ? t.color : kinfo[1])}"></label></div>
+        ${t.mapTokenId ? '<p class="hub-hint">A moldura deste token vem do personagem no mapa de campo (edite lá).</p>' : frPickerHtml(t.fr, /^#[0-9a-f]{6}$/i.test(t.color || '') ? t.color : kinfo[1], 'tt-fr')}
         <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-tac="tok-save">Salvar</button>
         <button type="button" class="inv-mini-btn" data-tac="tok-mv0">Zerar movimento</button>
         <button type="button" class="inv-mini-btn" data-tac="tok-hide">${t.hidden ? 'Revelar ao grupo' : 'Ocultar do grupo'}</button>
@@ -7591,8 +7718,10 @@
       case 'tok-save': {
         if(!m || !sel) return;
         const p = tacTokPath(sid, sel), sp = tacF('tt-speed'), ini = tacF('tt-ini');
-        const ok = await DB.update({ [p + '/name']:tacF('tt-name').trim() || 'Token', [p + '/kind']:tacF('tt-kind') || 'obj', [p + '/color']:tacF('tt-color') || null,
-          [p + '/speed']:sp === '' ? null : Math.max(0, Math.min(99, parseInt(sp, 10) || 0)), [p + '/ini']:ini === '' ? null : tacNum(ini, null) });
+        const upd = { [p + '/name']:tacF('tt-name').trim() || 'Token', [p + '/kind']:tacF('tt-kind') || 'obj', [p + '/color']:tacF('tt-color') || null,
+          [p + '/speed']:sp === '' ? null : Math.max(0, Math.min(99, parseInt(sp, 10) || 0)), [p + '/ini']:ini === '' ? null : tacNum(ini, null) };
+        if(tacEl('tt-fr')) upd[p + '/fr'] = frPickerGet(tacEl('tt-fr'));   // null apaga a moldura
+        const ok = await DB.update(upd);
         if(ok) toast('Token salvo.'); else toast('Não foi possível salvar o token.', true);
         return;
       }
