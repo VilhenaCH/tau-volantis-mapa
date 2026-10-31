@@ -14,8 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Tau Volantis">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-<link rel="stylesheet" href="style.css?v=f13">
+<link rel="stylesheet" href="style.css?v=f14">
 </head>
 <body>
 
@@ -25,6 +24,17 @@
     <div class="map-loading" id="map-loading">Carregando mapa...</div>
     <div class="hud-top-cluster">
       <div class="draw-hint" id="draw-hint" style="display:none;"></div>
+      <!-- Barra de desenho de áreas: predefinição + Desfazer / Concluir / Cancelar (e "Pronto" ao editar o contorno) -->
+      <div class="area-bar" id="area-bar" role="group" aria-label="Desenhar área" hidden>
+        <div class="ab-top"><span class="ab-dot" aria-hidden="true"></span><span id="ab-hint"></span><b id="ab-val"></b></div>
+        <div class="ab-presets" id="ab-presets"></div>
+        <div class="ab-btns">
+          <button type="button" id="ab-undo" hidden>Desfazer</button>
+          <button type="button" id="ab-rm" hidden>Remover ponto</button>
+          <button type="button" id="ab-cancel">Cancelar</button>
+          <button type="button" id="ab-ok" class="ab-primary" hidden>Concluir</button>
+        </div>
+      </div>
 
       <!-- Header compacto: menu (identidade + stats + camadas + clima), busca e conta. Nada de painel permanente. -->
       <div class="app-header" id="app-header">
@@ -186,6 +196,13 @@
   </div>
 </section>
 
+<!-- Folha de edição de área: nome, predefinição, cor, ícone, movimento, efeito, contorno (sem fundo escuro: o mapa continua visível) -->
+<section id="area-sheet" class="hud-sheet" role="dialog" aria-label="Editar área">
+  <div class="sheet-grab" aria-hidden="true"></div>
+  <div class="sheet-head"><b id="area-title">Área</b><button type="button" class="sheet-x" id="area-close" aria-label="Fechar a edição da área"></button></div>
+  <div id="area-body"></div>
+</section>
+
 <!-- Camadas: mapa-base + filtros + lista de itens do mapa (antiga gaveta de navegação) -->
 <div class="app-popover-backdrop" id="lay-backdrop"></div>
 <section id="lay-sheet" class="hud-sheet" role="dialog" aria-label="Camadas do mapa">
@@ -205,6 +222,11 @@
     <button type="button" class="tool-btn active" id="cluster-toggle" aria-pressed="true">Agrupar ao afastar: ligado</button>
   </div></div>
   <p class="lay-hint">Tokens, NPCs e veículos que ficam colados viram um círculo com o total. Toque nele para aproximar. Vale só neste aparelho.</p>
+  <div class="vs-group-label">Áreas</div>
+  <div class="hud-layer"><div class="hud-layer-body">
+    <button type="button" class="tool-btn active" id="area-anim-toggle" aria-pressed="true">Animar áreas: ligado</button>
+  </div></div>
+  <p class="lay-hint">Chuva, raios, pulsos e ícones em movimento. Desligue se o celular ficar pesado. Vale só neste aparelho.</p>
   <div class="lay-hidden" id="lay-hidden" hidden>
     <span id="lay-hidden-txt"></span>
     <button type="button" class="inv-mini-btn" id="lay-showall">Mostrar tudo</button>
@@ -243,7 +265,6 @@
 <button type="button" id="feed-chip" hidden aria-controls="feed" aria-expanded="false"></button>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 
 <!-- Firebase Realtime Database — sincroniza pins, tokens, áreas e rotas
      em tempo real entre todos os jogadores conectados na página. -->
@@ -410,6 +431,6 @@
 <!-- Efeitos sonoros: para desligar de vez, troque true por false. O jogador também liga/desliga em Menu → Som. -->
 <script>window.TV_SOUND = true;</script>
 <script src="tv-icons.js"></script>
-  <script src="app.js?v=f13"></script>
+  <script src="app.js?v=f14"></script>
 </body>
 </html>

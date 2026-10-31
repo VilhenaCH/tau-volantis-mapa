@@ -433,10 +433,79 @@
   const weatherTerrainFactor = () => weatherDef().difficult ? 2 : 1;
 
   const SP_CENTER = [-23.5505, -46.6333];
-  const SHAPE_STYLE = { color: 'var(--hazard)', weight: 2, fillColor: 'var(--hazard)', fillOpacity: 0.1, dashArray: '6 4' };
-  // estilo de cada área no mapa (todas usam o padrão). Esta função havia se perdido
-  // entre commits: sem ela nenhuma área era desenhada, embora continuassem na lista.
-  function shapeStyleFor(shape){ return Object.assign({}, SHAPE_STYLE); }
+  // ---------- ÁREAS (f14): estilo, predefinições e ícones ----------
+  // Cada área guarda o estilo em shape.st = { c:cor, ic:ícone, mv:movimento, ef:efeito, op:intensidade, dn:densidade, bd:borda, lb:rótulo }.
+  // Área sem "st" (criada antes) usa AREA_DEF, que é exatamente o visual antigo (laranja, tracejada, sem ícone).
+  const AREA_DEF = { c:'#d3572a', ic:'', mv:'', ef:'', op:0.1, dn:'media', bd:'tracejado', lb:'auto' };
+  const AREA_ICON = {
+    skull:  { t:'Caveira',   p: UI_IC.skull },
+    claw:   { t:'Garras',    p: '<path d="M5 4c1 6 1 10 4 16M10 3c1 6 1 11 4 17M15 4c1.2 5 1.4 9.5 4 15"/>' },
+    drop:   { t:'Gota',      p: UI_IC.drop },
+    rain:   { t:'Chuva',     p: UI_IC.rain },
+    storm:  { t:'Tempestade',p: UI_IC.storm },
+    bolt:   { t:'Raio',      p: UI_IC.bolt },
+    snow:   { t:'Neve',      p: UI_IC.snow },
+    fog:    { t:'Neblina',   p: UI_IC.fog },
+    wind:   { t:'Vento',     p: UI_IC.wind },
+    flame:  { t:'Fogo',      p: '<path d="M12 2.5c.6 3.2 4.8 5 4.8 10a4.8 4.8 0 0 1-9.6 0c0-2 .9-3.4 2-4.4.2 1.4.9 2.2 1.8 2.6C11 8.2 10.6 5.4 12 2.5Z"/>' },
+    bubble: { t:'Bolhas',    p: '<circle cx="12" cy="13" r="6"/><path d="M9 11.5a3.2 3.2 0 0 1 2.2-1.9"/>' },
+    wave:   { t:'Ondas',     p: '<path d="M2 9c2.5-3 5-3 7.5 0s5 3 7.5 0 3-2 5-1"/><path d="M2 16c2.5-3 5-3 7.5 0s5 3 7.5 0 3-2 5-1"/>' },
+    rad:    { t:'Radiação',  p: PIN_ICONS.radiacao },
+    eye:    { t:'Olho',      p: UI_IC.eye },
+    spiral: { t:'Espiral',   p: '<path d="M12 12a1 1 0 0 1 2 0a2 2 0 0 1-4 0a3 3 0 0 1 6 0a4 4 0 0 1-8 0a5 5 0 0 1 10 0a6 6 0 0 1-12 0"/>' },
+    shield: { t:'Escudo',    p: '<path d="M12 3 4.5 6v6c0 4.5 3.2 7.8 7.5 9 4.3-1.2 7.5-4.5 7.5-9V6L12 3Z"/>' },
+    flag:   { t:'Bandeira',  p: PIN_ICONS.extracao },
+    heart:  { t:'Cura',      p: UI_IC.heart },
+    alert:  { t:'Alerta',    p: UI_IC.alert },
+    star:   { t:'Estrela',   p: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3Z"/>' }
+  };
+  const AREA_MV = [['', 'Parado'], ['cair', 'Cair'], ['subir', 'Subir'], ['deriva', 'Deslizar']];
+  const AREA_EF = [['', 'Nenhum'], ['pulso', 'Pulso'], ['raios', 'Raios'], ['borda', 'Borda']];
+  const AREA_DN = [['baixa', 'Pouca'], ['media', 'Média'], ['alta', 'Muita']];
+  const AREA_BD = [['solido', 'Lisa'], ['tracejado', 'Tracejada'], ['pontilhado', 'Pontilhada'], ['nenhum', 'Sem borda']];
+  const AREA_LB = [['auto', 'Automático'], ['sempre', 'Sempre'], ['oculto', 'Oculto']];
+  const AREA_COLORS = ['#e5484d', '#f2752c', '#f5b53d', '#c9d94a', '#3ecf8e', '#38bdf8', '#5b8def', '#8b5cf6', '#d946ef', '#e8edf1', '#8fd7e8', '#6b7a86'];
+  const AREA_PRESETS = [
+    { id:'perigo',     t:'Zona perigosa', c:'#e5484d', ic:'skull',  mv:'',       ef:'pulso', op:0.16, dn:'media', bd:'tracejado' },
+    { id:'criaturas',  t:'Criaturas',     c:'#c2410c', ic:'claw',   mv:'',       ef:'borda', op:0.14, dn:'media', bd:'tracejado' },
+    { id:'chuva',      t:'Chuva',         c:'#5b8def', ic:'drop',   mv:'cair',   ef:'',      op:0.14, dn:'alta',  bd:'pontilhado' },
+    { id:'tempestade', t:'Tempestade',    c:'#8b5cf6', ic:'drop',   mv:'cair',   ef:'raios', op:0.2,  dn:'alta',  bd:'solido' },
+    { id:'nevasca',    t:'Nevasca',       c:'#9fd8ef', ic:'snow',   mv:'cair',   ef:'',      op:0.16, dn:'media', bd:'pontilhado' },
+    { id:'neblina',    t:'Neblina',       c:'#b8c4cc', ic:'fog',    mv:'deriva', ef:'pulso', op:0.18, dn:'baixa', bd:'nenhum' },
+    { id:'radiacao',   t:'Radiação',      c:'#c9d94a', ic:'rad',    mv:'',       ef:'pulso', op:0.16, dn:'media', bd:'tracejado' },
+    { id:'fogo',       t:'Fogo',          c:'#ff7a1a', ic:'flame',  mv:'subir',  ef:'pulso', op:0.18, dn:'media', bd:'solido' },
+    { id:'gas',        t:'Gás tóxico',    c:'#6fd16f', ic:'bubble', mv:'subir',  ef:'',      op:0.16, dn:'media', bd:'pontilhado' },
+    { id:'anomalia',   t:'Anomalia',      c:'#d946ef', ic:'eye',    mv:'deriva', ef:'pulso', op:0.16, dn:'baixa', bd:'tracejado' },
+    { id:'agua',       t:'Água',          c:'#38bdf8', ic:'wave',   mv:'deriva', ef:'',      op:0.18, dn:'media', bd:'solido' },
+    { id:'segura',     t:'Zona segura',   c:'#3ecf8e', ic:'shield', mv:'',       ef:'pulso', op:0.12, dn:'baixa', bd:'solido' },
+    { id:'territorio', t:'Território',    c:'#f5b53d', ic:'flag',   mv:'',       ef:'borda', op:0.12, dn:'baixa', bd:'tracejado' },
+    { id:'livre',      t:'Livre',         c:'#8fd7e8', ic:'',       mv:'',       ef:'',      op:0.12, dn:'media', bd:'solido' }
+  ];
+  const areaPreset = id => AREA_PRESETS.find(p => p.id === id) || null;
+  const areaHex = c => /^#[0-9a-f]{6}$/i.test(c || '');
+  // estilo completo de uma área (valores que faltam ou estão fora do catálogo caem no padrão)
+  function areaSt(shape){
+    const raw = (shape && shape.st) || {}, st = Object.assign({}, AREA_DEF);
+    if(areaHex(raw.c)) st.c = raw.c;
+    if(raw.ic === '' || AREA_ICON[raw.ic]) st.ic = raw.ic;
+    if(AREA_MV.some(x => x[0] === raw.mv)) st.mv = raw.mv;
+    if(AREA_EF.some(x => x[0] === raw.ef)) st.ef = raw.ef;
+    if(typeof raw.op === 'number' && isFinite(raw.op)) st.op = Math.min(0.6, Math.max(0.03, raw.op));
+    if(AREA_DN.some(x => x[0] === raw.dn)) st.dn = raw.dn;
+    if(AREA_BD.some(x => x[0] === raw.bd)) st.bd = raw.bd;
+    if(AREA_LB.some(x => x[0] === raw.lb)) st.lb = raw.lb;
+    return st;
+  }
+  const areaStFromPreset = p => ({ c:p.c, ic:p.ic, mv:p.mv, ef:p.ef, op:p.op, dn:p.dn, bd:p.bd, lb:'auto' });
+  // animações das áreas: ligadas por padrão; desligam com "reduzir movimento" do aparelho ou pelo botão em Camadas (vale só neste aparelho)
+  function areaAnimOn(){
+    try{ if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false; }catch(e){}
+    try{ return localStorage.getItem('tv-map:area-anim') !== 'off'; }catch(e){ return true; }
+  }
+  // compatibilidade: antes havia um estilo único para todas as áreas
+  const SHAPE_STYLE = { color: AREA_DEF.c, weight: 2, fillColor: AREA_DEF.c, fillOpacity: AREA_DEF.op, dashArray: '6 4' };
+  const area = { draw:null, edit:null, sheetId:null, paths:{}, items:[], pv:null, saveT:null, renderT:null, rafL:0, lastPreset:'perigo' };
+  try{ const lp = localStorage.getItem('tv-map:area-preset'); if(areaPreset(lp)) area.lastPreset = lp; }catch(e){}
 
   let pins = [];
   let hudReady = false;     // o módulo do HUD (dock, feed...) liga no fim do arquivo
@@ -451,7 +520,6 @@
   let weather = { state: 'calmo', updatedAt: null, updatedBy: null };
   let selectedPinType = null;
   let tokenModeOn = false;
-  let circleModeOn = false;
   let routeModeOn = false;
   let idCounter = 1;
 
@@ -707,6 +775,7 @@
   // ---------- map setup ----------
   const map = L.map('map', { zoomControl:true, attributionControl:false }).setView(SP_CENTER, 12);
   const mapEl = document.getElementById('map');
+  window.__tvMap = map;   // só para os testes automáticos (posicionar o mapa sem depender de gestos)
   mapEl.classList.add('dark-streets');
 
   const streetsLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -888,7 +957,7 @@
   function clearModes(){
     selectedPinType = null;
     tokenModeOn = false;
-    stopCircleMode();
+    areaDrawStop(); areaEditStop(false);
     stopRouteMode();
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(activeLayerBtnId()).classList.add('active');
@@ -1330,28 +1399,6 @@
     return container;
   }
 
-  function buildShapePopupContent(shape){
-    const container = document.createElement('div');
-    container.innerHTML = `
-      <div class="popup-kicker">Área</div>
-      ${shape.ownerName ? `<div class="popup-owner">Criado por: ${escapeHtml(shape.ownerName)}</div>` : ''}
-      <input type="text" class="shape-title" placeholder="Nome da área" value="${escapeHtml(shape.label || '')}">
-      <textarea class="shape-note" rows="3" placeholder="Anotação...">${escapeHtml(shape.note || '')}</textarea>
-      <div class="popup-actions">
-        <button class="save">Salvar</button>
-        <button class="del">Excluir</button>
-      </div>
-    `;
-    container.querySelector('.save').addEventListener('click', () => {
-      shape.label = container.querySelector('.shape-title').value.trim() || 'Área sem nome';
-      shape.note = container.querySelector('.shape-note').value.trim();
-      renderShapes();
-      saveKey(KEY_SHAPES, shapes);
-    });
-    container.querySelector('.del').addEventListener('click', () => { deleteShapeById(shape.id); });
-    return container;
-  }
-
   function buildRoutePopupContent(route){
     const container = document.createElement('div');
     const dist = route.distance != null ? route.distance : totalDistanceOf(route.points.map(p => L.latLng(p)));
@@ -1595,6 +1642,7 @@
     return true;
   }
   function deleteShapeById(id){
+    if(area.sheetId === id) areaClose();
     shapes = shapes.filter(s => s.id !== id);
     renderShapes();
     map.closePopup();
@@ -2002,42 +2050,168 @@
     });
   }
 
+  // ---------- ÁREAS (f14): desenho no mapa ----------
+  const areaEl = id => document.getElementById(id);
+  const areaHash = s => { let h = 2166136261; for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+  // mistura a cor com branco: o ícone fica mais claro que o preenchimento e continua legível no mapa escuro
+  const areaLight = c => { const n = parseInt(c.slice(1), 16), m = v => Math.round(v + (255 - v) * 0.35).toString(16).padStart(2, '0'); return '#' + m(n >> 16 & 255) + m(n >> 8 & 255) + m(n & 255); };
+  function areaDefs(){
+    const svg = map.getRenderer({ options:{} })._container;
+    let d = svg.querySelector('#tv-ar-defs');
+    if(!d){ d = document.createElementNS('http://www.w3.org/2000/svg', 'defs'); d.setAttribute('id', 'tv-ar-defs'); svg.insertBefore(d, svg.firstChild); }
+    return d;
+  }
+  // padrão de preenchimento: fundo colorido + 2 ícones por bloco; o movimento e os raios são animações SMIL dentro do próprio padrão
+  function areaPatternHtml(pid, st, seed, anim){
+    const T = { baixa:64, media:46, alta:34 }[st.dn] || 46;
+    let body = `<rect width="${T}" height="${T}" fill="${st.c}" fill-opacity="${st.op}"/>`;
+    const ico = AREA_ICON[st.ic];
+    if(ico){
+      const k = T * 0.34 / 24, col = areaLight(st.c), c = (12 * k).toFixed(1);
+      const put = (x, y, rot) => `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${rot} ${c} ${c}) scale(${k.toFixed(3)})" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.82">${ico.p}</g>`;
+      body += put(T * 0.10, T * 0.08, -10) + put(T * 0.56, T * 0.56, 12);
+    }
+    let motion = '';
+    if(anim && st.ef === 'raios'){
+      const dur = (4.5 + (seed % 30) / 10).toFixed(1), off = ((seed >> 5) % 47 / 10).toFixed(1);
+      body += `<rect width="${T}" height="${T}" fill="#f4eeff" fill-opacity="0"><animate attributeName="fill-opacity" values="0;0;0.55;0.05;0.4;0;0" keyTimes="0;0.6;0.62;0.66;0.68;0.76;1" dur="${dur}s" begin="-${off}s" repeatCount="indefinite"/></rect>`;
+    }
+    if(anim && st.mv){
+      const fast = st.ic === 'drop' || st.ic === 'rain', dur = st.mv === 'cair' ? (fast ? 1.1 : 3) : (st.mv === 'subir' ? 2.8 : 9);
+      const to = st.mv === 'cair' ? `0 ${T}` : (st.mv === 'subir' ? `0 -${T}` : `${T} 0`);
+      motion = `<animateTransform attributeName="patternTransform" type="translate" from="0 0" to="${to}" dur="${dur}s" repeatCount="indefinite"/>`;
+    }
+    return `<pattern id="${pid}" width="${T}" height="${T}" patternUnits="userSpaceOnUse">${motion}${body}</pattern>`;
+  }
+  function areaPathStyle(st, pid, usePat, anim){
+    const noLine = st.bd === 'nenhum' && st.ef !== 'borda';
+    const dash = st.ef === 'borda' ? '10 8' : ({ tracejado:'6 4', pontilhado:'2 6' }[st.bd] || null);
+    const cls = 'tv-ar' + (anim && st.ef === 'pulso' ? ' tv-ar-pulso' : '') + (anim && st.ef === 'borda' ? ' tv-ar-borda' : '');
+    return { color:st.c, weight:noLine ? 0 : 2, stroke:!noLine, opacity:0.9, lineCap:'round', dashArray:dash, className:cls,
+      fillColor: usePat ? 'url(#' + pid + ')' : st.c, fillOpacity: usePat ? 1 : st.op };
+  }
+  // anéis do polígono em [lat,lng], sem o ponto final repetido; null se o dado não presta
+  function areaRings(shape){
+    const gj = shape && shape.geojson, g = gj && (gj.geometry || gj);
+    if(!g || g.type !== 'Polygon' || !Array.isArray(g.coordinates) || !g.coordinates.length) return null;
+    const rings = g.coordinates.map(r => Array.isArray(r) ? r.map(c => [c[1], c[0]]) : []);
+    const out = rings.map(r => (r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r);
+    return out.every(r => r.length >= 3 && r.every(p => isFinite(p[0]) && isFinite(p[1]))) ? out : null;
+  }
+  function areaCircleBounds(c, r){
+    const dLat = r / 111320, dLng = r / (111320 * Math.max(0.05, Math.cos(c[0] * Math.PI / 180)));
+    return L.latLngBounds([c[0] - dLat, c[1] - dLng], [c[0] + dLat, c[1] + dLng]);
+  }
+  function areaCentroid(ring){
+    let a = 0, cx = 0, cy = 0;
+    for(let i = 0, n = ring.length; i < n; i++){
+      const p = ring[i], q = ring[(i + 1) % n], f = p[1] * q[0] - q[1] * p[0];
+      a += f; cx += (p[1] + q[1]) * f; cy += (p[0] + q[0]) * f;
+    }
+    if(Math.abs(a) < 1e-14) return null;
+    return L.latLng(cy / (3 * a), cx / (3 * a));
+  }
+  // tamanho aproximado, em texto: círculo = π·r²; polígono = fórmula do cadarço depois de projetar em metros
+  function areaSizeText(shape){
+    let m2 = null;
+    if(shape.type === 'circle' && shape.radius > 0) m2 = Math.PI * shape.radius * shape.radius;
+    else { const r = areaRings(shape); if(r){ const ring = r[0], lat0 = ring[0][0] * Math.PI / 180, kx = 111320 * Math.cos(lat0), ky = 111320; let a = 0;
+      for(let i = 0; i < ring.length; i++){ const p = ring[i], q = ring[(i + 1) % ring.length]; a += (p[1] * kx) * (q[0] * ky) - (q[1] * kx) * (p[0] * ky); } m2 = Math.abs(a) / 2; } }
+    if(m2 == null) return '';
+    return m2 >= 10000 ? '≈ ' + (m2 / 10000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' ha' : '≈ ' + Math.round(m2).toLocaleString('pt-BR') + ' m²';
+  }
+
   function renderShapes(){
     shapesLayer.clearLayers();
     renderedShapeIds.clear();
-    // cada forma é desenhada isoladamente: uma forma com dado quebrado não
-    // pode mais impedir o desenho das outras
+    area.paths = {}; area.items = [];
+    const anim = areaAnimOn();
+    let pats = '';
+    // cada forma é desenhada isoladamente: uma forma com dado quebrado não pode mais impedir o desenho das outras
     shapes.forEach(shape => {
       try{
-        let layer;
-        const style = shapeStyleFor(shape);
+        const st = areaSt(shape), usePat = !!st.ic || st.ef === 'raios';
+        const pid = 'tv-ar-p-' + String(shape.id).replace(/[^A-Za-z0-9_-]/g, '');
+        if(usePat) pats += areaPatternHtml(pid, st, areaHash(String(shape.id)), anim);
+        const style = areaPathStyle(st, pid, usePat, anim);
+        let layer, bounds, center;
         if(shape.type === 'circle' && shape.center && typeof shape.radius === 'number'){
-          layer = L.circle(shape.center, Object.assign({ radius: shape.radius }, style));
-        } else {
-          layer = L.geoJSON(shape.geojson, { style: style });
-        }
-        if(layer instanceof L.Circle){
-          // getBounds() de círculo exige estar no mapa: valida centro e raio direto
           const c = shape.center;
           if(!Array.isArray(c) || !isFinite(c[0]) || !isFinite(c[1]) || !isFinite(shape.radius) || shape.radius <= 0) throw new Error('círculo inválido');
+          layer = L.circle(c, Object.assign({ radius: shape.radius }, style));
+          bounds = areaCircleBounds(c, shape.radius); center = L.latLng(c);
         } else {
-          const bounds = layer.getBounds ? layer.getBounds() : null;
-          if(bounds && !bounds.isValid()) throw new Error('forma sem geometria');
+          const rings = areaRings(shape);
+          if(rings){ layer = L.polygon(rings, style); bounds = L.latLngBounds(rings[0]); center = areaCentroid(rings[0]) || bounds.getCenter(); }
+          else { layer = L.geoJSON(shape.geojson, { style: () => style }); bounds = layer.getBounds(); if(!bounds.isValid()) throw new Error('forma sem geometria'); center = bounds.getCenter(); }
         }
         layer._shapeId = shape.id;
-        if(shape.label){
-          layer.bindTooltip(shape.label, { permanent:true, direction:'center', className:'shape-label' });
-        }
-        layer.bindPopup(() => buildShapePopupContent(shape));
+        layer.on('click', () => { if(area.draw || area.edit || selectedPinType || tokenModeOn || routeModeOn) return; areaOpen(shape.id); });
         layer.addTo(shapesLayer);
+        area.paths[shape.id] = layer;
+        if(shape.label && st.lb !== 'oculto'){
+          const lm = L.marker(center, { keyboard:false, zIndexOffset:-600,
+            icon: L.divIcon({ className:'ar-lbw', iconSize:[0, 0], html:`<div class="ar-lb" style="--c:${st.c}"><i></i><span class="ar-lb-t">${escapeHtml(shape.label)}</span></div>` }) });
+          lm.on('click', ev => { L.DomEvent.stopPropagation(ev); areaLabelClick(lm); });
+          lm.addTo(shapesLayer);
+          area.items.push({ id:shape.id, mode:st.lb, name:shape.label, bounds, center, marker:lm });
+        }
         renderedShapeIds.add(shape.id);
       }catch(err){
         console.warn('Área não pôde ser desenhada:', shape && shape.id, err && err.message);
       }
     });
+    try{ areaDefs().innerHTML = pats; }catch(err){ console.warn('Padrões das áreas:', err && err.message); }
+    areaLabelsSoon();
     mapfRender();
     if(typeof renderNavList === 'function') renderNavList();
   }
+
+  // rótulos das áreas: etiqueta pequena; quando se encostam viram "N áreas" (toque para aproximar); áreas minúsculas viram um ponto
+  function areaLabelsLayout(){
+    area.rafL = 0;
+    if(!area.items || !area.items.length || !map.hasLayer(shapesLayer)) return;
+    const sz = map.getSize(), rect = (x, y, w, h) => ({ x:x - w / 2, y:y - h / 2, w, h });
+    const hit = (a, b, g) => a.x < b.x + b.w + g && b.x < a.x + a.w + g && a.y < b.y + b.h + g && b.y < a.y + a.h + g;
+    const its = area.items.map(it => {
+      const sw = map.latLngToContainerPoint(it.bounds.getSouthWest()), ne = map.latLngToContainerPoint(it.bounds.getNorthEast());
+      it.w = Math.abs(ne.x - sw.x); it.h = Math.abs(ne.y - sw.y); it.pt = map.latLngToContainerPoint(it.center); it.state = 'chip'; it.group = null; return it;
+    });
+    its.sort((a, b) => b.w * b.h - a.w * a.h);
+    const groups = [];
+    its.forEach(it => {
+      const off = it.pt.x < -120 || it.pt.y < -60 || it.pt.x > sz.x + 120 || it.pt.y > sz.y + 60;
+      if(off){ it.state = 'hide'; return; }
+      if(it.mode === 'sempre') return;
+      const tiny = it.w < 28 && it.h < 28;
+      it.box = tiny ? rect(it.pt.x, it.pt.y, 12, 12) : rect(it.pt.x, it.pt.y, Math.min(130, 16 + 5.6 * it.name.length), 18);
+      const g = groups.find(x => hit(x.rep.box, it.box, 3));
+      if(g){ g.members.push(it); it.state = 'hide'; }
+      else { groups.push({ rep:it, members:[it] }); it.state = tiny ? 'dot' : 'chip'; }
+    });
+    groups.forEach(g => { if(g.members.length > 1){ g.rep.state = 'count'; g.rep.group = g.members; } });
+    its.forEach(it => {
+      const el = it.marker._icon; if(!el) return;
+      el.dataset.ar = it.state;
+      const t = el.querySelector('.ar-lb-t'), txt = it.state === 'count' ? it.group.length + ' áreas' : it.name;
+      if(t && t.textContent !== txt) t.textContent = txt;
+      it.marker._arGroup = it.state === 'count' ? it.group : null;
+      it.marker._arId = it.id;
+    });
+  }
+  function areaLabelsSoon(){ if(area.rafL) return; area.rafL = requestAnimationFrame(areaLabelsLayout); }
+  function areaLabelClick(lm){
+    if(area.draw || area.edit) return;
+    const g = lm._arGroup;
+    if(g && g.length > 1){
+      let b = null; g.forEach(it => { b = b ? b.extend(it.bounds) : L.latLngBounds(it.bounds.getSouthWest(), it.bounds.getNorthEast()); });
+      map.fitBounds(b, { padding:[50, 50], maxZoom:17 });
+    } else if(lm._arId) areaOpen(lm._arId);
+  }
+  map.on('zoomend moveend resize', areaLabelsSoon);
+  shapesLayer.on('add', areaLabelsSoon);
+
+  function openShapePopupById(id){ areaOpen(id); }
 
   function renderRoutes(){
     routesLayer.clearLayers();
@@ -2056,13 +2230,6 @@
     if(typeof renderNavList === 'function') renderNavList();
   }
 
-  function openShapePopupById(id){
-    shapesLayer.eachLayer(l => {
-      if(l._shapeId === id && l.openPopup){
-        l.openPopup(l.getBounds ? l.getBounds().getCenter() : (l.getLatLng ? l.getLatLng() : undefined));
-      }
-    });
-  }
   function openRoutePopupById(id){
     routesLayer.eachLayer(l => {
       if(l._routeId === id && l.openPopup){
@@ -2196,7 +2363,7 @@
       const name = s.label || 'Área sem nome';
       shapeItems.push({
         name,
-        color: 'var(--hazard)',
+        color: areaSt(s).c,
         typeLabel: problem ? 'Área (sem forma)' : 'Área',
         bad: !!problem,
         go: (center && !problem) ? () => {
@@ -2231,35 +2398,6 @@
       });
     });
     fill(listRoutes, routeItems, 'Nenhuma rota traçada ainda.');
-  }
-
-  // ---------- area drawing: circle (custom, click-based — leaflet-draw's own
-  // circle tool is unreliable on this Leaflet version, and dragging.disable()
-  // has side-effects here, so this uses two ordinary clicks instead of a drag) ----------
-  let circleCenter = null;
-  let circlePreview = null;
-
-  function stopCircleMode(){
-    circleModeOn = false;
-    circleCenter = null;
-    if(circlePreview){ map.removeLayer(circlePreview); circlePreview = null; }
-    map.off('mousemove', onCircleMouseMove);
-  }
-
-  document.getElementById('tool-area-circle').addEventListener('click', () => {
-    const btn = document.getElementById('tool-area-circle');
-    const isActive = btn.classList.contains('active');
-    clearModes();
-    if(!isActive){
-      circleModeOn = true;
-      btn.classList.add('active');
-      showDrawHint('Clique no centro do círculo. ESC cancela.');
-    }
-  });
-
-  function onCircleMouseMove(e){
-    if(!circlePreview || !circleCenter) return;
-    circlePreview.setRadius(circleCenter.distanceTo(e.latlng));
   }
 
   // ---------- route / distance measuring tool (click to add points, double-click to finish) ----------
@@ -2308,29 +2446,8 @@
 
   // ---------- map click: circle/route steps, or place pin/token ----------
   map.on('click', async (e) => {
-    if(circleModeOn){
-      if(!circleCenter){
-        circleCenter = e.latlng;
-        circlePreview = L.circle(circleCenter, Object.assign({ radius: 1 }, SHAPE_STYLE)).addTo(map);
-        map.on('mousemove', onCircleMouseMove);
-        showDrawHint('Clique novamente pra definir o raio. ESC cancela.');
-      } else {
-        const radius = circleCenter.distanceTo(e.latlng);
-        map.off('mousemove', onCircleMouseMove);
-        if(circlePreview){ map.removeLayer(circlePreview); circlePreview = null; }
-        const center = circleCenter;
-        circleCenter = null;
-        if(radius >= 5){
-          const shape = { id:newId(), type:'circle', center:[center.lat, center.lng], radius, label:'Nova área', note:'', ...ownerFields() };
-          shapes.push(shape);
-          await saveKey(KEY_SHAPES, shapes);
-          renderShapes();
-          openShapePopupById(shape.id);
-        }
-        clearModes();
-      }
-      return;
-    }
+    if(area.draw){ areaDrawTap(e.latlng); return; }
+    if(area.edit) return;
 
     if(routeModeOn){
       routePoints.push(e.latlng);
@@ -2368,17 +2485,7 @@
     }
   });
 
-  // ---------- area drawing: polygon & rectangle via Leaflet.draw engine ----------
-  const drawControl = new L.Control.Draw({
-    edit: false,
-    draw: {
-      polygon: { shapeOptions: { color: 'var(--hazard)' } },
-      rectangle: { shapeOptions: { color: 'var(--hazard)' } },
-      circle: false, marker: false, polyline: false, circlemarker: false
-    }
-  });
-  map.addControl(drawControl); // control itself hidden via CSS; used only for engine
-
+  // ---------- aviso de desenho (usado pela medição de rota) ----------
   const drawHint = document.getElementById('draw-hint');
   function showDrawHint(text){
     drawHint.innerHTML = `<span class="dot"></span>${text}`;
@@ -2386,44 +2493,368 @@
   }
   function hideDrawHint(){ drawHint.style.display = 'none'; }
 
-  document.getElementById('tool-area-polygon').addEventListener('click', () => {
-    const btn = document.getElementById('tool-area-polygon');
-    const isActive = btn.classList.contains('active');
-    clearModes();
-    if(!isActive){
-      btn.classList.add('active');
-      new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
-      showDrawHint('Clique pra marcar os vértices, dê 2 cliques pra fechar. ESC cancela.');
-    }
-  });
-  document.getElementById('tool-area-rect').addEventListener('click', () => {
-    const btn = document.getElementById('tool-area-rect');
-    const isActive = btn.classList.contains('active');
-    clearModes();
-    if(!isActive){
-      btn.classList.add('active');
-      new L.Draw.Rectangle(map, drawControl.options.draw.rectangle).enable();
-      showDrawHint('Clique e arraste para desenhar o retângulo. ESC cancela.');
-    }
-  });
+  // ---------- ÁREAS (f14): folha de edição ----------
+  let areaSheetBuilt = false;
+  const areaQ = sel => Array.from(areaEl('area-body').querySelectorAll(sel));
+  function areaSeg(key, label, list){
+    return `<div class="ar-g">${label}</div><div class="ar-seg" data-seg="${key}">${list.map(x => `<button type="button" data-v="${x[0]}">${x[1]}</button>`).join('')}</div>`;
+  }
+  function areaSheetBuild(){
+    areaEl('area-close').innerHTML = ic('close', 20);
+    areaEl('area-body').innerHTML = `
+      <label class="ar-f"><span>Nome</span><input type="text" id="area-name" maxlength="60" autocomplete="off" placeholder="Nome da área"></label>
+      <div class="ar-g">Predefinição</div>
+      <div class="ar-chips" id="area-presets">${AREA_PRESETS.map(p => `<button type="button" class="ar-chip" data-ap="${p.id}" style="--c:${p.c}"><i></i>${p.t}</button>`).join('')}</div>
+      <div class="ar-g">Cor</div>
+      <div class="ar-sw" id="area-colors">${AREA_COLORS.map(c => `<button type="button" class="ar-swb" data-ac="${c}" style="--c:${c}" aria-label="Cor ${c}"></button>`).join('')}<label class="ar-swb ar-swc" title="Outra cor"><input type="color" id="area-color-in" value="#8fd7e8" aria-label="Outra cor"></label></div>
+      <div class="ar-g">Ícone</div>
+      <div class="ar-ics" id="area-icons"><button type="button" class="ar-ic" data-ai="" title="Sem ícone" aria-label="Sem ícone"><span>—</span></button>${Object.keys(AREA_ICON).map(k => `<button type="button" class="ar-ic" data-ai="${k}" title="${AREA_ICON[k].t}" aria-label="${AREA_ICON[k].t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${AREA_ICON[k].p}</svg></button>`).join('')}</div>
+      ${areaSeg('mv', 'Movimento dos ícones', AREA_MV)}
+      ${areaSeg('ef', 'Efeito da área', AREA_EF)}
+      <label class="ar-f"><span>Intensidade <b id="area-op-val"></b></span><input type="range" id="area-op" min="3" max="60" step="1"></label>
+      ${areaSeg('dn', 'Quantidade de ícones', AREA_DN)}
+      ${areaSeg('bd', 'Borda', AREA_BD)}
+      ${areaSeg('lb', 'Nome no mapa', AREA_LB)}
+      <label class="ar-f" id="area-rad-row"><span>Raio (metros)</span><input type="number" id="area-radius" min="5" max="50000" step="5" inputmode="numeric"></label>
+      <label class="ar-f"><span>Anotação</span><textarea id="area-note" rows="3" maxlength="600" placeholder="Anotação..."></textarea></label>
+      <div class="ar-meta" id="area-meta"></div>
+      <div class="ar-btns"><button type="button" id="area-edit">Editar contorno</button><button type="button" id="area-dup">Duplicar</button><button type="button" id="area-del" class="danger">Excluir</button></div>`;
+    areaWire();
+  }
+  function areaSheetSync(sh){
+    const st = areaSt(sh), pre = sh.st && sh.st.pre;
+    areaQ('[data-ap]').forEach(b => b.classList.toggle('on', b.dataset.ap === pre));
+    areaQ('[data-ac]').forEach(b => b.classList.toggle('on', b.dataset.ac === st.c.toLowerCase()));
+    const ci = areaEl('area-color-in'); ci.value = st.c; ci.parentNode.classList.toggle('on', !AREA_COLORS.includes(st.c.toLowerCase()));
+    areaQ('[data-ai]').forEach(b => b.classList.toggle('on', b.dataset.ai === st.ic));
+    ['mv', 'ef', 'dn', 'bd', 'lb'].forEach(k => areaQ(`[data-seg="${k}"] button`).forEach(b => { b.classList.toggle('on', b.dataset.v === st[k]); }));
+    areaQ('[data-seg="mv"] button').forEach(b => { b.disabled = !st.ic; });
+    areaQ('[data-seg="dn"] button').forEach(b => { b.disabled = !st.ic; });
+    const op = areaEl('area-op'); op.value = Math.round(st.op * 100); areaEl('area-op-val').textContent = Math.round(st.op * 100) + '%';
+    const circ = sh.type === 'circle', rr = areaEl('area-rad-row'); rr.hidden = !circ;
+    if(circ && document.activeElement !== areaEl('area-radius')) areaEl('area-radius').value = Math.round(sh.radius);
+    areaEl('area-edit').hidden = !(circ || areaRings(sh));
+    areaEl('area-meta').textContent = [areaSizeText(sh), sh.ownerName ? 'Criada por ' + sh.ownerName : '', 'Salva sozinha'].filter(Boolean).join(' · ');
+  }
+  function areaSheetFill(sh){
+    areaEl('area-title').textContent = 'Área';
+    areaEl('area-name').value = sh.label || '';
+    areaEl('area-note').value = sh.note || '';
+    areaSheetSync(sh);
+  }
+  function areaSaveSoon(){
+    clearTimeout(area.saveT);
+    area.saveT = setTimeout(() => { area.saveT = null; saveKey(KEY_SHAPES, shapes); }, 450);
+  }
+  // aplica uma mudança na área aberta: atualiza o mapa na hora e salva sozinho. soft = só desenha de novo daqui a pouco (digitação); 'none' = não precisa redesenhar
+  function areaPatch(fn, soft){
+    const sh = shapes.find(s => s.id === area.sheetId); if(!sh) return;
+    fn(sh);
+    areaSaveSoon();
+    areaSheetSync(sh);
+    if(soft === 'none') return;
+    if(soft){ clearTimeout(area.renderT); area.renderT = setTimeout(() => { area.renderT = null; renderShapes(); }, 220); }
+    else renderShapes();
+  }
+  const areaStPatch = (sh, o) => { sh.st = Object.assign(areaSt(sh), o, { pre:null }); };
+  function areaWire(){
+    const body = areaEl('area-body');
+    body.addEventListener('click', e => {
+      const b = e.target.closest('button'); if(!b || b.disabled) return;
+      if(b.dataset.ap){ const p = areaPreset(b.dataset.ap); if(p) areaPatch(sh => { sh.st = Object.assign(areaStFromPreset(p), { pre:p.id, lb:areaSt(sh).lb }); }); return; }
+      if(b.dataset.ac){ areaPatch(sh => areaStPatch(sh, { c:b.dataset.ac })); return; }
+      if(b.dataset.ai !== undefined){ areaPatch(sh => areaStPatch(sh, { ic:b.dataset.ai })); return; }
+      const seg = b.closest('[data-seg]');
+      if(seg){ const k = seg.dataset.seg, v = b.dataset.v; areaPatch(sh => areaStPatch(sh, { [k]:v })); return; }
+      if(b.id === 'area-edit') areaEditStart(area.sheetId);
+      else if(b.id === 'area-dup') areaDuplicate(area.sheetId);
+      else if(b.id === 'area-del') areaDelete(area.sheetId);
+    });
+    areaEl('area-color-in').addEventListener('input', e => { const v = e.target.value.toLowerCase(); if(areaHex(v)) areaPatch(sh => areaStPatch(sh, { c:v })); });
+    areaEl('area-op').addEventListener('input', e => { const v = Math.min(60, Math.max(3, +e.target.value || 10)) / 100; areaPatch(sh => areaStPatch(sh, { op:v }), 'soft'); });
+    areaEl('area-name').addEventListener('input', e => areaPatch(sh => { sh.label = e.target.value.slice(0, 60); }, 'soft'));
+    areaEl('area-name').addEventListener('change', e => areaPatch(sh => { sh.label = e.target.value.trim().slice(0, 60) || 'Área sem nome'; e.target.value = sh.label; }, 'soft'));
+    areaEl('area-note').addEventListener('input', e => areaPatch(sh => { sh.note = e.target.value.slice(0, 600); }, 'none'));
+    areaEl('area-radius').addEventListener('change', e => areaPatch(sh => { const v = +e.target.value; if(sh.type === 'circle' && isFinite(v)) sh.radius = Math.min(50000, Math.max(5, v)); }));
+    areaEl('area-close').addEventListener('click', () => areaClose());
+  }
+  function areaBounds(sh){
+    if(sh.type === 'circle' && sh.center && sh.radius > 0) return areaCircleBounds(sh.center, sh.radius);
+    const r = areaRings(sh); if(r) return L.latLngBounds(r[0]);
+    try{ const b = L.geoJSON(sh.geojson).getBounds(); return b.isValid() ? b : null; }catch(e){ return null; }
+  }
+  // a folha cobre a parte de baixo: se a área ficou escondida atrás dela, empurra o mapa para ela aparecer em cima
+  function areaFocus(sh){
+    const b = areaBounds(sh); if(!b) return;
+    const sz = map.getSize(), p = map.latLngToContainerPoint(b.getCenter());
+    if(p.y > sz.y * 0.45 || p.y < 110 || p.x < 0 || p.x > sz.x) map.panBy([p.x - sz.x / 2, p.y - sz.y * 0.3], { animate:true });
+  }
+  function areaOpen(id){
+    const sh = shapes.find(s => s.id === id); if(!sh || area.draw) return;
+    areaEditStop(false);
+    if(!areaSheetBuilt){ areaSheetBuild(); areaSheetBuilt = true; }
+    closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets();
+    area.sheetId = id;
+    areaSheetFill(sh);
+    areaEl('area-sheet').classList.add('open');
+    areaFocus(sh);
+  }
+  // troca de campanha: descarta o que estava aberto/pendente (sem salvar: os dados são da campanha antiga)
+  function areaReset(){
+    clearTimeout(area.saveT); area.saveT = null; clearTimeout(area.renderT); area.renderT = null;
+    areaDrawStop(); areaEditStop(false);
+    area.sheetId = null;
+    const sh = document.getElementById('area-sheet'); if(sh) sh.classList.remove('open');
+  }
+  function areaClose(){
+    const sheet = areaEl('area-sheet'); if(!sheet) return;
+    areaEditStop(false);
+    if(area.renderT){ clearTimeout(area.renderT); area.renderT = null; renderShapes(); }
+    if(area.saveT){ clearTimeout(area.saveT); area.saveT = null; saveKey(KEY_SHAPES, shapes); }
+    area.sheetId = null;
+    sheet.classList.remove('open');
+  }
+  function areaDelete(id){
+    const sh = shapes.find(s => s.id === id); if(!sh) return;
+    if(!window.confirm(`Excluir a área "${sh.label || 'sem nome'}"?`)) return;
+    areaClose(); deleteShapeById(id);
+  }
+  function areaDuplicate(id){
+    const sh = shapes.find(s => s.id === id); if(!sh) return;
+    const cp = JSON.parse(JSON.stringify(sh)), d = 0.0004;
+    cp.id = newId(); cp.label = ((sh.label || 'Área') + ' (cópia)').slice(0, 60);
+    if(cp.type === 'circle' && cp.center) cp.center = [cp.center[0] + d, cp.center[1] + d];
+    else { const g = cp.geojson && (cp.geojson.geometry || cp.geojson); if(g && g.type === 'Polygon') g.coordinates = g.coordinates.map(r => r.map(c => [c[0] + d, c[1] + d])); }
+    Object.assign(cp, ownerFields());
+    areaClose();
+    shapes.push(cp); renderShapes(); saveKey(KEY_SHAPES, shapes);
+    areaOpen(cp.id);
+  }
 
-  map.on(L.Draw.Event.CREATED, async (e) => {
-    hideDrawHint();
-    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(activeLayerBtnId()).classList.add('active');
-    const layer = e.layer;
-    const geojson = layer.toGeoJSON();
-    const shape = { id:newId(), geojson, label:'Nova área', note:'', ...ownerFields() };
+  // ---------- ÁREAS (f14): desenhar (círculo, retângulo, polígono) e editar o contorno ----------
+  const areaPv = () => area.pv || (area.pv = L.layerGroup().addTo(map));
+  const areaPvClear = () => { if(area.pv) area.pv.clearLayers(); };
+  const areaEast = (c, r) => L.latLng(c.lat, c.lng + r / (111320 * Math.max(0.05, Math.cos(c.lat * Math.PI / 180))));
+  const areaHd = cls => L.divIcon({ className:'ar-hd ' + cls, html:'<i></i>', iconSize:[34, 34], iconAnchor:[17, 17] });
+  const areaRingGeo = pts => { const r = pts.map(p => [p.lng, p.lat]); r.push([pts[0].lng, pts[0].lat]); return { type:'Feature', properties:{}, geometry:{ type:'Polygon', coordinates:[r] } }; };
+  const AREA_HINTS = {
+    circle0: 'Toque no centro do círculo.',
+    circle1: 'Arraste a alça (ou toque no mapa) para ajustar o raio.',
+    rect0: 'Toque em um canto do retângulo.',
+    rect1: 'Toque no canto oposto.',
+    poly: 'Toque para marcar os pontos. Toque no primeiro ponto (ou em Concluir) para fechar.',
+    edit: 'Arraste os pontos. Toque num ponto + para criar outro.'
+  };
+  function areaPvStyle(){
+    const p = (area.draw && areaPreset(area.draw.preset)) || AREA_PRESETS[0];
+    return { color:p.c, weight:2, dashArray:'6 4', fillColor:p.c, fillOpacity:Math.max(0.15, p.op), interactive:false };
+  }
+  function areaBarRender(){
+    const bar = areaEl('area-bar'), d = area.draw, e = area.edit;
+    if(!d && !e){ bar.hidden = true; return; }
+    bar.hidden = false;
+    areaEl('ab-presets').hidden = !d;
+    let hint = '', val = '', undo = false, ok = false, rm = false, okTxt = 'Concluir';
+    if(d){
+      areaEl('ab-presets').querySelectorAll('[data-ap]').forEach(b => b.classList.toggle('on', b.dataset.ap === d.preset));
+      if(d.kind === 'circle'){ hint = d.center ? AREA_HINTS.circle1 : AREA_HINTS.circle0; val = d.center ? 'Raio ' + Math.round(d.r) + ' m' : ''; undo = !!d.center; ok = !!d.center; }
+      else if(d.kind === 'rect'){ hint = d.pts.length ? AREA_HINTS.rect1 : AREA_HINTS.rect0; undo = d.pts.length > 0; }
+      else { hint = AREA_HINTS.poly; val = d.pts.length ? d.pts.length + ' ponto' + (d.pts.length > 1 ? 's' : '') : ''; undo = d.pts.length > 0; ok = d.pts.length >= 3; }
+    } else {
+      hint = AREA_HINTS.edit; okTxt = 'Pronto'; ok = true;
+      rm = !e.circ && e.ring.length > 3 && e.sel >= 0;
+    }
+    areaEl('ab-hint').textContent = hint; areaEl('ab-val').textContent = val;
+    areaEl('ab-undo').hidden = !undo; areaEl('ab-rm').hidden = !rm; areaEl('ab-ok').hidden = !ok; areaEl('ab-ok').textContent = okTxt;
+  }
+  function areaBusy(on){
+    areaEl('map').classList.toggle('ar-busy', !!on);
+    if(on) map.doubleClickZoom.disable(); else map.doubleClickZoom.enable();
+  }
+  function areaDrawStart(kind){
+    areaClose();
+    area.draw = { kind, pts:[], preset:area.lastPreset, center:null, r:0 };
+    areaBusy(true);
+    if(kind === 'rect') map.on('mousemove', areaRectMove);
+    areaBarRender();
+  }
+  function areaDrawStop(){
+    if(!area.draw) return;
+    map.off('mousemove', areaRectMove);
+    area.draw = null;
+    if(!area.edit){ areaPvClear(); areaBusy(false); }
+    areaBarRender();
+  }
+  function areaRectMove(ev){
+    const d = area.draw; if(!d || d.kind !== 'rect' || d.pts.length !== 1) return;
+    if(!d.rect) d.rect = L.rectangle(L.latLngBounds(d.pts[0], ev.latlng), areaPvStyle()).addTo(areaPv()); else d.rect.setBounds(L.latLngBounds(d.pts[0], ev.latlng));
+  }
+  function areaDefaultRadius(ll){
+    const sz = map.getSize(), p = map.latLngToContainerPoint(ll), q = map.containerPointToLatLng([p.x + sz.x * 0.16, p.y]);
+    const m = ll.distanceTo(q), step = m >= 500 ? 100 : (m >= 100 ? 10 : 5);
+    return Math.max(10, Math.round(m / step) * step);
+  }
+  function areaCircleSet(r){
+    const d = area.draw; if(!d || !d.center) return;
+    d.r = Math.min(50000, Math.max(5, r));
+    d.circle.setRadius(d.r); d.hr.setLatLng(areaEast(d.center, d.r)); areaBarRender();
+  }
+  function areaDrawTap(ll){
+    const d = area.draw; if(!d) return;
+    if(d.kind === 'circle'){
+      if(d.center){ areaCircleSet(d.center.distanceTo(ll)); return; }
+      d.center = ll; d.r = areaDefaultRadius(ll);
+      d.circle = L.circle(ll, Object.assign({ radius:d.r }, areaPvStyle())).addTo(areaPv());
+      d.hr = L.marker(areaEast(ll, d.r), { draggable:true, icon:areaHd('ar-hd-r'), zIndexOffset:900 }).addTo(areaPv());
+      d.hc = L.marker(ll, { draggable:true, icon:areaHd('ar-hd-c'), zIndexOffset:900 }).addTo(areaPv());
+      d.hr.on('drag', ev => { d.r = Math.min(50000, Math.max(5, d.center.distanceTo(ev.latlng))); d.circle.setRadius(d.r); areaBarRender(); });
+      d.hr.on('dragend', () => d.hr.setLatLng(areaEast(d.center, d.r)));
+      d.hc.on('drag', ev => { d.center = ev.latlng; d.circle.setLatLng(ev.latlng); d.hr.setLatLng(areaEast(ev.latlng, d.r)); });
+      areaBarRender();
+    } else if(d.kind === 'rect'){
+      if(!d.pts.length){ d.pts = [ll]; L.circleMarker(ll, { radius:6, color:'#fff', weight:2, fillColor:areaPvStyle().color, fillOpacity:1, interactive:false }).addTo(areaPv()); areaBarRender(); return; }
+      const b = L.latLngBounds(d.pts[0], ll), n = b.getNorth(), s = b.getSouth(), w = b.getWest(), e = b.getEast();
+      if(map.distance([n, w], [s, w]) < 3 || map.distance([n, w], [n, e]) < 3){ toast('Retângulo pequeno demais. Toque mais longe do primeiro canto.', true); return; }
+      areaCreate({ geojson: areaRingGeo([L.latLng(n, w), L.latLng(n, e), L.latLng(s, e), L.latLng(s, w)]) });
+    } else {
+      if(d.pts.length >= 3){
+        const a = map.latLngToContainerPoint(d.pts[0]), b = map.latLngToContainerPoint(ll);
+        if(a.distanceTo(b) < 18){ areaDrawFinish(); return; }
+      }
+      d.pts.push(ll);
+      if(!d.poly) d.poly = L.polygon(d.pts, areaPvStyle()).addTo(areaPv()); else d.poly.setLatLngs(d.pts);
+      L.circleMarker(ll, { radius:d.pts.length === 1 ? 8 : 5, color:'#fff', weight:2, fillColor:areaPvStyle().color, fillOpacity:1, interactive:false }).addTo(areaPv());
+      areaBarRender();
+    }
+  }
+  function areaDrawUndo(){
+    const d = area.draw; if(!d) return;
+    if(d.kind === 'circle' && d.center){ areaPvClear(); d.center = null; d.circle = d.hr = d.hc = null; }
+    else if(d.kind === 'rect' && d.pts.length){ areaPvClear(); d.pts = []; d.rect = null; }
+    else if(d.kind === 'poly' && d.pts.length){
+      d.pts.pop(); areaPvClear(); d.poly = null;
+      if(d.pts.length){ d.poly = L.polygon(d.pts, areaPvStyle()).addTo(areaPv()); d.pts.forEach((p, i) => L.circleMarker(p, { radius:i === 0 ? 8 : 5, color:'#fff', weight:2, fillColor:areaPvStyle().color, fillOpacity:1, interactive:false }).addTo(areaPv())); }
+    }
+    areaBarRender();
+  }
+  function areaDrawFinish(){
+    const d = area.draw; if(!d) return;
+    if(d.kind === 'circle' && d.center) areaCreate({ type:'circle', center:[d.center.lat, d.center.lng], radius:Math.round(d.r * 10) / 10 });
+    else if(d.kind === 'poly' && d.pts.length >= 3) areaCreate({ geojson: areaRingGeo(d.pts) });
+  }
+  async function areaCreate(geom){
+    const d = area.draw; if(!d) return;
+    const p = areaPreset(d.preset) || AREA_PRESETS[0];
+    const shape = Object.assign({ id:newId(), label:p.t, note:'', st:Object.assign(areaStFromPreset(p), { pre:p.id }) }, geom, ownerFields());
+    clearModes();
     shapes.push(shape);
-    await saveKey(KEY_SHAPES, shapes);
     renderShapes();
-    openShapePopupById(shape.id);
-  });
-  map.on(L.Draw.Event.DRAWSTOP, hideDrawHint);
+    areaOpen(shape.id);
+    await saveKey(KEY_SHAPES, shapes);
+  }
+
+  function areaEditPath(){ return area.edit ? area.paths[area.edit.id] : null; }
+  function areaEditStart(id){
+    const sh = shapes.find(s => s.id === id); if(!sh || !area.paths[id]) return;
+    const rings = areaRings(sh), circ = sh.type === 'circle' && sh.center && sh.radius > 0;
+    if(!rings && !circ){ toast('Esta área não aceita edição do contorno.', true); return; }
+    const keep = area.sheetId;
+    clearModes();
+    area.sheetId = keep;
+    area.edit = { id, circ:!!circ, sel:-1, ring: rings ? rings[0].map(p => L.latLng(p)) : null, rest: rings ? rings.slice(1) : null, c: circ ? L.latLng(sh.center) : null, r: circ ? sh.radius : 0 };
+    areaEl('area-sheet').classList.remove('open');
+    areaBusy(true);
+    areaEditHandles();
+    areaBarRender();
+    areaFocus(sh);
+  }
+  function areaEditHandles(){
+    const e = area.edit; if(!e) return;
+    areaPvClear();
+    const pv = areaPv();
+    if(e.circ){
+      e.hr = L.marker(areaEast(e.c, e.r), { draggable:true, icon:areaHd('ar-hd-r'), zIndexOffset:900 }).addTo(pv);
+      e.hc = L.marker(e.c, { draggable:true, icon:areaHd('ar-hd-c'), zIndexOffset:900 }).addTo(pv);
+      e.hr.on('drag', ev => { e.r = Math.min(50000, Math.max(5, e.c.distanceTo(ev.latlng))); const p = areaEditPath(); if(p) p.setRadius(e.r); areaBarRender(); });
+      e.hc.on('drag', ev => { e.c = ev.latlng; const p = areaEditPath(); if(p) p.setLatLng(ev.latlng); e.hr.setLatLng(areaEast(ev.latlng, e.r)); });
+      e.hr.on('dragend', () => areaEditCommit());
+      e.hc.on('dragend', () => areaEditCommit());
+      return;
+    }
+    const n = e.ring.length;
+    e.ring.forEach((p, i) => {
+      const nx = e.ring[(i + 1) % n];
+      const mid = L.marker(L.latLng((p.lat + nx.lat) / 2, (p.lng + nx.lng) / 2), { icon:areaHd('ar-hd-m'), zIndexOffset:700 }).addTo(pv);
+      mid.on('click', () => { e.ring.splice(i + 1, 0, mid.getLatLng()); e.sel = i + 1; areaEditCommit(); });
+    });
+    e.ring.forEach((p, i) => {
+      const mk = L.marker(p, { draggable:true, icon:areaHd('ar-hd-v' + (i === e.sel ? ' sel' : '')), zIndexOffset:900 }).addTo(pv);
+      mk.on('drag', ev => { e.ring[i] = ev.latlng; const pa = areaEditPath(); if(pa) pa.setLatLngs([e.ring].concat(e.rest || [])); });
+      mk.on('dragend', () => { e.sel = i; areaEditCommit(); });
+      mk.on('click', () => { e.sel = i; areaEditHandles(); areaBarRender(); });
+    });
+  }
+  // grava o contorno novo e redesenha (a alça que acabou de ser solta é refeita)
+  function areaEditCommit(){
+    const e = area.edit; if(!e) return;
+    const sh = shapes.find(s => s.id === e.id); if(!sh){ areaEditStop(false); return; }
+    if(e.circ){ sh.center = [e.c.lat, e.c.lng]; sh.radius = Math.round(e.r * 10) / 10; }
+    else {
+      const g = areaRingGeo(e.ring).geometry.coordinates[0];
+      sh.geojson = { type:'Feature', properties:{}, geometry:{ type:'Polygon', coordinates:[g].concat((e.rest || []).map(r => r.map(p => [p[1], p[0]]).concat([[r[0][1], r[0][0]]]))) } };
+    }
+    areaSaveSoon();
+    renderShapes();
+    areaEditHandles();
+    areaBarRender();
+  }
+  function areaEditRemove(){
+    const e = area.edit; if(!e || e.circ || e.sel < 0 || e.ring.length <= 3) return;
+    e.ring.splice(e.sel, 1); e.sel = -1; areaEditCommit();
+  }
+  function areaEditStop(reopen){
+    if(!area.edit) return;
+    area.edit = null;
+    if(!area.draw){ areaPvClear(); areaBusy(false); }
+    areaBarRender();
+    const sh = reopen && shapes.find(s => s.id === area.sheetId);
+    if(sh){ areaSheetFill(sh); areaEl('area-sheet').classList.add('open'); }
+  }
+
+  // barra de desenho: predefinições + Desfazer / Concluir / Cancelar
+  function areaBarWire(){
+    areaEl('ab-presets').innerHTML = AREA_PRESETS.map(p => `<button type="button" class="ar-chip" data-ap="${p.id}" style="--c:${p.c}"><i></i>${p.t}</button>`).join('');
+    areaEl('ab-presets').addEventListener('click', ev => {
+      const b = ev.target.closest('[data-ap]'); if(!b || !area.draw) return;
+      area.draw.preset = b.dataset.ap; area.lastPreset = b.dataset.ap;
+      try{ localStorage.setItem('tv-map:area-preset', b.dataset.ap); }catch(e){}
+      const st = areaPvStyle(), d = area.draw;
+      [d.circle, d.rect, d.poly].forEach(l => { if(l) l.setStyle(st); });
+      areaBarRender();
+    });
+    areaEl('ab-undo').addEventListener('click', areaDrawUndo);
+    areaEl('ab-cancel').addEventListener('click', () => { if(area.edit){ const id = area.edit.id; areaEditStop(true); } else clearModes(); });
+    areaEl('ab-rm').addEventListener('click', areaEditRemove);
+    areaEl('ab-ok').addEventListener('click', () => { if(area.edit) areaEditStop(true); else areaDrawFinish(); });
+    [['tool-area-circle', 'circle'], ['tool-area-rect', 'rect'], ['tool-area-polygon', 'poly']].forEach(x => {
+      areaEl(x[0]).addEventListener('click', () => {
+        const btn = areaEl(x[0]), isActive = btn.classList.contains('active');
+        clearModes();
+        if(!isActive){ btn.classList.add('active'); areaDrawStart(x[1]); }
+      });
+    });
+    const tg = areaEl('area-anim-toggle');
+    if(tg){
+      const sync = () => { const on = areaAnimOn(); tg.classList.toggle('active', on); tg.setAttribute('aria-pressed', String(on)); tg.textContent = 'Animar áreas: ' + (on ? 'ligado' : 'desligado'); };
+      sync();
+      tg.addEventListener('click', () => { try{ localStorage.setItem('tv-map:area-anim', areaAnimOn() ? 'off' : 'on'); }catch(e){} sync(); renderShapes(); });
+    }
+  }
+  areaBarWire();
 
   // ESC cancels any active drawing/measuring mode
   document.addEventListener('keydown', (e) => {
-    if(e.key === 'Escape' && (circleModeOn || routeModeOn)) clearModes();
+    if(e.key === 'Escape' && (area.draw || area.edit || routeModeOn)) clearModes();
   });
 
   // ---------- search: local pins/áreas/rotas + place search via Nominatim (OSM) ----------
@@ -2607,7 +3038,7 @@
     listen(fbRefOf(KEY_SHAPES), snap => {
       shapes = snap.val() || [];
       saveLocal(KEY_SHAPES, shapes);
-      if(!shapePopupActive) renderShapes();
+      if(!shapePopupActive && !area.edit) renderShapes();
       markLoaded(4);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (áreas)', err); setSyncStatus('offline'); markLoaded(4); });
@@ -4626,6 +5057,7 @@
 
   // ---------- ligar/desligar tudo de uma campanha ----------
   function resetCampaignState(){
+    areaReset();   // fecha a folha/desenho de áreas sem gravar nada na campanha nova
     pins = []; tokens = []; shapes = []; routes = [];
     weather = { state:'calmo', updatedAt:null, updatedBy:null };
     inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {}; journal = {}; gmJournal = {};
@@ -7249,6 +7681,7 @@
     tacRenderSheet();
   }
   function tacOpen(){
+    areaClose();
     closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets();
     tacUI.open = true;
     tacEl('tac').hidden = false;
@@ -7326,6 +7759,7 @@
     hudDockSync();
   }
   function hudOpenSheet(id){
+    areaClose();
     closeHub(); closeDrawer(); closeNavDrawer(); closeInventory();
     hudCloseSheets(id);
     const pair = hudSheetIds.find(p => p[0] === id);
