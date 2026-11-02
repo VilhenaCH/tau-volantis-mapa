@@ -184,7 +184,8 @@
     armadilha:    '<path d="M3 12h18"/><path d="M6.5 12V7.2a2.3 2.3 0 0 1 4.6 0V12"/><path d="M12.9 12V7.2a2.3 2.3 0 0 1 4.6 0V12"/><path d="M4.5 12l1.6 8h11.8l1.6-8"/>',
     veiculo:      '<path d="M5 11 6.7 5.4A2 2 0 0 1 8.6 4h6.8a2 2 0 0 1 1.9 1.4L19 11"/><rect x="3" y="11" width="18" height="7" rx="2"/><circle cx="7.5" cy="18.3" r="1.6"/><circle cx="16.5" cy="18.3" r="1.6"/>',
     nota:         '<path d="M6 2h9l3 3v17H6z"/><path d="M15 2v3h3"/><path d="M9 12h6M9 16h6"/>',
-    pin:          '<path d="M12 21s-7-7.2-7-12a7 7 0 0 1 14 0c0 4.8-7 12-7 12Z"/><circle cx="12" cy="9" r="2.4"/>'
+    pin:          '<path d="M12 21s-7-7.2-7-12a7 7 0 0 1 14 0c0 4.8-7 12-7 12Z"/><circle cx="12" cy="9" r="2.4"/>',
+    lugar:        '<path d="M3 21h18"/><path d="M5 21V10l7-6 7 6v11"/><path d="M9.5 21v-6h5v6"/><path d="M12 4V2"/>'
   };
   // Ícones de interface (SVG de traço, 24x24). Usados no dock, índice, feed, ficha e clima no lugar de emojis.
   const UI_IC = {
@@ -255,7 +256,8 @@
     { id:'armadilha',    label:'Armadilha',    color:'var(--trap)' },
     { id:'veiculo',      label:'Veículo',      color:'var(--vehicle)' },
     { id:'nota',         label:'Nota',         color:'var(--ice-100)' },
-    { id:'pin',          label:'Pino',         color:'var(--neutral)' }
+    { id:'pin',          label:'Pino',         color:'var(--neutral)' },
+    { id:'lugar',        label:'Lugar',        color:'var(--frost)' }
   ];
   const PING_TYPES = ['perigo', 'radiacao', 'ameaca', 'armadilha'];
   // Filtros do mapa (chips do topo): a que categoria pertence cada coisa desenhada.
@@ -583,6 +585,33 @@
   // animações das molduras seguem o mesmo botão das áreas (Camadas) e o "reduzir movimento" do aparelho
   function frAnimSync(){ document.documentElement.classList.toggle('tv-still', !areaAnimOn()); }
   frAnimSync();
+
+  // ================= LUGAR (f16) =================
+  // Lugar = pin do tipo 'lugar' com o bloco pin.lg = { cat, img, tags[], src[], risk, npcs[{id,c}], scene, min, max, note }.
+  //  cat   um dos tipos de pin (define cor e ícone) · src  fontes de saque (chaves de LOC_ORDER): a busca sorteia de TODAS ao mesmo tempo
+  //  npcs  NPCs ligados ao lugar, com grau de certeza · scene  id de cena do mapa tático · área = shape com placeId (círculo "raio" ou polígono "ocupação")
+  const LG_CATS = ['saque', 'medico', 'suprimentos', 'combustivel', 'municao', 'agua', 'abrigo', 'veiculo', 'comunicacao', 'extracao', 'perigo', 'ameaca', 'radiacao', 'armadilha', 'nota', 'pin'];
+  const LG_SRC = ['casas', 'farmacias', 'bases', 'veiculos', 'oficinas', 'mercados', 'acampamentos', 'fazendas', 'florestas', 'rios', 'convergencia'];   // mesma lista de LOC_ORDER (as tabelas só existem mais abaixo)
+  const LG_RISK = ['Desconhecido', 'Baixo', 'Médio', 'Alto'];
+  const LG_CERT = [['certo', 'Certo'], ['provavel', 'Provável'], ['rumor', 'Boato'], ['oculto', 'Oculto (só o mestre vê)']];
+  const LG_AREA_PRE = { perigo:'perigo', ameaca:'criaturas', radiacao:'radiacao', armadilha:'perigo', agua:'agua', abrigo:'segura' };
+  const lg = { id:null, saveT:null, renderT:null, built:false, reloc:null, edit:false };
+  function lgOf(p){
+    const g = (p && p.lg && typeof p.lg === 'object') ? p.lg : {};
+    const n = v => { const x = parseInt(v, 10); return isFinite(x) ? x : null; };
+    const min = Math.max(0, n(g.min) == null ? 1 : n(g.min)), max = Math.max(min, n(g.max) == null ? 3 : n(g.max));
+    return {
+      cat: LG_CATS.indexOf(g.cat) >= 0 ? g.cat : 'saque',
+      img: typeof g.img === 'string' && /^(data:image\/|https?:|\.?\/?[\w\-./]+\.(png|jpe?g|gif|webp|svg)$)/i.test(g.img) ? g.img : '',
+      tags: Array.isArray(g.tags) ? g.tags.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim().slice(0, 24)).slice(0, 12) : [],
+      src: Array.isArray(g.src) ? g.src.filter((k, i, a) => LG_SRC.indexOf(k) >= 0 && a.indexOf(k) === i) : [],
+      risk: Math.min(3, Math.max(0, n(g.risk) || 0)),
+      npcs: Array.isArray(g.npcs) ? g.npcs.filter(x => x && typeof x.id === 'string').map(x => ({ id:x.id, c:LG_CERT.some(c => c[0] === x.c) ? x.c : 'provavel' })).slice(0, 20) : [],
+      scene: typeof g.scene === 'string' ? g.scene : '',
+      min, max
+    };
+  }
+  const isLugar = p => !!p && p.type === 'lugar';
 
   // compatibilidade: antes havia um estilo único para todas as áreas
   const SHAPE_STYLE = { color: AREA_DEF.c, weight: 2, fillColor: AREA_DEF.c, fillOpacity: AREA_DEF.op, dashArray: '6 4' };
@@ -1019,10 +1048,10 @@
   // ---------- pin toolbar: only the "named" types get a button; the rest of
   // PIN_TYPES are icon options only, offered in the icon picker (see below) so
   // players can reskin any pin without the toolbar being flooded with buttons ----------
-  const TOOLBAR_PIN_IDS = ['saque', 'perigo', 'abrigo', 'npc', 'veiculo', 'nota', 'pin'];
+  const TOOLBAR_PIN_IDS = ['lugar', 'saque', 'perigo', 'abrigo', 'npc', 'veiculo', 'nota', 'pin'];
 
   function buildIconPickerHtml(currentType){
-    return PIN_TYPES.map(pt => `
+    return PIN_TYPES.filter(pt => pt.id !== 'lugar').map(pt => `
       <button type="button" class="icon-picker-btn ${pt.id===currentType?'active':''}" data-type="${pt.id}" style="--picker-color:${pt.color}" title="${pt.label}">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PIN_ICONS[pt.id] || PIN_ICONS.nota}</svg>
       </button>`).join('');
@@ -1058,6 +1087,7 @@
   function clearModes(){
     selectedPinType = null;
     tokenModeOn = false;
+    if(lg.reloc){ lg.reloc = null; hideDrawHint(); }
     areaDrawStop(); areaEditStop(false);
     stopRouteMode();
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
@@ -1145,6 +1175,7 @@
 
   // ---------- pin icon factory ----------
   function pinIcon(pin){
+    if(pin.type === 'lugar') return lgIcon(pin);
     const typeId = pin.type;
     const svgPath = PIN_ICONS[typeId] || PIN_ICONS.nota;
     const defaultColor = (PIN_TYPES.find(t => t.id === typeId) || {}).color || 'var(--ice-100)';
@@ -1680,7 +1711,7 @@
       if(!marker){
         marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin), draggable: !pin.locked });
         marker._pinId = pin.id;
-        marker.on('click', (e) => { L.DomEvent.stopPropagation(e); });
+        marker.on('click', (e) => { L.DomEvent.stopPropagation(e); if(pin.type === 'lugar') lgOpen(pin.id); });
         marker.on('dragstart', () => { pinDraggingId = pin.id; });
         marker.on('dragend', async (e) => {
           pinDraggingId = null;
@@ -1689,6 +1720,7 @@
           const pos = e.target.getLatLng();
           p.lat = pos.lat; p.lng = pos.lng;
           if(p.type === 'npc') tryDockPinNpc(p, pos);
+          if(p.type === 'lugar') lgFollow(p);
           await saveKey(KEY_PINS, pins);
           renderPins();
           renderTokens();
@@ -1696,7 +1728,7 @@
         });
         // busca o pin atual na hora de abrir o popup (nunca o objeto "congelado"
         // no momento da criação do marker), pra sempre mostrar dado fresco
-        marker.bindPopup(() => buildPinPopupContent(pins.find(pp => pp.id === pin.id) || pin));
+        if(pin.type !== 'lugar') marker.bindPopup(() => buildPinPopupContent(pins.find(pp => pp.id === pin.id) || pin));
         marker.addTo(pinsLayer);
         pinMarkers[pin.id] = marker;
       } else if(pin.id !== pinDraggingId && pin.id !== editingPinId){
@@ -1736,6 +1768,7 @@
       if(p.id !== pin.id && p.type === 'npc' && p.containerId === pin.id){ p.containerId = null; p.lat = pin.lat; p.lng = pin.lng; }
     });
     pins = pins.filter(p => p.id !== pin.id);
+    if(pin.type === 'lugar'){ lgClose(true); if(shapes.some(s => s.placeId === pin.id)){ shapes = shapes.filter(s => s.placeId !== pin.id); renderShapes(); saveKey(KEY_SHAPES, shapes); } }
     renderPins();
     renderTokens();
     map.closePopup();
@@ -1786,6 +1819,8 @@
   }
 
   function openPinPopupById(id){
+    const lp = pins.find(p => p.id === id);
+    if(lp && lp.type === 'lugar'){ lgOpen(id); return; }
     const marker = pinMarkers[id];
     if(marker && marker.openPopup) marker.openPopup();
   }
@@ -2561,6 +2596,7 @@
 
   // ---------- map click: circle/route steps, or place pin/token ----------
   map.on('click', async (e) => {
+    if(lg.reloc){ lgRelocTo(e.latlng); return; }
     if(area.draw){ areaDrawTap(e.latlng); return; }
     if(area.edit) return;
 
@@ -2585,12 +2621,13 @@
         note: '',
         ...ownerFields()
       };
+      if(pin.type === 'lugar'){ pin.title = 'Novo lugar'; pin.lg = { cat:'saque', tags:[], src:[], risk:0, npcs:[], scene:'' }; }
       pins.push(pin);
       await saveKey(KEY_PINS, pins);
       renderPins();
       clearModes(); // um pin por clique — não fica no modo de colocar até o usuário escolher de novo
       // open the new pin's popup for immediate editing
-      openPinPopupById(pin.id);
+      if(pin.type === 'lugar') lgOpen(pin.id, true); else openPinPopupById(pin.id);
     } else if(tokenModeOn){
       const token = { id:newId(), lat:e.latlng.lat, lng:e.latlng.lng, label:'Token', ...ownerFields() };
       tokens.push(token);
@@ -2796,7 +2833,7 @@
   function areaDrawStop(){
     if(!area.draw) return;
     map.off('mousemove', areaRectMove);
-    area.draw = null;
+    area.draw = null; area.link = null;
     if(!area.edit){ areaPvClear(); areaBusy(false); }
     areaBarRender();
   }
@@ -2861,10 +2898,12 @@
     const d = area.draw; if(!d) return;
     const p = areaPreset(d.preset) || AREA_PRESETS[0];
     const shape = Object.assign({ id:newId(), label:p.t, note:'', st:Object.assign(areaStFromPreset(p), { pre:p.id }) }, geom, ownerFields());
+    const lp = area.link ? pins.find(x => x.id === area.link) : null;      // ocupação desenhada a partir de um Lugar
+    if(lp){ shape.placeId = lp.id; shape.label = lp.title || 'Lugar'; shape.st = lgAreaStyle(lp); }
     clearModes();
     shapes.push(shape);
     renderShapes();
-    areaOpen(shape.id);
+    if(lp) setTimeout(() => lgOpen(lp.id, true), 0); else areaOpen(shape.id);
     await saveKey(KEY_SHAPES, shapes);
   }
 
@@ -2967,8 +3006,299 @@
   }
   areaBarWire();
 
+  // ================= LUGAR (f16): marcador, folha (cartão + edição), área, reposicionar =================
+  const lgEl = id => document.getElementById(id);
+  const lgCatOf = g => PIN_TYPES.find(t => t.id === g.cat) || {};
+  function lgCanEdit(pin){ return isMaster() || !pin.ownerId || (!!currentUser && pin.ownerId === currentUser.uid); }
+  // estado de exploração (mesmo do contêiner); lugar sem fonte de saque e sem itens não mostra estado
+  function lgState(pin){
+    try{
+      const cc = pinCC(pin);
+      if(cc && !cc.locKey && !invCount(pin.id)) return '';
+      return containerState(pin.id) || '';
+    }catch(e){ return ''; }
+  }
+  function lgIcon(pin){
+    const g = lgOf(pin), col = lgCatOf(g).color || 'var(--frost)', st = lgState(pin);
+    const nm = escapeHtml((pin.title || 'Lugar').trim().split(/\s+/).slice(0, 2).join(' ').slice(0, 18));
+    return L.divIcon({
+      className:'mk-pins mk-lugar', iconSize:[34, 34], iconAnchor:[17, 29], popupAnchor:[0, -27],
+      html:`<div class="pin-wrap pin-wrap-lugar${pin.locked ? ' locked' : ''}" data-st="${st}"><div class="pin-badge lg-badge" style="--lgc:${col}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PIN_ICONS[g.cat] || PIN_ICONS.pin}</svg></div><span class="pin-name-tag lg-tag">${nm}</span></div>`
+    });
+  }
+  // distância até o personagem do jogador (o mais perto entre os dele), ou o escolhido no saque
+  function lgDistText(pin){
+    try{
+      let mine = currentUser ? tokens.filter(t => t.ownerId === currentUser.uid && !t.containerId) : [];
+      if(!mine.length){ const t = selectedToken(); if(t) mine = [t]; }
+      if(!mine.length) return '';
+      let best = null;
+      mine.forEach(t => { const d = map.distance([t.lat, t.lng], [pin.lat, pin.lng]); if(!best || d < best.d) best = { d, t }; });
+      return best ? 'a ' + formatDistance(best.d) + ' de ' + (best.t.label || 'Token') : '';
+    }catch(e){ return ''; }
+  }
+  const lgIcSvg = (cat, size) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PIN_ICONS[cat] || PIN_ICONS.pin}</svg>`;
+
+  function lgCardHtml(pin){
+    const g = lgOf(pin), t = lgCatOf(g), col = t.color || 'var(--frost)', st = lgState(pin), master = isMaster();
+    const dist = lgDistText(pin), cc = pinCC(pin);
+    const npcs = g.npcs.map(x => { const n = pins.find(p => p.id === x.id && p.type === 'npc'); return n ? { n, c:x.c } : null; }).filter(x => x && (x.c !== 'oculto' || master));
+    const meta = containerMeta(pin.id), items = invCount(pin.id);
+    const areas = shapes.filter(s => s.placeId === pin.id);
+    return `<div class="lg-card" style="--lgc:${col}">
+      ${g.img ? `<div class="lg-img"><img src="${escapeHtml(g.img)}" alt=""></div>` : `<div class="lg-img lg-noimg" aria-hidden="true">${lgIcSvg(g.cat, 44)}</div>`}
+      <div class="lg-top"><span class="lg-kick">${escapeHtml(t.label || 'Lugar')} · lugar</span>${st ? `<span class="lg-chip st-${st}">${escapeHtml(CONT_STATE_LABELS[st] || st)}</span>` : ''}</div>
+      <div class="lg-name">${escapeHtml(pin.title || 'Lugar')}</div>
+      <div class="lg-meta"><span class="lg-risk" data-r="${g.risk}" title="Risco: ${LG_RISK[g.risk]}"><i></i><i></i><i></i></span><span>Risco ${g.risk ? LG_RISK[g.risk].toLowerCase() : 'desconhecido'}</span>${dist ? `<span class="lg-dist">${escapeHtml(dist)}</span>` : ''}${areas.length ? `<span>${areas.some(a => a.type === 'circle') ? 'Área de raio' : 'Área ocupada'}</span>` : ''}</div>
+      ${g.tags.length ? `<div class="lg-tags">${g.tags.map(x => `<span class="lg-tag">#${escapeHtml(x)}</span>`).join('')}</div>` : ''}
+      ${pin.note ? `<p class="lg-note">${escapeHtml(pin.note)}</p>` : ''}
+      ${npcs.length ? `<div class="lg-sec">Quem está aqui</div><div class="lg-npcs">${npcs.map(x => `<button type="button" class="lg-npc" data-lg-act="npc" data-id="${escapeHtml(x.n.id)}"><b>${escapeHtml(x.n.title || 'NPC')}</b><span class="lg-cert c-${x.c}">${escapeHtml((LG_CERT.find(c => c[0] === x.c) || [])[1] || '')}</span></button>`).join('')}</div>` : ''}
+      ${master && g.src.length ? `<div class="lg-sec">Saque (só o mestre vê)</div><div class="lg-srcs">${g.src.map(k => `<span class="lg-tag">${escapeHtml(LOC_NAMES[k] || k)}</span>`).join('')}</div>` : ''}
+      <div class="lg-acts">
+        ${canSearchPin(pin) ? `<button type="button" class="lg-go" data-lg-act="search">${ic('search', 16)} Vasculhar</button>` : ''}
+        ${cc && (items > 0 || (meta && meta.generatedAt)) ? `<button type="button" data-lg-act="inv">${ic('box', 16)} Conteúdo (${items})</button>` : ''}
+        ${g.scene && typeof tac !== 'undefined' && tac.scenes[g.scene] ? `<button type="button" data-lg-act="tac">${ic('swords', 16)} Mapa tático</button>` : ''}
+      </div></div>`;
+  }
+  function lgFillCard(pin){
+    const el = lgEl('lg-card'); if(!el) return;
+    pin = pin || pins.find(p => p.id === lg.id); if(!pin) return;
+    el.innerHTML = lgCardHtml(pin);
+    lgEl('lugar-title').textContent = pin.title || 'Lugar';
+  }
+
+  // ----- formulário de edição -----
+  function lgFormHtml(pin){
+    const g = lgOf(pin), master = isMaster(), esc = escapeHtml;
+    const npcAll = pins.filter(p => p.type === 'npc'), used = new Set(g.npcs.map(x => x.id));
+    const scenes = (typeof tac !== 'undefined' && tac.scenes) ? Object.keys(tac.scenes) : [];
+    const areas = shapes.filter(s => s.placeId === pin.id), circ = areas.find(s => s.type === 'circle'), cc = pinCC(pin) || {};
+    const opt = (v, l, cur) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`;
+    let h = `<label class="ar-f"><span>Nome</span><input type="text" id="lg-name" maxlength="60" autocomplete="off" value="${esc(pin.title || '')}" placeholder="Nome do lugar"></label>
+      <div class="ar-g">Categoria</div>
+      <div class="lg-cats" role="radiogroup" aria-label="Categoria">${LG_CATS.map(id => { const t = PIN_TYPES.find(x => x.id === id) || {}; return `<button type="button" class="lg-cat${id === g.cat ? ' on' : ''}" role="radio" aria-checked="${id === g.cat}" data-lg="cat" data-v="${id}" style="--c:${t.color}">${lgIcSvg(id, 18)}<span>${esc(t.label || id)}</span></button>`; }).join('')}</div>
+      <div class="ar-g">Imagem de representação</div>
+      <div class="lg-imgrow"><input type="file" id="lg-file" accept="image/*" aria-label="Escolher imagem">${g.img ? '<button type="button" data-lg="img-clear">Remover</button>' : ''}</div>
+      <label class="ar-f"><span>ou endereço da imagem</span><input type="text" id="lg-url" autocomplete="off" placeholder="https://… ou lugares/hospital.jpg" value="${g.img && !/^data:/.test(g.img) ? esc(g.img) : ''}"></label>
+      <div class="ar-g">Tags</div>
+      <div class="lg-tags">${g.tags.map((x, i) => `<span class="lg-tag">#${esc(x)}<button type="button" data-lg="tag-del" data-i="${i}" aria-label="Tirar a tag ${esc(x)}">×</button></span>`).join('') || '<span class="ar-meta">Nenhuma tag.</span>'}</div>
+      <div class="lg-addrow"><input type="text" id="lg-tag" maxlength="24" autocomplete="off" placeholder="nova tag (ex.: hospital)"><button type="button" data-lg="tag-add">Adicionar</button></div>
+      <div class="ar-g">Risco</div>
+      <div class="ar-seg" role="radiogroup" aria-label="Risco">${LG_RISK.map((l, i) => `<button type="button" class="${i === g.risk ? 'on' : ''}" role="radio" aria-checked="${i === g.risk}" data-lg="risk" data-v="${i}">${l}</button>`).join('')}</div>`;
+    if(master){
+      h += `<div class="ar-g">Fontes de saque (a busca sorteia de todas as marcadas)</div>
+      <div class="ar-chips lg-src">${LG_SRC.map(k => `<button type="button" class="ar-chip${g.src.indexOf(k) >= 0 ? ' on' : ''}" aria-pressed="${g.src.indexOf(k) >= 0}" data-lg="src" data-v="${k}"><i></i>${esc(LOC_NAMES[k] || k)}</button>`).join('')}</div>
+      <div class="lg-addrow"><label class="lg-num">Itens por busca: de <input type="number" id="lg-min" min="0" max="8" value="${g.min}" inputmode="numeric"></label><label class="lg-num">até <input type="number" id="lg-max" min="1" max="8" value="${g.max}" inputmode="numeric"></label></div>
+      <div class="lg-addrow"><label class="lg-num">Capacidade <input type="number" id="lg-cap" min="1" value="${cc.cap || ''}" placeholder="sem limite" inputmode="numeric"></label>
+        <select id="lg-access" aria-label="Acesso">${opt('aberto', 'Aberto', cc.access || 'aberto')}${opt('bloqueado', 'Bloqueado (só o mestre)', cc.access || 'aberto')}</select></div>
+      <div class="ar-g">NPCs no lugar</div>
+      ${g.npcs.map((x, i) => { const n = npcAll.find(p => p.id === x.id); return `<div class="lg-npcrow"><b>${esc(n ? (n.title || 'NPC') : 'NPC removido')}</b><select data-lg="npc-c" data-i="${i}" aria-label="Certeza">${LG_CERT.map(c => opt(c[0], c[1], x.c)).join('')}</select><button type="button" data-lg="npc-del" data-i="${i}" aria-label="Tirar o NPC">×</button></div>`; }).join('')}
+      <div class="lg-addrow"><select id="lg-npc-sel" aria-label="NPC">${opt('', npcAll.length ? '— escolher NPC —' : 'Nenhum NPC no mapa', '')}${npcAll.filter(p => !used.has(p.id)).map(p => opt(p.id, p.title || 'NPC', '')).join('')}</select>
+        <select id="lg-npc-cn" aria-label="Certeza do novo NPC">${LG_CERT.map(c => opt(c[0], c[1], 'certo')).join('')}</select><button type="button" data-lg="npc-add">Ligar</button></div>
+      <div class="ar-g">Mapa tático deste lugar</div>
+      <div class="lg-addrow"><select id="lg-scene" aria-label="Mapa tático">${opt('', scenes.length ? '— nenhum —' : 'Crie uma cena no Tático', g.scene)}${scenes.map(id => opt(id, tac.scenes[id].name || 'Cena', g.scene)).join('')}</select>${g.scene && tac.scenes[g.scene] ? '<button type="button" data-lg="tac-on">Ativar p/ o grupo</button>' : ''}</div>`;
+    }
+    h += `<div class="ar-g">Área do lugar (raio ou ocupação)</div>
+      <div class="ar-meta">${areas.length ? (circ ? 'Área de raio ligada a este lugar (acompanha o lugar ao mover).' : 'Área de ocupação desenhada para este lugar.') : 'Sem área. Use o raio para um círculo em volta do lugar, ou desenhe a ocupação.'}</div>
+      <div class="lg-addrow"><label class="lg-num">Raio (m) <input type="number" id="lg-rad" min="5" max="50000" step="5" value="${circ ? Math.round(circ.radius) : ''}" placeholder="ex.: 120" inputmode="numeric"></label><button type="button" data-lg="rad-set">${circ ? 'Mudar raio' : 'Criar raio'}</button></div>
+      <div class="ar-btns"><button type="button" data-lg="occ">Desenhar ocupação</button>${areas.length ? '<button type="button" data-lg="area-style">Estilo da área</button><button type="button" data-lg="area-del" class="danger">Tirar área</button>' : ''}</div>
+      <label class="ar-f"><span>Anotação</span><textarea id="lg-note" rows="3" maxlength="600" placeholder="Anotação...">${esc(pin.note || '')}</textarea></label>
+      <div class="ar-btns"><button type="button" data-lg="reloc">Reposicionar no mapa</button><button type="button" data-lg="del" class="danger">Excluir lugar</button></div>`;
+    return h;
+  }
+  function lgFillForm(pin){
+    const wrap = lgEl('lg-edit-wrap'), form = lgEl('lg-form'); if(!wrap || !form) return;
+    const can = lgCanEdit(pin);
+    wrap.hidden = !can;
+    if(!can){ form.innerHTML = ''; return; }
+    form.innerHTML = lgFormHtml(pin);
+  }
+  function lgFill(pin){
+    lgFillCard(pin); lgFillForm(pin);
+    const wrap = lgEl('lg-edit-wrap'); if(wrap && !wrap.hidden) wrap.open = !!lg.edit;
+  }
+  function lgBuild(){
+    lgEl('lugar-close').innerHTML = ic('close', 20);
+    lgEl('lugar-body').innerHTML = '<div id="lg-card"></div><details id="lg-edit-wrap" class="lg-edit"><summary>Editar lugar</summary><div id="lg-form"></div></details>';
+    lgEl('lugar-close').addEventListener('click', () => lgClose());
+    const body = lgEl('lugar-body');
+    body.addEventListener('click', ev => {
+      const a = ev.target.closest && ev.target.closest('[data-lg-act]');
+      if(a && body.contains(a)){ lgAct(a.dataset.lgAct, a); return; }
+      const f = ev.target.closest && ev.target.closest('[data-lg]');
+      if(f && body.contains(f) && f.tagName !== 'SELECT') lgForm(f.dataset.lg, f);
+    });
+    body.addEventListener('change', ev => {
+      const t = ev.target;
+      if(t.id === 'lg-file') lgFile(t);
+      else if(t.id === 'lg-url') lgUrl(t.value.trim());
+      else if(t.id === 'lg-min' || t.id === 'lg-max') lgLimits();
+      else if(t.id === 'lg-cap' || t.id === 'lg-access') lgCap();
+      else if(t.id === 'lg-scene') lgPatch(g => { g.scene = t.value; }, true);
+      else if(t.dataset && t.dataset.lg === 'npc-c') lgPatch(g => { const l = lgOf(pins.find(p => p.id === lg.id)).npcs; if(l[+t.dataset.i]) l[+t.dataset.i].c = t.value; g.npcs = l; });
+    });
+    body.addEventListener('input', ev => {
+      const t = ev.target, pin = pins.find(p => p.id === lg.id); if(!pin) return;
+      if(t.id === 'lg-name'){ pin.title = t.value.slice(0, 60); lgSaveSoon(); lgRenderSoon(); lgFillCard(pin); }
+      else if(t.id === 'lg-note'){ pin.note = t.value.slice(0, 600); lgSaveSoon(); lgFillCard(pin); }
+    });
+    body.addEventListener('keydown', ev => { if(ev.key === 'Enter' && ev.target.id === 'lg-tag'){ ev.preventDefault(); lgForm('tag-add'); } });
+    lgEl('lg-edit-wrap').addEventListener('toggle', () => { lg.edit = lgEl('lg-edit-wrap').open; });
+  }
+
+  // ----- gravação -----
+  function lgSaveSoon(){ clearTimeout(lg.saveT); lg.saveT = setTimeout(() => { lg.saveT = null; saveKey(KEY_PINS, pins); }, 450); }
+  function lgRenderSoon(){ clearTimeout(lg.renderT); lg.renderT = setTimeout(() => { lg.renderT = null; renderPins(); }, 220); }
+  // aplica uma mudança em pin.lg; refaz = true recria o formulário (listas que mudam de tamanho)
+  function lgPatch(fn, refaz){
+    const pin = pins.find(p => p.id === lg.id); if(!pin) return;
+    const g = (pin.lg && typeof pin.lg === 'object') ? pin.lg : (pin.lg = {});
+    fn(g, pin);
+    lgSaveSoon(); lgRenderSoon(); lgFillCard(pin);
+    if(refaz) lgFillForm(pin);
+  }
+  async function lgFile(inp){
+    const f = inp.files && inp.files[0]; if(!f) return;
+    try{
+      const d = await resizeImageDataUrl(f, 360);
+      if(d.length > 220000){ toast('Imagem pesada demais. Use uma menor ou um endereço.', true); inp.value = ''; return; }
+      lgPatch(g => { g.img = d; }, true);
+    }catch(e){ toast(e && e.message ? e.message : 'Não foi possível usar essa imagem.', true); inp.value = ''; }
+  }
+  function lgUrl(v){
+    if(!v){ lgPatch(g => { if(g.img && !/^data:/.test(g.img)) g.img = ''; }, true); return; }
+    if(!lgOf({ lg:{ img:v } }).img){ toast('Endereço de imagem inválido.', true); return; }
+    lgPatch(g => { g.img = v; }, true);
+  }
+  function lgLimits(){
+    const mn = Math.max(0, Math.min(8, parseInt(lgEl('lg-min').value, 10) || 0)), mx = Math.max(mn, Math.min(8, parseInt(lgEl('lg-max').value, 10) || 0));
+    lgPatch(g => { g.min = mn; g.max = mx; });
+    lgEl('lg-min').value = mn; lgEl('lg-max').value = mx;
+  }
+  function lgCap(){
+    const pin = pins.find(p => p.id === lg.id); if(!pin) return;
+    const cap = parseInt(lgEl('lg-cap').value, 10), acc = lgEl('lg-access').value;
+    pin.container = { enabled:true, cap:cap > 0 ? cap : null, access:acc === 'bloqueado' ? 'bloqueado' : 'aberto', updatedBy:actorFields().actorName };
+    lgSaveSoon(); lgRenderSoon(); lgFillCard(pin);
+  }
+  function lgForm(a, el){
+    const pin = pins.find(p => p.id === lg.id); if(!pin) return;
+    const g0 = lgOf(pin), v = el && el.dataset ? el.dataset.v : '', i = el && el.dataset ? +el.dataset.i : -1;
+    switch(a){
+      case 'cat': lgPatch(g => { g.cat = v; }, true); break;
+      case 'img-clear': lgPatch(g => { g.img = ''; }, true); break;
+      case 'risk': lgPatch(g => { g.risk = +v; }, true); break;
+      case 'tag-add': {
+        const inp = lgEl('lg-tag'), t = (inp.value || '').replace(/^#+/, '').trim().slice(0, 24);
+        if(!t){ inp.focus(); return; }
+        if(g0.tags.some(x => x.toLowerCase() === t.toLowerCase()) || g0.tags.length >= 12){ inp.value = ''; return; }
+        lgPatch(g => { g.tags = g0.tags.concat([t]); }, true); lgEl('lg-tag').focus(); break;
+      }
+      case 'tag-del': lgPatch(g => { g.tags = g0.tags.filter((x, k) => k !== i); }, true); break;
+      case 'src': lgPatch(g => { g.src = g0.src.indexOf(v) >= 0 ? g0.src.filter(k => k !== v) : g0.src.concat([v]).sort((a1, b1) => LG_SRC.indexOf(a1) - LG_SRC.indexOf(b1)); }, true); break;
+      case 'npc-add': {
+        const id = lgEl('lg-npc-sel').value; if(!id){ toast('Escolha um NPC para ligar.', true); return; }
+        lgPatch(g => { g.npcs = g0.npcs.concat([{ id, c:lgEl('lg-npc-cn').value }]); }, true); break;
+      }
+      case 'npc-del': lgPatch(g => { g.npcs = g0.npcs.filter((x, k) => k !== i); }, true); break;
+      case 'tac-on': if(g0.scene && tac.scenes[g0.scene]){ DB.set(tacPath() + '/active', g0.scene); toast('Mapa tático ativado para o grupo.'); } break;
+      case 'rad-set': {
+        const r = Math.min(50000, Math.max(5, parseInt(lgEl('lg-rad').value, 10) || 0));
+        if(!(parseInt(lgEl('lg-rad').value, 10) > 0)){ toast('Informe o raio em metros.', true); return; }
+        lgApplyRadius(pin, r); lgFillCard(pin); lgFillForm(pin); break;
+      }
+      case 'occ': lgDrawOcc(pin); break;
+      case 'area-style': { const sh = shapes.find(s => s.placeId === pin.id); if(sh) areaOpen(sh.id); break; }
+      case 'area-del': lgDropAreas(pin); lgFillCard(pin); lgFillForm(pin); break;
+      case 'reloc': lgRelocStart(pin); break;
+      case 'del': if(window.confirm('Excluir o lugar "' + (pin.title || 'Lugar') + '"? A área ligada a ele também sai.')) deletePinById(pin.id); break;
+    }
+  }
+  async function lgAct(a, el){
+    const pin = pins.find(p => p.id === lg.id); if(!pin) return;
+    if(a === 'search'){ el.disabled = true; const ok = await generateContainer(pin.id, false); lgFillCard(); lgRenderSoon(); if(ok) openInventory(pin.id); }
+    else if(a === 'inv') openInventory(pin.id);
+    else if(a === 'tac') lgOpenTac(pin);
+    else if(a === 'npc'){ const n = pins.find(p => p.id === el.dataset.id); if(n){ lgClose(); map.setView([n.lat, n.lng], Math.max(map.getZoom(), 17)); } }
+  }
+  function lgOpenTac(pin){
+    const sid = lgOf(pin).scene;
+    if(!sid || !tac.scenes[sid]){ toast('Este lugar ainda não tem mapa tático.', true); return; }
+    if(isMaster()){ tacUI.sid = sid; tacUI.sel = null; tacUI.gd = null; tacOpen(); }
+    else if(tac.active === sid) tacOpen();
+    else toast('O mestre ainda não liberou o mapa tático deste lugar.', true);
+  }
+
+  // ----- abrir / fechar -----
+  function lgOpen(id, edit){
+    const pin = pins.find(p => p.id === id); if(!isLugar(pin)) return;
+    if(!lg.built){ lgBuild(); lg.built = true; }
+    areaClose(); closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets();
+    lg.id = id; lg.edit = !!edit;
+    lgFill(pin);
+    lgEl('lugar-sheet').classList.add('open');
+    lgFocus(pin);
+  }
+  // a folha cobre a parte de baixo: empurra o mapa para o marcador aparecer em cima dela
+  function lgFocus(pin){
+    const sz = map.getSize(), p = map.latLngToContainerPoint([pin.lat, pin.lng]);
+    if(p.y > sz.y * 0.4 || p.y < 120 || p.x < 20 || p.x > sz.x - 20) map.panBy([p.x - sz.x / 2, p.y - sz.y * 0.25], { animate:true });
+  }
+  function lgClose(noSave){
+    if(!lg.id) return;
+    const sh = lgEl('lugar-sheet');
+    if(lg.renderT){ clearTimeout(lg.renderT); lg.renderT = null; renderPins(); }
+    if(lg.saveT){ clearTimeout(lg.saveT); lg.saveT = null; if(!noSave) saveKey(KEY_PINS, pins); }
+    lg.id = null;
+    if(sh) sh.classList.remove('open');
+  }
+  function lgReset(){ clearTimeout(lg.saveT); clearTimeout(lg.renderT); lg.saveT = lg.renderT = null; lg.id = null; lg.reloc = null; const sh = lgEl('lugar-sheet'); if(sh) sh.classList.remove('open'); }
+
+  // ----- área ligada ao lugar -----
+  function lgAreaStyle(pin){
+    const pre = areaPreset(LG_AREA_PRE[lgOf(pin).cat] || 'territorio') || AREA_PRESETS[0];
+    return Object.assign(areaStFromPreset(pre), { pre:pre.id, lb:'oculto' });
+  }
+  function lgApplyRadius(pin, r){
+    let sh = shapes.find(s => s.placeId === pin.id && s.type === 'circle');
+    if(sh){ sh.radius = r; sh.center = [pin.lat, pin.lng]; }
+    else{ sh = Object.assign({ id:newId(), type:'circle', center:[pin.lat, pin.lng], radius:r, label:pin.title || 'Lugar', note:'', follow:true, placeId:pin.id, st:lgAreaStyle(pin) }, ownerFields()); shapes.push(sh); }
+    renderShapes(); saveKey(KEY_SHAPES, shapes);
+  }
+  function lgDropAreas(pin){
+    shapes = shapes.filter(s => s.placeId !== pin.id);
+    renderShapes(); saveKey(KEY_SHAPES, shapes);
+  }
+  // o círculo de raio acompanha o lugar quando ele é movido
+  function lgFollow(pin){
+    let ch = false;
+    shapes.forEach(s => { if(s.placeId === pin.id && s.follow && s.type === 'circle'){ s.center = [pin.lat, pin.lng]; ch = true; } });
+    if(ch){ renderShapes(); saveKey(KEY_SHAPES, shapes); }
+  }
+  function lgDrawOcc(pin){
+    lgClose(); clearModes();
+    areaDrawStart('poly'); area.link = pin.id;
+    toast('Toque nos pontos que cercam o lugar e confirme em Concluir.');
+  }
+  // ----- reposicionar: um toque no mapa leva o lugar para lá -----
+  function lgRelocStart(pin){
+    lgClose(); clearModes();
+    lg.reloc = pin.id;
+    showDrawHint('Toque no mapa para colocar o lugar (Esc cancela)');
+  }
+  function lgRelocTo(ll){
+    const pin = pins.find(p => p.id === lg.reloc); lg.reloc = null; hideDrawHint();
+    if(!pin) return;
+    pin.lat = ll.lat; pin.lng = ll.lng;
+    lgFollow(pin);
+    renderPins(); saveKey(KEY_PINS, pins);
+    setTimeout(() => lgOpen(pin.id, true), 0);   // depois do clique: o ouvinte do HUD fecha as folhas no mesmo evento
+  }
+  function lgRelocCancel(){ const id = lg.reloc; lg.reloc = null; hideDrawHint(); if(id && pins.some(p => p.id === id)) setTimeout(() => lgOpen(id, true), 0); }
+
   // ESC cancels any active drawing/measuring mode
   document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape' && lg.reloc){ lgRelocCancel(); return; }
     if(e.key === 'Escape' && (area.draw || area.edit || routeModeOn)) clearModes();
   });
 
@@ -3188,6 +3518,7 @@
 
   const byLoc = {};
   LOC_ORDER.forEach(k => byLoc[k] = ITEMS.filter(i => i.locations.includes(k)));
+  window.__tvLoot = byLoc;   // só para os testes automáticos (conferir de qual tabela saiu cada item)
 
   const WEAPON_CATS = new Set(["Armas de Fogo", "Armas Brancas e Improvisadas"]);
   const weaponsByCalibre = {};
@@ -3918,6 +4249,12 @@
   // configuração efetiva do contêiner de um pin (ou null se o pin não é contêiner)
   function pinCC(p){
     if(!p || p.type === 'npc') return null;
+    if(p.type === 'lugar'){                              // Lugar: sempre guarda itens; as fontes de saque são as marcadas na folha dele
+      const g = lgOf(p), c0 = p.container;
+      if(c0 && c0.enabled === false) return null;
+      const base = { enabled:true, auto:true, locKey:g.src[0] || '', locKeys:g.src, min:g.min, max:g.max, cap:null, access:'aberto' };
+      return c0 && c0.enabled ? Object.assign({}, base, { cap:c0.cap, access:c0.access || 'aberto', locKey:g.src[0] || '', locKeys:g.src }) : base;
+    }
     const c = p.container;
     if(c && c.enabled) return c;                       // configurado à mão pelo mestre
     if(c && c.enabled === false) return null;          // desligado pelo mestre
@@ -4527,6 +4864,20 @@
     return meta && meta.initial && n < meta.initial ? 'parcial' : 'explorado';
   }
   function rollContainerContents(cc, free){
+    const keys = (cc.locKeys && cc.locKeys.length ? cc.locKeys : [cc.locKey]).filter(k => byLoc[k]);
+    if(keys.length > 1){
+      // várias fontes: cada item sai de uma fonte por vez, em rodízio embaralhado, para o resultado trazer um pouco de CADA fonte
+      const all = new Set(); keys.forEach(k => byLoc[k].forEach(it => all.add(it)));
+      const lo2 = Math.max(0, cc.min != null ? parseInt(cc.min, 10) || 0 : 1), hi2 = Math.max(lo2, cc.max != null ? parseInt(cc.max, 10) || 0 : 3);
+      const count2 = Math.min(lo2 + Math.floor(Math.random() * (hi2 - lo2 + 1)), all.size, free);
+      const order = keys.slice().sort(() => Math.random() - 0.5), used = new Set(), out2 = [];
+      for(let i = 0; out2.length < count2 && i < count2 * 6 + 12; i++){
+        const k = order[i % order.length], pool2 = byLoc[k].filter(it => !used.has(it));
+        if(!pool2.length) continue;
+        const it = weightedPick(pool2, k); used.add(it); out2.push(it);
+      }
+      return out2;
+    }
     const pool = (byLoc[cc.locKey] || []).slice();
     const lo = Math.max(0, cc.min != null ? parseInt(cc.min, 10) || 0 : 1);
     const hi = Math.max(lo, cc.max != null ? parseInt(cc.max, 10) || 0 : 3);
@@ -4572,7 +4923,7 @@
       ops[id + '/_meta'] = metaFor(meta0, keep + added.length);
       await commitInv(ops, []);
     }
-    await commitInv({}, [mkLog('vasculhar', holder, { made:added.map(i => itemRef(i, 1)), locName:LOC_NAMES[cc.locKey], source:'contêiner', refill:!!force })]);
+    await commitInv({}, [mkLog('vasculhar', holder, { made:added.map(i => itemRef(i, 1)), locName:(cc.locKeys && cc.locKeys.length > 1 ? cc.locKeys.map(k => LOC_NAMES[k]).join(' + ') : LOC_NAMES[cc.locKey]), source:'contêiner', refill:!!force })]);
     toast(added.length ? `${holder.name}: ${added.length} item(ns) encontrado(s).` : `${holder.name}: nada de útil.`);
     onInvChanged();
     return true;
@@ -4665,7 +5016,7 @@
     if(!chars.some(x => x.id === invUI.takeTo)) invUI.takeTo = (charSelect.value && chars.some(x => x.id === charSelect.value)) ? charSelect.value : (chars[0] ? chars[0].id : null);
     const meta = containerMeta(h.id);
     let html = `<div class="cont-head"><div class="cont-state st-${st}">${escapeHtml(CONT_STATE_LABELS[st] || st)}</div>
-      <div class="inv-item-util">${cc.locKey ? 'Tabela: ' + escapeHtml(LOC_NAMES[cc.locKey] || cc.locKey) : 'Abastecido à mão pelo mestre'}${meta && meta.generatedBy ? ' · vasculhado por ' + escapeHtml(meta.generatedBy) : ''}</div>`;
+      <div class="inv-item-util">${cc.locKey ? 'Tabela: ' + escapeHtml(cc.locKeys && cc.locKeys.length > 1 ? cc.locKeys.map(k => LOC_NAMES[k]).join(' + ') : (LOC_NAMES[cc.locKey] || cc.locKey)) : 'Abastecido à mão pelo mestre'}${meta && meta.generatedBy ? ' · vasculhado por ' + escapeHtml(meta.generatedBy) : ''}</div>`;
     if(locked && !master) html += '<p class="hub-hint">Este contêiner está bloqueado. Só o mestre pode abri-lo.</p>';
     else {
       if(cc.locKey && !(meta && meta.generatedAt)) html += '<button type="button" class="inv-mini-btn primary" data-act="cont-search">' + ic('search', 16) + ' Vasculhar</button>';
@@ -5173,6 +5524,7 @@
   // ---------- ligar/desligar tudo de uma campanha ----------
   function resetCampaignState(){
     areaReset();   // fecha a folha/desenho de áreas sem gravar nada na campanha nova
+    lgReset();
     pins = []; tokens = []; shapes = []; routes = [];
     weather = { state:'calmo', updatedAt:null, updatedBy:null };
     inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {}; journal = {}; gmJournal = {};
@@ -6431,7 +6783,7 @@
   }
   function renderMestre(){
     if(!isMaster()) return '<div class="inv-empty">Área restrita ao mestre desta campanha.</div>';
-    const c = cfg(), g = hub.give, pins2 = pins.filter(p => p.type !== 'npc');
+    const c = cfg(), g = hub.give, pins2 = pins.filter(p => p.type !== 'npc' && p.type !== 'lugar');
     if(!g.to || !holderById(g.to)) g.to = (allHolders()[0] || {}).id || '';
     if(!hub.resDraft) hub.resDraft = c.resources.map(r => Object.assign({}, r));
     if(!hub.slotDraft) hub.slotDraft = Object.assign({}, c.equipSlots);
@@ -7881,6 +8233,7 @@
   // ---- folhas (índice, rolar, feed no celular) ----
   const hudSheetIds = [['idx-sheet', 'idx-backdrop'], ['qr-sheet', 'qr-backdrop'], ['lay-sheet', 'lay-backdrop']];
   function hudCloseSheets(except){
+    lgClose();
     if(!hudReady) return;
     hudSheetIds.forEach(p => { if(p[0] !== except){ hudEl(p[0]).classList.remove('open'); hudEl(p[1]).classList.remove('open'); } });
     if(except !== 'qr-sheet') hud.qrAttr = '';      // o atributo escolhido na folha Rolar vale só enquanto ela está aberta
