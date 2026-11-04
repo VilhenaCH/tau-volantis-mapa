@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Tau Volantis">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="style.css?v=f16">
+<link rel="stylesheet" href="style.css?v=f19">
 </head>
 <body>
 
@@ -191,7 +191,7 @@
     </div>
     <div class="vs-group-label">Rotas</div>
     <div class="toolbar-group">
-      <button class="tool-btn" id="tool-route" type="button"><span class="dot" style="background:var(--frost)"></span>Medir rota</button>
+      <button class="tool-btn" id="tool-route" type="button"><span class="dot" style="background:var(--frost)"></span>Traçar rota</button>
     </div>
   </div>
 </section>
@@ -207,6 +207,12 @@
   <div class="sheet-grab" aria-hidden="true"></div>
   <div class="sheet-head"><b id="lugar-title">Lugar</b><button type="button" class="sheet-x" id="lugar-close" aria-label="Fechar o lugar"></button></div>
   <div id="lugar-body"></div>
+</section>
+
+<section id="route-sheet" class="hud-sheet" role="dialog" aria-label="Editar rota">
+  <div class="sheet-grab" aria-hidden="true"></div>
+  <div class="sheet-head"><b id="route-title">Rota</b><button type="button" class="sheet-x" id="route-close" aria-label="Fechar a edição da rota"></button></div>
+  <div id="route-body"></div>
 </section>
 
 <!-- Camadas: mapa-base + filtros + lista de itens do mapa (antiga gaveta de navegação) -->
@@ -437,6 +443,6 @@
 <!-- Efeitos sonoros: para desligar de vez, troque true por false. O jogador também liga/desliga em Menu → Som. -->
 <script>window.TV_SOUND = true;</script>
 <script src="tv-icons.js"></script>
-  <script src="app.js?v=f16"></script>
+  <script src="app.js?v=f19"></script>
 </body>
 </html>

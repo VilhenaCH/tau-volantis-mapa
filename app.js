@@ -504,6 +504,55 @@
     try{ if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false; }catch(e){}
     try{ return localStorage.getItem('tv-map:area-anim') !== 'off'; }catch(e){ return true; }
   }
+  // ================= ROTAS (f19) =================
+  // Cada rota guarda o estilo em route.st = { c:cor, w:espessura, ds:traço, ic:ícone repetido, ev:movimento, dir:sentido, lb:nome no mapa }.
+  // Rota sem "st" (criada antes) usa ROUTE_DEF, que é o visual antigo (azul-gelo, fina, pontilhada, sem ícone).
+  const ROUTE_DEF = { c:'#8fd7e8', w:'fina', ds:'pontilhado', ic:'', ev:'', dir:'', lb:'auto' };
+  const ROUTE_W = { fina:3, media:4.5, grossa:7 };
+  const ROUTE_WL = [['fina', 'Fina'], ['media', 'Média'], ['grossa', 'Grossa']];
+  const ROUTE_DS = [['solido', 'Lisa'], ['tracejado', 'Tracejada'], ['pontilhado', 'Pontilhada'], ['traco', 'Traço e ponto']];
+  const ROUTE_EV = [['', 'Parada'], ['fluxo', 'Fluxo'], ['pulso', 'Pulso']];
+  const ROUTE_DIR = [['', 'Nenhum'], ['setas', 'Setas'], ['pontas', 'Início e fim'], ['ambos', 'Setas e pontas']];
+  const ROUTE_ICON = Object.assign({}, AREA_ICON, {
+    foot: { t:'Pegadas',     p:'<path d="M8 4c1.6 0 2.4 1.6 2.4 3.4S9.6 11 8 11 5.6 9.2 5.6 7.4 6.4 4 8 4Z"/><path d="M16 11c1.6 0 2.4 1.6 2.4 3.4S17.6 18 16 18s-2.4-1.8-2.4-3.6S14.4 11 16 11Z"/>' },
+    car:  { t:'Carro',       p:PIN_ICONS.veiculo },
+    tent: { t:'Abrigo',      p:PIN_ICONS.abrigo },
+    box:  { t:'Suprimentos', p:PIN_ICONS.suprimentos },
+    fuel: { t:'Combustível', p:PIN_ICONS.combustivel },
+    med:  { t:'Médico',      p:PIN_ICONS.medico }
+  });
+  const ROUTE_PRESETS = [
+    { id:'trilha',   t:'Trilha',       c:'#c9d94a', w:'fina',  ds:'pontilhado', ic:'foot',   ev:'',      dir:'setas' },
+    { id:'estrada',  t:'Estrada',      c:'#f5b53d', w:'media', ds:'solido',     ic:'',       ev:'',      dir:'' },
+    { id:'fuga',     t:'Rota de fuga', c:'#3ecf8e', w:'media', ds:'tracejado',  ic:'',       ev:'fluxo', dir:'ambos' },
+    { id:'patrulha', t:'Patrulha',     c:'#5b8def', w:'media', ds:'tracejado',  ic:'shield', ev:'',      dir:'setas' },
+    { id:'comercio', t:'Comércio',     c:'#f2752c', w:'media', ds:'traco',      ic:'box',    ev:'',      dir:'pontas' },
+    { id:'perigosa', t:'Perigosa',     c:'#e5484d', w:'media', ds:'tracejado',  ic:'skull',  ev:'pulso', dir:'' },
+    { id:'rio',      t:'Rio / água',   c:'#38bdf8', w:'grossa', ds:'solido',    ic:'wave',   ev:'fluxo', dir:'' },
+    { id:'comboio',  t:'Comboio',      c:'#8b5cf6', w:'media', ds:'solido',     ic:'car',    ev:'fluxo', dir:'setas' },
+    { id:'livre',    t:'Livre',        c:'#8fd7e8', w:'fina',  ds:'solido',     ic:'',       ev:'',      dir:'' }
+  ];
+  const routePreset = id => ROUTE_PRESETS.find(p => p.id === id) || null;
+  function routeSt(route){
+    const raw = (route && route.st) || {}, st = Object.assign({}, ROUTE_DEF);
+    if(areaHex(raw.c)) st.c = raw.c;
+    if(ROUTE_W[raw.w]) st.w = raw.w;
+    if(ROUTE_DS.some(x => x[0] === raw.ds)) st.ds = raw.ds;
+    if(raw.ic === '' || ROUTE_ICON[raw.ic]) st.ic = raw.ic;
+    if(ROUTE_EV.some(x => x[0] === raw.ev)) st.ev = raw.ev;
+    if(ROUTE_DIR.some(x => x[0] === raw.dir)) st.dir = raw.dir;
+    if(AREA_LB.some(x => x[0] === raw.lb)) st.lb = raw.lb;
+    return st;
+  }
+  const routeStFromPreset = p => ({ c:p.c, w:p.w, ds:p.ds, ic:p.ic, ev:p.ev, dir:p.dir, lb:'auto', pre:p.id });
+  function routeDash(st){
+    const w = ROUTE_W[st.w];
+    if(st.ds === 'tracejado') return Math.round(w * 3.2) + ' ' + Math.round(w * 2.4);
+    if(st.ds === 'pontilhado') return '1 ' + Math.round(w * 2.6);
+    if(st.ds === 'traco') return Math.round(w * 3) + ' ' + Math.round(w * 2) + ' 1 ' + Math.round(w * 2);
+    return null;
+  }
+  const rt = { sheetId:null, built:false, saveT:null, renderT:null, rafD:0, paths:{}, items:[], deco:null, decoSrc:[], lastPreset:(function(){ try{ const v = localStorage.getItem('tv-map:route-preset'); return v && ROUTE_PRESETS.some(p => p.id === v) ? v : 'trilha'; }catch(e){ return 'trilha'; } })() };
   // ================= MOLDURAS (f15) =================
   // Moldura = anel decorativo ao redor do avatar de personagem, NPC e token tático.
   // Modelo: entidade.fr = { s:'metal', c:'#aabbcc' } (c vazio = usa a cor do token). Sem fr = visual de sempre.
@@ -944,7 +993,7 @@
   // (a menos de CLUSTER_PX) viram um único círculo com o total. Só vale com o mapa afastado (zoom até CLUSTER_MAX_ZOOM).
   const CLUSTER_MAX_ZOOM = 15, CLUSTER_PX = 52;
   const clusterLayer = L.layerGroup().addTo(map);
-  const cl = { on:(function(){ try{ return localStorage.getItem('tv-cluster') !== '0'; }catch(e){ return true; } })(), hidden:[] };
+  const cl = { on:(function(){ try{ return localStorage.getItem('tv-cluster') !== '0'; }catch(e){ return true; } })(), hidden:[], hiddenEls:[] };
   const tokensLayer = L.layerGroup().addTo(map);
   const shapesLayer = L.layerGroup().addTo(map);
   const routesLayer = L.layerGroup().addTo(map);
@@ -1302,6 +1351,7 @@
           <input type="color" class="pin-color-input" value="${npcColor}">
           <label class="token-field-label">Foto / GIF</label>
           <input type="file" accept="image/*" class="pin-image-input">
+          <button type="button" class="img-adjust-btn pin-image-adjust"${pin.image && !/^data:image\/gif/i.test(pin.image) ? '' : ' hidden'}>Ajustar imagem</button>
           ${pin.image ? '<button type="button" class="pin-image-clear">Remover imagem</button>' : ''}
         </div>
       </div>
@@ -1352,13 +1402,22 @@
         const file = imgInput.files && imgInput.files[0];
         if(!file) return;
         try{
-          pendingPinImage = await resizeImageDataUrl(file, 160);
+          const got = await window.__tvPickImage(file, { title:'Ajustar foto do NPC', ratio:1, shape:'circle', out:160 }, resizeImageDataUrl);
+          if(got == null){ imgInput.value = ''; return; }          // cancelou o ajuste
+          pendingPinImage = got;
           preview.innerHTML = `<img src="${pendingPinImage}" alt="">`;
+          adjBtn.hidden = /^data:image\/gif/i.test(pendingPinImage);
         }catch(e){
           console.error('Falha ao processar imagem do NPC', e);
           alert(e && e.message ? e.message : 'Não foi possível usar essa imagem.');
           imgInput.value = '';
         }
+      });
+      const adjBtn = container.querySelector('.pin-image-adjust');
+      adjBtn.addEventListener('click', async () => {
+        if(!pendingPinImage) return;
+        const r = await window.tvAdjustImage(pendingPinImage, { title:'Ajustar foto do NPC', ratio:1, shape:'circle', out:160 }).catch(() => null);
+        if(r){ pendingPinImage = r.data; preview.innerHTML = `<img src="${pendingPinImage}" alt="">`; }
       });
       const clearBtn = container.querySelector('.pin-image-clear');
       if(clearBtn){
@@ -1366,6 +1425,7 @@
           pendingPinImage = null;
           imgInput.value = '';
           preview.innerHTML = '';
+          adjBtn.hidden = true;
         });
       }
       const colorInput = container.querySelector('.pin-color-input');
@@ -1489,6 +1549,7 @@
           <input type="color" class="token-color-input" value="${currentColor}">
           <label class="token-field-label">Imagem</label>
           <input type="file" accept="image/*" class="token-image-input">
+          <button type="button" class="img-adjust-btn token-image-adjust"${token.image && !/^data:image\/gif/i.test(token.image) ? '' : ' hidden'}>Ajustar imagem</button>
           ${token.image ? '<button type="button" class="token-image-clear">Remover imagem</button>' : ''}
         </div>
       </div>
@@ -1514,13 +1575,22 @@
       const file = fileInput.files && fileInput.files[0];
       if(!file) return;
       try{
-        pendingImage = await resizeImageDataUrl(file, 160);
+        const got = await window.__tvPickImage(file, { title:'Ajustar imagem do token', ratio:1, shape:'circle', out:160 }, resizeImageDataUrl);
+        if(got == null){ fileInput.value = ''; return; }              // cancelou o ajuste
+        pendingImage = got;
         preview.innerHTML = `<img src="${pendingImage}" alt="">`;
+        tkAdj.hidden = /^data:image\/gif/i.test(pendingImage);
       }catch(e){
         console.error('Falha ao processar imagem do token', e);
         alert(e && e.message ? e.message : 'Não foi possível usar essa imagem.');
         fileInput.value = '';
       }
+    });
+    const tkAdj = container.querySelector('.token-image-adjust');
+    tkAdj.addEventListener('click', async () => {
+      if(!pendingImage) return;
+      const r = await window.tvAdjustImage(pendingImage, { title:'Ajustar imagem do token', ratio:1, shape:'circle', out:160 }).catch(() => null);
+      if(r){ pendingImage = r.data; preview.innerHTML = `<img src="${pendingImage}" alt="">`; }
     });
     const clearBtn = container.querySelector('.token-image-clear');
     if(clearBtn){
@@ -1528,6 +1598,7 @@
         pendingImage = null;
         fileInput.value = '';
         preview.innerHTML = `<span>${initials}</span>`;
+        tkAdj.hidden = true;
       });
     }
 
@@ -1542,36 +1613,6 @@
       saveKey(KEY_TOKENS, tokens);
     });
     container.querySelector('.del').addEventListener('click', () => { deleteTokenById(token.id); });
-    return container;
-  }
-
-  function buildRoutePopupContent(route){
-    const container = document.createElement('div');
-    const dist = route.distance != null ? route.distance : totalDistanceOf(route.points.map(p => L.latLng(p)));
-    const timesHtml = SPEED_PROFILES.map(sp => `
-      <div class="route-time-row"><span>${sp.label}</span><span>${formatDuration(estimateHours(dist, sp.kmh))}</span></div>
-    `).join('');
-    container.innerHTML = `
-      <div class="popup-kicker">Rota · ${formatDistance(dist)}</div>
-      ${route.ownerName ? `<div class="popup-owner">Criado por: ${escapeHtml(route.ownerName)}</div>` : ''}
-      <input type="text" class="route-title" placeholder="Nome da rota" value="${escapeHtml(route.label || '')}">
-      <textarea class="route-note" rows="3" placeholder="Anotação...">${escapeHtml(route.note || '')}</textarea>
-      <div class="route-times">
-        <div class="route-times-label">Tempo estimado (linha reta)</div>
-        ${timesHtml}
-      </div>
-      <div class="popup-actions">
-        <button class="save">Salvar</button>
-        <button class="del">Excluir</button>
-      </div>
-    `;
-    container.querySelector('.save').addEventListener('click', () => {
-      route.label = container.querySelector('.route-title').value.trim() || 'Rota sem nome';
-      route.note = container.querySelector('.route-note').value.trim();
-      renderRoutes();
-      saveKey(KEY_ROUTES, routes);
-    });
-    container.querySelector('.del').addEventListener('click', () => { deleteRouteById(route.id); });
     return container;
   }
 
@@ -1797,6 +1838,7 @@
     saveKey(KEY_SHAPES, shapes);
   }
   function deleteRouteById(id){
+    if(rt.sheetId === id) routeClose();
     routes = routes.filter(r => r.id !== id);
     renderRoutes();
     map.closePopup();
@@ -1996,9 +2038,9 @@
       out.push({ m, n:m._clCount || 1, ll:m.getLatLng(), kind:m._groupId ? 'pilha' : 'token' });
     });
     pins.forEach(p => {
-      if(p.type !== 'npc' && p.type !== 'veiculo' && p.type !== 'abrigo') return;
+      if(p.type !== 'npc' && p.type !== 'veiculo' && p.type !== 'abrigo' && p.type !== 'lugar') return;
       const m = pinMarkers[p.id]; if(!m || !m._icon || !pinsLayer.hasLayer(m) || off(mapfCat(p.type))) return;
-      out.push({ m, n:1, ll:m.getLatLng(), kind:p.type });
+      out.push({ m, n:1, ll:m.getLatLng(), kind:p.type, pid:p.id });
     });
     return out;
   }
@@ -2006,6 +2048,19 @@
     clusterLayer.clearLayers();
     cl.hidden.forEach(m => { if(m._icon) m._icon.classList.remove('cl-hide'); });
     cl.hidden = [];
+    (cl.hiddenEls || []).forEach(el => { if(el && el.classList) el.classList.remove('cl-hide-ar'); });
+    cl.hiddenEls = [];
+  }
+  // esconde (sem apagar) o desenho e o nome das áreas ligadas a um lugar que entrou num grupo
+  function clHideAreasOf(pid){
+    shapes.forEach(sh => {
+      if(sh.placeId !== pid) return;
+      const lay = area.paths[sh.id];
+      const el = lay && (lay._path || (lay.eachLayer ? null : null));
+      if(el){ el.classList.add('cl-hide-ar'); cl.hiddenEls.push(el); }
+      else if(lay && lay.eachLayer) lay.eachLayer(l => { if(l._path){ l._path.classList.add('cl-hide-ar'); cl.hiddenEls.push(l._path); } });
+      (area.items || []).forEach(it => { if(it.id === sh.id && it.marker && it.marker._icon){ it.marker._icon.classList.add('cl-hide-ar'); cl.hiddenEls.push(it.marker._icon); } });
+    });
   }
   function clusterUpdate(){
     if(!hudReady) return;
@@ -2022,14 +2077,18 @@
       else groups.push({ x:e.pt.x, y:e.pt.y, n:e.n, items:[e] });
     });
     groups.filter(g => g.items.length > 1).forEach(g => {
-      g.items.forEach(e => { e.m._icon.classList.add('cl-hide'); cl.hidden.push(e.m); });
-      const cnt = { token:0, npc:0, veiculo:0, abrigo:0 };
+      g.items.forEach(e => {
+        e.m._icon.classList.add('cl-hide'); cl.hidden.push(e.m);
+        if(e.kind === 'lugar') clHideAreasOf(e.pid);   // a área do lugar entra no grupo junto com o marcador
+      });
+      const cnt = { token:0, npc:0, veiculo:0, abrigo:0, lugar:0 };
       g.items.forEach(e => { if(e.kind === 'pilha') cnt.token += e.n; else cnt[e.kind] += e.n; });
       const parts = [];
       if(cnt.token) parts.push(cnt.token + (cnt.token === 1 ? ' token' : ' tokens'));
       if(cnt.npc) parts.push(cnt.npc + (cnt.npc === 1 ? ' NPC' : ' NPCs'));
       if(cnt.veiculo) parts.push(cnt.veiculo + (cnt.veiculo === 1 ? ' veículo' : ' veículos'));
       if(cnt.abrigo) parts.push(cnt.abrigo + (cnt.abrigo === 1 ? ' abrigo' : ' abrigos'));
+      if(cnt.lugar) parts.push(cnt.lugar + (cnt.lugar === 1 ? ' lugar' : ' lugares'));
       const label = 'Grupo de ' + g.n + ' no mapa: ' + parts.join(', ') + '. Toque para aproximar.';
       const pts = g.items.map(e => e.ll);
       const mk = L.marker(map.layerPointToLatLng(L.point(g.x, g.y)), {
@@ -2315,15 +2374,17 @@
     areaLabelsSoon();
     mapfRender();
     if(typeof renderNavList === 'function') renderNavList();
+    if(typeof clusterUpdate === 'function') clusterUpdate();
   }
 
   // rótulos das áreas: etiqueta pequena; quando se encostam viram "N áreas" (toque para aproximar); áreas minúsculas viram um ponto
   function areaLabelsLayout(){
     area.rafL = 0;
-    if(!area.items || !area.items.length || !map.hasLayer(shapesLayer)) return;
+    const all = (area.items || []).concat(rt.items || []).filter(it => it.marker && it.marker._icon);   // só o que está no mapa (camada ligada)
+    if(!all.length) return;
     const sz = map.getSize(), rect = (x, y, w, h) => ({ x:x - w / 2, y:y - h / 2, w, h });
     const hit = (a, b, g) => a.x < b.x + b.w + g && b.x < a.x + a.w + g && a.y < b.y + b.h + g && b.y < a.y + a.h + g;
-    const its = area.items.map(it => {
+    const its = all.map(it => {
       const sw = map.latLngToContainerPoint(it.bounds.getSouthWest()), ne = map.latLngToContainerPoint(it.bounds.getNorthEast());
       it.w = Math.abs(ne.x - sw.x); it.h = Math.abs(ne.y - sw.y); it.pt = map.latLngToContainerPoint(it.center); it.state = 'chip'; it.group = null; return it;
     });
@@ -2343,10 +2404,11 @@
     its.forEach(it => {
       const el = it.marker._icon; if(!el) return;
       el.dataset.ar = it.state;
-      const t = el.querySelector('.ar-lb-t'), txt = it.state === 'count' ? it.group.length + ' áreas' : it.name;
+      const kinds = new Set((it.group || []).map(m => m.kind || 'area'));
+      const t = el.querySelector('.ar-lb-t'), txt = it.state === 'count' ? it.group.length + (kinds.size > 1 ? ' itens' : (kinds.has('rota') ? ' rotas' : ' áreas')) : it.name;
       if(t && t.textContent !== txt) t.textContent = txt;
       it.marker._arGroup = it.state === 'count' ? it.group : null;
-      it.marker._arId = it.id;
+      it.marker._arId = it.id; it.marker._arKind = it.kind || 'area';
     });
   }
   function areaLabelsSoon(){ if(area.rafL) return; area.rafL = requestAnimationFrame(areaLabelsLayout); }
@@ -2356,36 +2418,318 @@
     if(g && g.length > 1){
       let b = null; g.forEach(it => { b = b ? b.extend(it.bounds) : L.latLngBounds(it.bounds.getSouthWest(), it.bounds.getNorthEast()); });
       map.fitBounds(b, { padding:[50, 50], maxZoom:17 });
-    } else if(lm._arId) areaOpen(lm._arId);
+    } else if(lm._arId){ if(lm._arKind === 'rota') routeOpen(lm._arId); else areaOpen(lm._arId); }
   }
   map.on('zoomend moveend resize', areaLabelsSoon);
   shapesLayer.on('add', areaLabelsSoon);
 
   function openShapePopupById(id){ areaOpen(id); }
 
+  // ---------- ROTAS (f19): desenho no mapa, ícones/setas ao longo da linha, etiqueta que agrupa ----------
+  const routeValid = r => !!r && Array.isArray(r.points) && r.points.length >= 2 && r.points.every(p => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]));
+  // ponto no meio do caminho (pela distância, não pelo número de pontos)
+  function routeMid(pts){
+    const tot = totalDistanceOf(pts); let acc = 0;
+    for(let i = 1; i < pts.length; i++){
+      const d = pts[i - 1].distanceTo(pts[i]);
+      if(acc + d >= tot / 2 && d > 0){ const t = (tot / 2 - acc) / d; return L.latLng(pts[i - 1].lat + (pts[i].lat - pts[i - 1].lat) * t, pts[i - 1].lng + (pts[i].lng - pts[i - 1].lng) * t); }
+      acc += d;
+    }
+    return pts[Math.floor(pts.length / 2)];
+  }
   function renderRoutes(){
     routesLayer.clearLayers();
+    rt.paths = {}; rt.items = []; rt.decoSrc = [];
+    rt.deco = L.layerGroup().addTo(routesLayer);
+    const anim = areaAnimOn();
     routes.forEach(route => {
-      const layer = L.polyline(route.points, { color:'var(--frost)', weight:3, opacity:0.85, dashArray:'2 8' });
-      layer._routeId = route.id;
-      const dist = route.distance != null ? route.distance : totalDistanceOf(route.points.map(p => L.latLng(p)));
-      const walkTime = formatDuration(estimateHours(dist, 5));
-      const label = (route.label || 'Rota') + ' · ' + formatDistance(dist) + ' · ~' + walkTime + ' a pé';
-      layer.bindTooltip(label, { permanent:true, direction:'center', className:'shape-label route-label' });
-      layer.bindPopup(() => buildRoutePopupContent(route));
-      layer.addTo(routesLayer);
+      try{
+        if(!routeValid(route)) return;
+        const st = routeSt(route), w = ROUTE_W[st.w], pts = route.points.map(p => L.latLng(p)), set = [];
+        const mk = (o, cls) => { const l = L.polyline(pts, Object.assign({ lineJoin:'round', className:cls }, o)).addTo(routesLayer); set.push(l); return l; };
+        mk({ color:'#0b1014', weight:w + 3, opacity:0.5, interactive:false }, 'rt-halo');
+        mk({ color:st.c, weight:w, opacity:0.95, dashArray:routeDash(st), lineCap:st.ds === 'pontilhado' ? 'round' : 'butt', interactive:false }, 'rt-line' + (anim && st.ev === 'pulso' ? ' rt-pulse' : ''));
+        if(anim && st.ev === 'fluxo') mk({ color:'#ffffff', weight:Math.max(1.6, w * 0.5), opacity:0.85, dashArray:'6 18', lineCap:'round', interactive:false }, 'rt-flow');
+        const hit = mk({ color:'#000000', weight:26, opacity:0, interactive:true }, 'rt-hit');   // faixa larga e invisível: fácil de tocar no celular
+        hit._routeId = route.id;
+        hit.on('click', ev => {
+          if(area.draw || area.edit || selectedPinType || tokenModeOn || lg.reloc) return;   // em modo de criação o toque segue para o mapa
+          L.DomEvent.stopPropagation(ev); routeOpen(route.id);
+        });
+        rt.paths[route.id] = set;
+        if(st.lb !== 'oculto'){
+          const d = route.distance != null && isFinite(route.distance) ? route.distance : totalDistanceOf(pts);
+          const txt = (route.label || 'Rota') + ' · ' + formatDistance(d), center = routeMid(pts);
+          const lm = L.marker(center, { keyboard:false, zIndexOffset:-600,
+            icon: L.divIcon({ className:'ar-lbw', iconSize:[0, 0], html:`<div class="ar-lb rt-lb" style="--c:${st.c}"><i></i><span class="ar-lb-t">${escapeHtml(txt)}</span></div>` }) });
+          lm.on('click', ev => { L.DomEvent.stopPropagation(ev); areaLabelClick(lm); });
+          lm.addTo(routesLayer);
+          rt.items.push({ id:route.id, kind:'rota', mode:st.lb, name:txt, bounds:L.latLngBounds(pts), center, marker:lm });
+        }
+        rt.decoSrc.push({ id:route.id, st, pts });
+      }catch(err){
+        console.warn('Rota não pôde ser desenhada:', route && route.id, err && err.message);
+      }
     });
-    document.getElementById('stat-routes').textContent = routes.length;
+    const sr = document.getElementById('stat-routes'); if(sr) sr.textContent = routes.length;
+    routeDecoSoon(); areaLabelsSoon();
     mapfRender();
     if(typeof renderNavList === 'function') renderNavList();
   }
-
-  function openRoutePopupById(id){
-    routesLayer.eachLayer(l => {
-      if(l._routeId === id && l.openPopup){
-        l.openPopup(l.getBounds ? l.getBounds().getCenter() : undefined);
+  // ícones repetidos, setas de sentido e pontas: marcadores leves ao longo da linha, só os que estão na tela, refeitos a cada zoom/arraste
+  function routeDecoSoon(){ if(rt.rafD) return; rt.rafD = requestAnimationFrame(routeDecoDraw); }
+  function routeDecoDraw(){
+    rt.rafD = 0;
+    if(!rt.deco) return;
+    rt.deco.clearLayers();
+    if(!map.hasLayer(routesLayer)) return;
+    const sz = map.getSize(), pad = 60, inView = p => p.x > -pad && p.y > -pad && p.x < sz.x + pad && p.y < sz.y + pad;
+    const svgOf = (p, sw) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+    const add = (pt, html, cls, size) => L.marker(map.containerPointToLatLng(pt), { interactive:false, keyboard:false, zIndexOffset:-700,
+      icon:L.divIcon({ className:'rt-dc', iconSize:[size, size], iconAnchor:[size / 2, size / 2], html }) }).addTo(rt.deco);
+    (rt.decoSrc || []).forEach(src => {
+      const st = src.st, pp = src.pts.map(l => map.latLngToContainerPoint(l));
+      const seg = []; let tot = 0;
+      for(let i = 0; i < pp.length - 1; i++){ const d = pp[i].distanceTo(pp[i + 1]); seg.push(d); tot += d; }
+      if(tot < 10) return;
+      // percorre a linha em passos fixos a partir do início (as posições não "andam" ao arrastar o mapa)
+      const walk = (step, first, cap, fn) => {
+        let n = 0, acc = 0, next = first;
+        for(let i = 0; i < seg.length && n < cap; i++){
+          while(next <= acc + seg[i] && n < cap){
+            const t = seg[i] ? (next - acc) / seg[i] : 0, x = pp[i].x + (pp[i + 1].x - pp[i].x) * t, y = pp[i].y + (pp[i + 1].y - pp[i].y) * t;
+            if(inView({ x, y })){ fn(L.point(x, y), Math.atan2(pp[i + 1].x - pp[i].x, -(pp[i + 1].y - pp[i].y)) * 180 / Math.PI); n++; }
+            next += step;
+          }
+          acc += seg[i];
+        }
+      };
+      const ico = ROUTE_ICON[st.ic];
+      if(ico) walk(64, 32, 120, pt => add(pt, `<span class="rt-ic" style="--c:${st.c}">${svgOf(ico.p, 2.2)}</span>`, '', 22));
+      if(st.dir === 'setas' || st.dir === 'ambos') walk(120, 90, 120, (pt, deg) => add(pt, `<span class="rt-ar" style="--c:${st.c};transform:rotate(${Math.round(deg)}deg)">${svgOf('<path d="M5 16l7-9 7 9"/>', 3.2)}</span>`, '', 20));
+      if(st.dir === 'pontas' || st.dir === 'ambos'){
+        const a = pp[0], b = pp[pp.length - 1];
+        if(inView(a)) add(a, `<span class="rt-pt" style="--c:${st.c}"></span>`, '', 16);
+        if(inView(b)) add(b, `<span class="rt-end" style="--c:${st.c}">${svgOf(AREA_ICON.flag.p, 2.4)}</span>`, '', 24);
       }
     });
+  }
+  map.on('zoomend moveend resize', routeDecoSoon);
+  routesLayer.on('add', routeDecoSoon);
+
+  function openRoutePopupById(id){ routeOpen(id); }
+
+  // --- desenhar: toque marca pontos; as alças dos pontos se arrastam; tocar no último ponto (ou "Concluir") termina
+  function routePvStyle(){
+    const p = (area.draw && routePreset(area.draw.preset)) || ROUTE_PRESETS[0], st = Object.assign({}, ROUTE_DEF, p), w = ROUTE_W[st.w];
+    return { color:st.c, weight:w, opacity:0.95, dashArray:routeDash(st), lineCap:st.ds === 'pontilhado' ? 'round' : 'butt', lineJoin:'round', interactive:false };
+  }
+  function routePvRedraw(){
+    const d = area.draw; if(!d || d.kind !== 'route') return;
+    areaPvClear();
+    const pv = areaPv();
+    d.poly = d.pts.length > 1 ? L.polyline(d.pts, routePvStyle()).addTo(pv) : null;
+    d.pts.forEach((p, i) => {
+      const last = i === d.pts.length - 1;
+      const mk = L.marker(p, { draggable:true, icon:areaHd('ar-hd-v' + (last ? ' sel' : '')), zIndexOffset:900 + i }).addTo(pv);
+      mk.on('drag', ev => { d.pts[i] = ev.latlng; if(d.poly) d.poly.setLatLngs(d.pts); areaBarRender(); });
+      mk.on('dragend', () => { d.pts[i] = mk.getLatLng(); areaBarRender(); });
+      mk.on('click', ev => { L.DomEvent.stopPropagation(ev); if(last && d.pts.length >= 2) areaDrawFinish(); });
+    });
+  }
+  function routeDrawTap(ll){
+    const d = area.draw; if(!d || d.kind !== 'route') return;
+    if(d.pts.length >= 2){                                   // toque colado no último ponto = concluir
+      const a = map.latLngToContainerPoint(d.pts[d.pts.length - 1]), b = map.latLngToContainerPoint(ll);
+      if(a.distanceTo(b) < 20){ areaDrawFinish(); return; }
+    }
+    d.pts.push(ll); routePvRedraw(); areaBarRender();
+  }
+  async function routeCreate(){
+    const d = area.draw; if(!d || d.pts.length < 2) return;
+    const p = routePreset(d.preset) || ROUTE_PRESETS[0], pts = d.pts.slice();
+    const route = Object.assign({ id:newId(), points:pts.map(x => [x.lat, x.lng]), distance:totalDistanceOf(pts), label:p.t, note:'', st:routeStFromPreset(p) }, ownerFields());
+    clearModes();
+    routes.push(route);
+    renderRoutes();
+    setTimeout(() => routeOpen(route.id), 0);                // depois do clique: o ouvinte do HUD fecha as folhas no mesmo evento
+    await saveKey(KEY_ROUTES, routes);
+  }
+  function abPresets(kind){
+    const box = areaEl('ab-presets'); if(!box || box.dataset.k === kind) return;
+    box.dataset.k = kind;
+    box.innerHTML = kind === 'route'
+      ? ROUTE_PRESETS.map(p => `<button type="button" class="ar-chip" data-rp="${p.id}" style="--c:${p.c}"><i></i>${p.t}</button>`).join('')
+      : AREA_PRESETS.map(p => `<button type="button" class="ar-chip" data-ap="${p.id}" style="--c:${p.c}"><i></i>${p.t}</button>`).join('');
+  }
+
+  // --- folha da rota (mesmo desenho da folha de áreas)
+  const routeEl = id => document.getElementById(id);
+  const routeQ = sel => Array.from(routeEl('route-body').querySelectorAll(sel));
+  const routeSeg = (key, label, list) => `<div class="ar-g">${label}</div><div class="ar-seg" data-rseg="${key}">${list.map(x => `<button type="button" data-v="${x[0]}">${x[1]}</button>`).join('')}</div>`;
+  function routeSheetBuild(){
+    routeEl('route-close').innerHTML = ic('close', 20);
+    routeEl('route-body').innerHTML = `
+      <label class="ar-f"><span>Nome</span><input type="text" id="route-name" maxlength="60" autocomplete="off" placeholder="Nome da rota"></label>
+      <div class="ar-g">Predefinição</div>
+      <div class="ar-chips" id="route-presets">${ROUTE_PRESETS.map(p => `<button type="button" class="ar-chip" data-rp="${p.id}" style="--c:${p.c}"><i></i>${p.t}</button>`).join('')}</div>
+      <div class="ar-g">Cor</div>
+      <div class="ar-sw" id="route-colors">${AREA_COLORS.map(c => `<button type="button" class="ar-swb" data-rc="${c}" style="--c:${c}" aria-label="Cor ${c}"></button>`).join('')}<label class="ar-swb ar-swc" title="Outra cor"><input type="color" id="route-color-in" value="#8fd7e8" aria-label="Outra cor"></label></div>
+      ${routeSeg('ds', 'Traço', ROUTE_DS)}
+      ${routeSeg('w', 'Espessura', ROUTE_WL)}
+      <div class="ar-g">Ícone repetido ao longo da rota</div>
+      <div class="ar-ics" id="route-icons"><button type="button" class="ar-ic" data-ri="" title="Sem ícone" aria-label="Sem ícone"><span>—</span></button>${Object.keys(ROUTE_ICON).map(k => `<button type="button" class="ar-ic" data-ri="${k}" title="${ROUTE_ICON[k].t}" aria-label="${ROUTE_ICON[k].t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ROUTE_ICON[k].p}</svg></button>`).join('')}</div>
+      ${routeSeg('ev', 'Movimento da linha', ROUTE_EV)}
+      ${routeSeg('dir', 'Sentido e pontas', ROUTE_DIR)}
+      ${routeSeg('lb', 'Nome no mapa', AREA_LB)}
+      <label class="ar-f"><span>Anotação</span><textarea id="route-note" rows="3" maxlength="600" placeholder="Anotação..."></textarea></label>
+      <div class="ar-meta" id="route-meta"></div>
+      <div class="route-times" id="route-times"></div>
+      <div class="ar-btns"><button type="button" id="route-edit">Editar pontos</button><button type="button" id="route-rev">Inverter sentido</button></div>
+      <div class="ar-btns"><button type="button" id="route-dup">Duplicar</button><button type="button" id="route-del" class="danger">Excluir</button></div>`;
+    routeWire();
+  }
+  function routeSheetSync(r){
+    const st = routeSt(r), pre = r.st && r.st.pre;
+    routeQ('[data-rp]').forEach(b => b.classList.toggle('on', b.dataset.rp === pre));
+    routeQ('[data-rc]').forEach(b => b.classList.toggle('on', b.dataset.rc === st.c.toLowerCase()));
+    const ci = routeEl('route-color-in'); ci.value = st.c; ci.parentNode.classList.toggle('on', !AREA_COLORS.includes(st.c.toLowerCase()));
+    routeQ('[data-ri]').forEach(b => b.classList.toggle('on', b.dataset.ri === st.ic));
+    ['ds', 'w', 'ev', 'dir', 'lb'].forEach(k => routeQ(`[data-rseg="${k}"] button`).forEach(b => { b.classList.toggle('on', b.dataset.v === st[k]); b.setAttribute('aria-pressed', String(b.dataset.v === st[k])); }));
+    const dist = r.distance != null && isFinite(r.distance) ? r.distance : totalDistanceOf((r.points || []).map(p => L.latLng(p)));
+    routeEl('route-meta').textContent = [formatDistance(dist), (r.points || []).length + ' pontos', r.ownerName ? 'Criada por ' + r.ownerName : '', 'Salva sozinha'].filter(Boolean).join(' · ');
+    routeEl('route-times').innerHTML = '<div class="route-times-label">Tempo estimado (linha reta)</div>' + SPEED_PROFILES.map(sp => `<div class="route-time-row"><span>${sp.label}</span><span>${formatDuration(estimateHours(dist, sp.kmh))}</span></div>`).join('');
+    routeEl('route-edit').hidden = !routeValid(r);
+  }
+  function routeSheetFill(r){
+    routeEl('route-title').textContent = 'Rota';
+    routeEl('route-name').value = r.label || '';
+    routeEl('route-note').value = r.note || '';
+    routeSheetSync(r);
+  }
+  function routeSaveSoon(){ clearTimeout(rt.saveT); rt.saveT = setTimeout(() => { rt.saveT = null; saveKey(KEY_ROUTES, routes); }, 450); }
+  // aplica uma mudança na rota aberta: atualiza o mapa na hora e salva sozinho. soft = redesenha daqui a pouco (digitação); 'none' = não precisa redesenhar
+  function routePatch(fn, soft){
+    const r = routes.find(x => x.id === rt.sheetId); if(!r) return;
+    fn(r);
+    routeSaveSoon();
+    routeSheetSync(r);
+    if(soft === 'none') return;
+    if(soft){ clearTimeout(rt.renderT); rt.renderT = setTimeout(() => { rt.renderT = null; renderRoutes(); }, 220); }
+    else renderRoutes();
+  }
+  const routeStPatch = (r, o) => { r.st = Object.assign(routeSt(r), o, { pre:null }); };
+  function routeWire(){
+    const body = routeEl('route-body');
+    body.addEventListener('click', e => {
+      const b = e.target.closest('button'); if(!b || b.disabled) return;
+      if(b.dataset.rp){ const p = routePreset(b.dataset.rp); if(p) routePatch(r => { r.st = Object.assign(routeStFromPreset(p), { lb:routeSt(r).lb }); }); return; }
+      if(b.dataset.rc){ routePatch(r => routeStPatch(r, { c:b.dataset.rc })); return; }
+      if(b.dataset.ri !== undefined){ routePatch(r => routeStPatch(r, { ic:b.dataset.ri })); return; }
+      const seg = b.closest('[data-rseg]');
+      if(seg){ const k = seg.dataset.rseg, v = b.dataset.v; routePatch(r => routeStPatch(r, { [k]:v })); return; }
+      if(b.id === 'route-edit') routeEditStart(rt.sheetId);
+      else if(b.id === 'route-rev') routePatch(r => { r.points = r.points.slice().reverse(); });
+      else if(b.id === 'route-dup') routeDuplicate(rt.sheetId);
+      else if(b.id === 'route-del') routeDelete(rt.sheetId);
+    });
+    routeEl('route-color-in').addEventListener('input', e => { const v = e.target.value.toLowerCase(); if(areaHex(v)) routePatch(r => routeStPatch(r, { c:v })); });
+    routeEl('route-name').addEventListener('input', e => routePatch(r => { r.label = e.target.value.slice(0, 60); }, 'soft'));
+    routeEl('route-name').addEventListener('change', e => routePatch(r => { r.label = e.target.value.trim().slice(0, 60) || 'Rota sem nome'; e.target.value = r.label; }, 'soft'));
+    routeEl('route-note').addEventListener('input', e => routePatch(r => { r.note = e.target.value.slice(0, 600); }, 'none'));
+    routeEl('route-close').addEventListener('click', () => routeClose());
+  }
+  function routeBounds(r){ try{ return L.latLngBounds(r.points.map(p => L.latLng(p))); }catch(e){ return null; } }
+  // a folha cobre a parte de baixo: se a rota ficou escondida atrás dela, empurra o mapa para ela aparecer em cima
+  function routeFocus(r){
+    const b = routeBounds(r); if(!b || !b.isValid()) return;
+    const sz = map.getSize(), p = map.latLngToContainerPoint(b.getCenter());
+    if(p.y > sz.y * 0.45 || p.y < 110 || p.x < 0 || p.x > sz.x) map.panBy([p.x - sz.x / 2, p.y - sz.y * 0.3], { animate:true });
+  }
+  function routeOpen(id){
+    const r = routes.find(x => x.id === id); if(!r || area.draw) return;
+    areaEditStop(false); areaClose();
+    if(!rt.built){ routeSheetBuild(); rt.built = true; }
+    closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets();
+    rt.sheetId = id;
+    routeSheetFill(r);
+    routeEl('route-sheet').classList.add('open');
+    routeFocus(r);
+  }
+  function routeClose(){
+    const sheet = routeEl('route-sheet'); if(!sheet || !rt.built) return;
+    if(rt.renderT){ clearTimeout(rt.renderT); rt.renderT = null; renderRoutes(); }
+    if(rt.saveT){ clearTimeout(rt.saveT); rt.saveT = null; saveKey(KEY_ROUTES, routes); }
+    rt.sheetId = null;
+    sheet.classList.remove('open');
+  }
+  // troca de campanha: descarta o que estava aberto/pendente (sem salvar: os dados são da campanha antiga)
+  function routeReset(){
+    clearTimeout(rt.saveT); rt.saveT = null; clearTimeout(rt.renderT); rt.renderT = null;
+    rt.sheetId = null;
+    const sh = document.getElementById('route-sheet'); if(sh) sh.classList.remove('open');
+  }
+  // atualização que veio de outro aparelho: a folha aberta acompanha (ou fecha, se a rota foi apagada lá)
+  function routeRemoteSync(){
+    if(!rt.sheetId || !rt.built) return;
+    const r = routes.find(x => x.id === rt.sheetId);
+    if(!r){ routeClose(); return; }
+    if(!rt.saveT) routeSheetSync(r);
+  }
+  function routeDuplicate(id){
+    const r = routes.find(x => x.id === id); if(!r) return;
+    const cp = JSON.parse(JSON.stringify(r)), d = 0.0004;
+    cp.id = newId(); cp.label = ((r.label || 'Rota') + ' (cópia)').slice(0, 60);
+    cp.points = cp.points.map(p => [p[0] + d, p[1] + d]);
+    Object.assign(cp, ownerFields());
+    routeClose();
+    routes.push(cp); renderRoutes(); saveKey(KEY_ROUTES, routes);
+    routeOpen(cp.id);
+  }
+  function routeDelete(id){
+    const r = routes.find(x => x.id === id); if(!r) return;
+    if(!window.confirm(`Excluir a rota "${r.label || 'sem nome'}"?`)) return;
+    routeClose(); deleteRouteById(id);
+  }
+
+  // --- editar os pontos: arrastar alças, "+" no meio de um trecho cria ponto, "Remover ponto" tira o escolhido
+  function routeEditStart(id){
+    const r = routes.find(x => x.id === id); if(!r || !routeValid(r)) return;
+    const keep = rt.sheetId;
+    clearModes();
+    rt.sheetId = keep;
+    area.edit = { route:true, id, circ:false, sel:-1, ring:r.points.map(p => L.latLng(p)) };
+    routeEl('route-sheet').classList.remove('open');
+    areaBusy(true);
+    areaEditHandles();
+    areaBarRender();
+    routeFocus(r);
+  }
+  function routeLiveSet(id, ring){ (rt.paths[id] || []).forEach(l => l.setLatLngs(ring)); }
+  function routeEditHandles(){
+    const e = area.edit; if(!e || !e.route) return;
+    areaPvClear();
+    const pv = areaPv(), n = e.ring.length;
+    for(let i = 0; i < n - 1; i++){
+      const a = e.ring[i], b = e.ring[i + 1];
+      const mid = L.marker(L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2), { icon:areaHd('ar-hd-m'), zIndexOffset:700 }).addTo(pv);
+      mid.on('click', ev => { L.DomEvent.stopPropagation(ev); e.ring.splice(i + 1, 0, mid.getLatLng()); e.sel = i + 1; areaEditCommit(); });
+    }
+    e.ring.forEach((p, i) => {
+      const mk = L.marker(p, { draggable:true, icon:areaHd('ar-hd-v' + (i === e.sel ? ' sel' : '')), zIndexOffset:900 }).addTo(pv);
+      mk.on('drag', ev => { e.ring[i] = ev.latlng; routeLiveSet(e.id, e.ring); areaBarRender(); });
+      mk.on('dragend', () => { e.sel = i; areaEditCommit(); });
+      mk.on('click', ev => { L.DomEvent.stopPropagation(ev); e.sel = i; routeEditHandles(); areaBarRender(); });
+    });
+  }
+  function routeEditCommit(){
+    const e = area.edit; if(!e) return;
+    const r = routes.find(x => x.id === e.id); if(!r){ areaEditStop(false); return; }
+    r.points = e.ring.map(p => [p.lat, p.lng]); r.distance = totalDistanceOf(e.ring);
+    routeSaveSoon();
+    renderRoutes();
+    routeEditHandles();
+    areaBarRender();
   }
 
   // ---------- nav drawer: lists every pin/token/área/rota for fast travel ----------
@@ -2536,7 +2880,7 @@
       const name = r.label || 'Rota sem nome';
       routeItems.push({
         name,
-        color: 'var(--frost)',
+        color: routeSt(r).c,
         typeLabel: hasPts ? 'Rota' : 'Rota (sem pontos)',
         bad: !hasPts,
         go: hasPts ? () => {
@@ -2550,48 +2894,16 @@
     fill(listRoutes, routeItems, 'Nenhuma rota traçada ainda.');
   }
 
-  // ---------- route / distance measuring tool (click to add points, double-click to finish) ----------
-  let routePoints = [];
-  let routePreviewLine = null;
-
-  function stopRouteMode(){
-    routeModeOn = false;
-    routePoints = [];
-    if(routePreviewLine){ map.removeLayer(routePreviewLine); routePreviewLine = null; }
-    map.doubleClickZoom.enable();
-  }
-
+  // ---------- ferramenta de rota (f19): usa a mesma barra de desenho das áreas ----------
+  function stopRouteMode(){ routeModeOn = false; }
   document.getElementById('tool-route').addEventListener('click', () => {
     const btn = document.getElementById('tool-route');
     const isActive = btn.classList.contains('active');
     clearModes();
     if(!isActive){
-      routeModeOn = true;
       btn.classList.add('active');
-      map.doubleClickZoom.disable();
-      showDrawHint('Clique pra marcar pontos da rota. Dê 2 cliques pra concluir. ESC cancela.');
+      areaDrawStart('route');
     }
-  });
-
-  map.on('dblclick', async (e) => {
-    if(!routeModeOn) return;
-    // a double click also fires two ordinary click events right before it, which
-    // already appended points at (or very near) this same spot — drop those so we
-    // don't end the route with a bogus near-zero-length last segment
-    while(routePoints.length >= 2){
-      const a = routePoints[routePoints.length - 1];
-      const b = routePoints[routePoints.length - 2];
-      if(a.distanceTo(b) < 3) routePoints.pop();
-      else break;
-    }
-    if(routePoints.length < 2){ clearModes(); return; }
-    const distance = totalDistanceOf(routePoints);
-    const route = { id:newId(), points: routePoints.map(p => [p.lat, p.lng]), distance, label:'Nova rota', note:'', ...ownerFields() };
-    routes.push(route);
-    await saveKey(KEY_ROUTES, routes);
-    renderRoutes();
-    openRoutePopupById(route.id);
-    clearModes();
   });
 
   // ---------- map click: circle/route steps, or place pin/token ----------
@@ -2599,16 +2911,6 @@
     if(lg.reloc){ lgRelocTo(e.latlng); return; }
     if(area.draw){ areaDrawTap(e.latlng); return; }
     if(area.edit) return;
-
-    if(routeModeOn){
-      routePoints.push(e.latlng);
-      if(routePreviewLine){ routePreviewLine.setLatLngs(routePoints); }
-      else{ routePreviewLine = L.polyline(routePoints, { color:'var(--frost)', weight:3, dashArray:'2 8' }).addTo(map); }
-      if(routePoints.length > 1){
-        showDrawHint(`Distância parcial: ${formatDistance(totalDistanceOf(routePoints))}. 2 cliques pra concluir. ESC cancela.`);
-      }
-      return;
-    }
 
     if(selectedPinType){
       const typeLabel = (PIN_TYPES.find(t => t.id === selectedPinType) || {}).label || selectedPinType;
@@ -2789,6 +3091,7 @@
   const areaEast = (c, r) => L.latLng(c.lat, c.lng + r / (111320 * Math.max(0.05, Math.cos(c.lat * Math.PI / 180))));
   const areaHd = cls => L.divIcon({ className:'ar-hd ' + cls, html:'<i></i>', iconSize:[34, 34], iconAnchor:[17, 17] });
   const areaRingGeo = pts => { const r = pts.map(p => [p.lng, p.lat]); r.push([pts[0].lng, pts[0].lat]); return { type:'Feature', properties:{}, geometry:{ type:'Polygon', coordinates:[r] } }; };
+  const ROUTE_HINTS = ['Toque no mapa para marcar o começo da rota.', 'Toque para marcar o próximo ponto. Arraste um ponto para ajustar.', 'Toque para continuar. Toque no último ponto (ou em Concluir) para terminar.'];
   const AREA_HINTS = {
     circle0: 'Toque no centro do círculo.',
     circle1: 'Arraste a alça (ou toque no mapa) para ajustar o raio.',
@@ -2808,13 +3111,16 @@
     areaEl('ab-presets').hidden = !d;
     let hint = '', val = '', undo = false, ok = false, rm = false, okTxt = 'Concluir';
     if(d){
-      areaEl('ab-presets').querySelectorAll('[data-ap]').forEach(b => b.classList.toggle('on', b.dataset.ap === d.preset));
-      if(d.kind === 'circle'){ hint = d.center ? AREA_HINTS.circle1 : AREA_HINTS.circle0; val = d.center ? 'Raio ' + Math.round(d.r) + ' m' : ''; undo = !!d.center; ok = !!d.center; }
+      abPresets(d.kind === 'route' ? 'route' : 'area');
+      areaEl('ab-presets').querySelectorAll('[data-ap],[data-rp]').forEach(b => b.classList.toggle('on', (b.dataset.ap || b.dataset.rp) === d.preset));
+      if(d.kind === 'route'){ hint = ROUTE_HINTS[d.pts.length >= 2 ? 2 : d.pts.length]; val = d.pts.length ? formatDistance(totalDistanceOf(d.pts)) + ' · ' + d.pts.length + (d.pts.length === 1 ? ' ponto' : ' pontos') : ''; undo = d.pts.length > 0; ok = d.pts.length >= 2; }
+      else if(d.kind === 'circle'){ hint = d.center ? AREA_HINTS.circle1 : AREA_HINTS.circle0; val = d.center ? 'Raio ' + Math.round(d.r) + ' m' : ''; undo = !!d.center; ok = !!d.center; }
       else if(d.kind === 'rect'){ hint = d.pts.length ? AREA_HINTS.rect1 : AREA_HINTS.rect0; undo = d.pts.length > 0; }
       else { hint = AREA_HINTS.poly; val = d.pts.length ? d.pts.length + ' ponto' + (d.pts.length > 1 ? 's' : '') : ''; undo = d.pts.length > 0; ok = d.pts.length >= 3; }
     } else {
       hint = AREA_HINTS.edit; okTxt = 'Pronto'; ok = true;
-      rm = !e.circ && e.ring.length > 3 && e.sel >= 0;
+      rm = e.route ? (e.ring.length > 2 && e.sel >= 0) : (!e.circ && e.ring.length > 3 && e.sel >= 0);
+      if(e.route) val = formatDistance(totalDistanceOf(e.ring));
     }
     areaEl('ab-hint').textContent = hint; areaEl('ab-val').textContent = val;
     areaEl('ab-undo').hidden = !undo; areaEl('ab-rm').hidden = !rm; areaEl('ab-ok').hidden = !ok; areaEl('ab-ok').textContent = okTxt;
@@ -2825,7 +3131,8 @@
   }
   function areaDrawStart(kind){
     areaClose();
-    area.draw = { kind, pts:[], preset:area.lastPreset, center:null, r:0 };
+    area.draw = { kind, pts:[], preset:kind === 'route' ? rt.lastPreset : area.lastPreset, center:null, r:0 };
+    routeModeOn = kind === 'route';
     areaBusy(true);
     if(kind === 'rect') map.on('mousemove', areaRectMove);
     areaBarRender();
@@ -2833,7 +3140,7 @@
   function areaDrawStop(){
     if(!area.draw) return;
     map.off('mousemove', areaRectMove);
-    area.draw = null; area.link = null;
+    area.draw = null; area.link = null; routeModeOn = false;
     if(!area.edit){ areaPvClear(); areaBusy(false); }
     areaBarRender();
   }
@@ -2853,6 +3160,7 @@
   }
   function areaDrawTap(ll){
     const d = area.draw; if(!d) return;
+    if(d.kind === 'route'){ routeDrawTap(ll); return; }
     if(d.kind === 'circle'){
       if(d.center){ areaCircleSet(d.center.distanceTo(ll)); return; }
       d.center = ll; d.r = areaDefaultRadius(ll);
@@ -2881,6 +3189,7 @@
   }
   function areaDrawUndo(){
     const d = area.draw; if(!d) return;
+    if(d.kind === 'route'){ if(d.pts.length){ d.pts.pop(); routePvRedraw(); areaBarRender(); } return; }
     if(d.kind === 'circle' && d.center){ areaPvClear(); d.center = null; d.circle = d.hr = d.hc = null; }
     else if(d.kind === 'rect' && d.pts.length){ areaPvClear(); d.pts = []; d.rect = null; }
     else if(d.kind === 'poly' && d.pts.length){
@@ -2893,6 +3202,7 @@
     const d = area.draw; if(!d) return;
     if(d.kind === 'circle' && d.center) areaCreate({ type:'circle', center:[d.center.lat, d.center.lng], radius:Math.round(d.r * 10) / 10 });
     else if(d.kind === 'poly' && d.pts.length >= 3) areaCreate({ geojson: areaRingGeo(d.pts) });
+    else if(d.kind === 'route' && d.pts.length >= 2) routeCreate();
   }
   async function areaCreate(geom){
     const d = area.draw; if(!d) return;
@@ -2924,6 +3234,7 @@
   }
   function areaEditHandles(){
     const e = area.edit; if(!e) return;
+    if(e.route){ routeEditHandles(); return; }
     areaPvClear();
     const pv = areaPv();
     if(e.circ){
@@ -2951,6 +3262,7 @@
   // grava o contorno novo e redesenha (a alça que acabou de ser solta é refeita)
   function areaEditCommit(){
     const e = area.edit; if(!e) return;
+    if(e.route){ routeEditCommit(); return; }
     const sh = shapes.find(s => s.id === e.id); if(!sh){ areaEditStop(false); return; }
     if(e.circ){ sh.center = [e.c.lat, e.c.lng]; sh.radius = Math.round(e.r * 10) / 10; }
     else {
@@ -2963,22 +3275,30 @@
     areaBarRender();
   }
   function areaEditRemove(){
-    const e = area.edit; if(!e || e.circ || e.sel < 0 || e.ring.length <= 3) return;
+    const e = area.edit; if(!e || e.circ || e.sel < 0 || e.ring.length <= (e.route ? 2 : 3)) return;
     e.ring.splice(e.sel, 1); e.sel = -1; areaEditCommit();
   }
   function areaEditStop(reopen){
     if(!area.edit) return;
+    const was = area.edit;
     area.edit = null;
     if(!area.draw){ areaPvClear(); areaBusy(false); }
     areaBarRender();
+    if(was.route){ if(reopen) routeOpen(was.id); return; }
     const sh = reopen && shapes.find(s => s.id === area.sheetId);
     if(sh){ areaSheetFill(sh); areaEl('area-sheet').classList.add('open'); }
   }
 
   // barra de desenho: predefinições + Desfazer / Concluir / Cancelar
   function areaBarWire(){
-    areaEl('ab-presets').innerHTML = AREA_PRESETS.map(p => `<button type="button" class="ar-chip" data-ap="${p.id}" style="--c:${p.c}"><i></i>${p.t}</button>`).join('');
+    abPresets('area');
     areaEl('ab-presets').addEventListener('click', ev => {
+      const rb = ev.target.closest('[data-rp]');
+      if(rb && area.draw && area.draw.kind === 'route'){
+        area.draw.preset = rb.dataset.rp; rt.lastPreset = rb.dataset.rp;
+        try{ localStorage.setItem('tv-map:route-preset', rb.dataset.rp); }catch(e){}
+        routePvRedraw(); areaBarRender(); return;
+      }
       const b = ev.target.closest('[data-ap]'); if(!b || !area.draw) return;
       area.draw.preset = b.dataset.ap; area.lastPreset = b.dataset.ap;
       try{ localStorage.setItem('tv-map:area-preset', b.dataset.ap); }catch(e){}
@@ -2999,15 +3319,16 @@
     });
     const tg = areaEl('area-anim-toggle');
     if(tg){
-      const sync = () => { const on = areaAnimOn(); tg.classList.toggle('active', on); tg.setAttribute('aria-pressed', String(on)); tg.textContent = 'Animar áreas e molduras: ' + (on ? 'ligado' : 'desligado'); frAnimSync(); };
+      const sync = () => { const on = areaAnimOn(); tg.classList.toggle('active', on); tg.setAttribute('aria-pressed', String(on)); tg.textContent = 'Animar áreas, rotas e molduras: ' + (on ? 'ligado' : 'desligado'); frAnimSync(); };
       sync();
-      tg.addEventListener('click', () => { try{ localStorage.setItem('tv-map:area-anim', areaAnimOn() ? 'off' : 'on'); }catch(e){} sync(); renderShapes(); });
+      tg.addEventListener('click', () => { try{ localStorage.setItem('tv-map:area-anim', areaAnimOn() ? 'off' : 'on'); }catch(e){} sync(); renderShapes(); renderRoutes(); });
     }
   }
   areaBarWire();
 
   // ================= LUGAR (f16): marcador, folha (cartão + edição), área, reposicionar =================
   const lgEl = id => document.getElementById(id);
+  const LG_IMG_OPTS = { title:'Ajustar imagem do lugar', ratio:2.5, out:600, noUpscale:true };   // 2,5:1 = a faixa do cartão: o que você enquadra é o que aparece
   const lgCatOf = g => PIN_TYPES.find(t => t.id === g.cat) || {};
   function lgCanEdit(pin){ return isMaster() || !pin.ownerId || (!!currentUser && pin.ownerId === currentUser.uid); }
   // estado de exploração (mesmo do contêiner); lugar sem fonte de saque e sem itens não mostra estado
@@ -3037,6 +3358,13 @@
       return best ? 'a ' + formatDistance(best.d) + ' de ' + (best.t.label || 'Token') : '';
     }catch(e){ return ''; }
   }
+  // miniatura do NPC (foto dele no mapa, ou a bolinha da cor dele com o ícone)
+  function lgAvatar(n){
+    const img = typeof n.image === 'string' && /^(data:image\/|https?:|\.?\/?[\w\-./]+\.(png|jpe?g|gif|webp|svg)$)/i.test(n.image) ? n.image : '';
+    const col = escapeHtml(n.color || 'var(--ice-300)');
+    return img ? `<span class="lg-av" style="border-color:${col}"><img src="${escapeHtml(img)}" alt=""></span>`
+      : `<span class="lg-av lg-av-ic" style="background:${col}">${lgIcSvg('npc', 14)}</span>`;
+  }
   const lgIcSvg = (cat, size) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PIN_ICONS[cat] || PIN_ICONS.pin}</svg>`;
 
   function lgCardHtml(pin){
@@ -3049,15 +3377,16 @@
       ${g.img ? `<div class="lg-img"><img src="${escapeHtml(g.img)}" alt=""></div>` : `<div class="lg-img lg-noimg" aria-hidden="true">${lgIcSvg(g.cat, 44)}</div>`}
       <div class="lg-top"><span class="lg-kick">${escapeHtml(t.label || 'Lugar')} · lugar</span>${st ? `<span class="lg-chip st-${st}">${escapeHtml(CONT_STATE_LABELS[st] || st)}</span>` : ''}</div>
       <div class="lg-name">${escapeHtml(pin.title || 'Lugar')}</div>
-      <div class="lg-meta"><span class="lg-risk" data-r="${g.risk}" title="Risco: ${LG_RISK[g.risk]}"><i></i><i></i><i></i></span><span>Risco ${g.risk ? LG_RISK[g.risk].toLowerCase() : 'desconhecido'}</span>${dist ? `<span class="lg-dist">${escapeHtml(dist)}</span>` : ''}${areas.length ? `<span>${areas.some(a => a.type === 'circle') ? 'Área de raio' : 'Área ocupada'}</span>` : ''}</div>
+      <div class="lg-meta"><span class="lg-risk" data-r="${g.risk}" title="Risco: ${LG_RISK[g.risk]}"><i></i><i></i><i></i></span><span>Risco ${g.risk ? LG_RISK[g.risk].toLowerCase() : 'desconhecido'}</span>${dist ? `<span class="lg-dist">${escapeHtml(dist)}</span>` : ''}${areas.length ? `<span>${areas.some(a => a.type === 'circle') ? 'Área de raio' : 'Área ocupada'}</span>` : ''}${pin.locked ? '<span>Fixado</span>' : ''}</div>
       ${g.tags.length ? `<div class="lg-tags">${g.tags.map(x => `<span class="lg-tag">#${escapeHtml(x)}</span>`).join('')}</div>` : ''}
       ${pin.note ? `<p class="lg-note">${escapeHtml(pin.note)}</p>` : ''}
-      ${npcs.length ? `<div class="lg-sec">Quem está aqui</div><div class="lg-npcs">${npcs.map(x => `<button type="button" class="lg-npc" data-lg-act="npc" data-id="${escapeHtml(x.n.id)}"><b>${escapeHtml(x.n.title || 'NPC')}</b><span class="lg-cert c-${x.c}">${escapeHtml((LG_CERT.find(c => c[0] === x.c) || [])[1] || '')}</span></button>`).join('')}</div>` : ''}
+      ${npcs.length ? `<div class="lg-sec">Quem está aqui</div><div class="lg-npcs">${npcs.map(x => `<button type="button" class="lg-npc" data-lg-act="npc" data-id="${escapeHtml(x.n.id)}">${lgAvatar(x.n)}<b>${escapeHtml(x.n.title || 'NPC')}</b><span class="lg-cert c-${x.c}">${escapeHtml((LG_CERT.find(c => c[0] === x.c) || [])[1] || '')}</span></button>`).join('')}</div>` : ''}
       ${master && g.src.length ? `<div class="lg-sec">Saque (só o mestre vê)</div><div class="lg-srcs">${g.src.map(k => `<span class="lg-tag">${escapeHtml(LOC_NAMES[k] || k)}</span>`).join('')}</div>` : ''}
       <div class="lg-acts">
         ${canSearchPin(pin) ? `<button type="button" class="lg-go" data-lg-act="search">${ic('search', 16)} Vasculhar</button>` : ''}
         ${cc && (items > 0 || (meta && meta.generatedAt)) ? `<button type="button" data-lg-act="inv">${ic('box', 16)} Conteúdo (${items})</button>` : ''}
         ${g.scene && typeof tac !== 'undefined' && tac.scenes[g.scene] ? `<button type="button" data-lg-act="tac">${ic('swords', 16)} Mapa tático</button>` : ''}
+        ${lgCanEdit(pin) ? `<button type="button" class="lg-lockb${pin.locked ? ' on' : ''}" data-lg-act="lock" aria-pressed="${!!pin.locked}">${ic(pin.locked ? 'lock' : 'unlock', 16)} ${pin.locked ? 'Fixado' : 'Fixar'}</button>` : ''}
       </div></div>`;
   }
   function lgFillCard(pin){
@@ -3078,7 +3407,7 @@
       <div class="ar-g">Categoria</div>
       <div class="lg-cats" role="radiogroup" aria-label="Categoria">${LG_CATS.map(id => { const t = PIN_TYPES.find(x => x.id === id) || {}; return `<button type="button" class="lg-cat${id === g.cat ? ' on' : ''}" role="radio" aria-checked="${id === g.cat}" data-lg="cat" data-v="${id}" style="--c:${t.color}">${lgIcSvg(id, 18)}<span>${esc(t.label || id)}</span></button>`; }).join('')}</div>
       <div class="ar-g">Imagem de representação</div>
-      <div class="lg-imgrow"><input type="file" id="lg-file" accept="image/*" aria-label="Escolher imagem">${g.img ? '<button type="button" data-lg="img-clear">Remover</button>' : ''}</div>
+      <div class="lg-imgrow"><input type="file" id="lg-file" accept="image/*" aria-label="Escolher imagem">${/^data:image\/(?!gif)/i.test(g.img) ? '<button type="button" data-lg="img-adjust">Ajustar</button>' : ''}${g.img ? '<button type="button" data-lg="img-clear">Remover</button>' : ''}</div>
       <label class="ar-f"><span>ou endereço da imagem</span><input type="text" id="lg-url" autocomplete="off" placeholder="https://… ou lugares/hospital.jpg" value="${g.img && !/^data:/.test(g.img) ? esc(g.img) : ''}"></label>
       <div class="ar-g">Tags</div>
       <div class="lg-tags">${g.tags.map((x, i) => `<span class="lg-tag">#${esc(x)}<button type="button" data-lg="tag-del" data-i="${i}" aria-label="Tirar a tag ${esc(x)}">×</button></span>`).join('') || '<span class="ar-meta">Nenhuma tag.</span>'}</div>
@@ -3092,7 +3421,7 @@
       <div class="lg-addrow"><label class="lg-num">Capacidade <input type="number" id="lg-cap" min="1" value="${cc.cap || ''}" placeholder="sem limite" inputmode="numeric"></label>
         <select id="lg-access" aria-label="Acesso">${opt('aberto', 'Aberto', cc.access || 'aberto')}${opt('bloqueado', 'Bloqueado (só o mestre)', cc.access || 'aberto')}</select></div>
       <div class="ar-g">NPCs no lugar</div>
-      ${g.npcs.map((x, i) => { const n = npcAll.find(p => p.id === x.id); return `<div class="lg-npcrow"><b>${esc(n ? (n.title || 'NPC') : 'NPC removido')}</b><select data-lg="npc-c" data-i="${i}" aria-label="Certeza">${LG_CERT.map(c => opt(c[0], c[1], x.c)).join('')}</select><button type="button" data-lg="npc-del" data-i="${i}" aria-label="Tirar o NPC">×</button></div>`; }).join('')}
+      ${g.npcs.map((x, i) => { const n = npcAll.find(p => p.id === x.id); return `<div class="lg-npcrow">${n ? lgAvatar(n) : ''}<b>${esc(n ? (n.title || 'NPC') : 'NPC removido')}</b><select data-lg="npc-c" data-i="${i}" aria-label="Certeza">${LG_CERT.map(c => opt(c[0], c[1], x.c)).join('')}</select><button type="button" data-lg="npc-del" data-i="${i}" aria-label="Tirar o NPC">×</button></div>`; }).join('')}
       <div class="lg-addrow"><select id="lg-npc-sel" aria-label="NPC">${opt('', npcAll.length ? '— escolher NPC —' : 'Nenhum NPC no mapa', '')}${npcAll.filter(p => !used.has(p.id)).map(p => opt(p.id, p.title || 'NPC', '')).join('')}</select>
         <select id="lg-npc-cn" aria-label="Certeza do novo NPC">${LG_CERT.map(c => opt(c[0], c[1], 'certo')).join('')}</select><button type="button" data-lg="npc-add">Ligar</button></div>
       <div class="ar-g">Mapa tático deste lugar</div>
@@ -3103,7 +3432,7 @@
       <div class="lg-addrow"><label class="lg-num">Raio (m) <input type="number" id="lg-rad" min="5" max="50000" step="5" value="${circ ? Math.round(circ.radius) : ''}" placeholder="ex.: 120" inputmode="numeric"></label><button type="button" data-lg="rad-set">${circ ? 'Mudar raio' : 'Criar raio'}</button></div>
       <div class="ar-btns"><button type="button" data-lg="occ">Desenhar ocupação</button>${areas.length ? '<button type="button" data-lg="area-style">Estilo da área</button><button type="button" data-lg="area-del" class="danger">Tirar área</button>' : ''}</div>
       <label class="ar-f"><span>Anotação</span><textarea id="lg-note" rows="3" maxlength="600" placeholder="Anotação...">${esc(pin.note || '')}</textarea></label>
-      <div class="ar-btns"><button type="button" data-lg="reloc">Reposicionar no mapa</button><button type="button" data-lg="del" class="danger">Excluir lugar</button></div>`;
+      <div class="ar-btns"><button type="button" data-lg-act="lock" aria-pressed="${!!pin.locked}">${ic(pin.locked ? 'lock' : 'unlock', 16)} ${pin.locked ? 'Soltar do mapa' : 'Fixar no mapa'}</button><button type="button" data-lg="reloc">Reposicionar no mapa</button><button type="button" data-lg="del" class="danger">Excluir lugar</button></div>`;
     return h;
   }
   function lgFillForm(pin){
@@ -3160,7 +3489,8 @@
   async function lgFile(inp){
     const f = inp.files && inp.files[0]; if(!f) return;
     try{
-      const d = await resizeImageDataUrl(f, 360);
+      const d = await window.__tvPickImage(f, LG_IMG_OPTS, resizeImageDataUrl);
+      if(d == null){ inp.value = ''; return; }                        // cancelou o ajuste
       if(d.length > 220000){ toast('Imagem pesada demais. Use uma menor ou um endereço.', true); inp.value = ''; return; }
       lgPatch(g => { g.img = d; }, true);
     }catch(e){ toast(e && e.message ? e.message : 'Não foi possível usar essa imagem.', true); inp.value = ''; }
@@ -3187,6 +3517,7 @@
     switch(a){
       case 'cat': lgPatch(g => { g.cat = v; }, true); break;
       case 'img-clear': lgPatch(g => { g.img = ''; }, true); break;
+      case 'img-adjust': window.tvAdjustImage(g0.img, LG_IMG_OPTS).then(r => { if(r && r.data.length <= 220000) lgPatch(g => { g.img = r.data; }, true); else if(r) toast('Imagem pesada demais. Use uma menor.', true); }).catch(() => toast('Não foi possível ajustar essa imagem.', true)); break;
       case 'risk': lgPatch(g => { g.risk = +v; }, true); break;
       case 'tag-add': {
         const inp = lgEl('lg-tag'), t = (inp.value || '').replace(/^#+/, '').trim().slice(0, 24);
@@ -3218,8 +3549,19 @@
     const pin = pins.find(p => p.id === lg.id); if(!pin) return;
     if(a === 'search'){ el.disabled = true; const ok = await generateContainer(pin.id, false); lgFillCard(); lgRenderSoon(); if(ok) openInventory(pin.id); }
     else if(a === 'inv') openInventory(pin.id);
+    else if(a === 'lock') lgToggleLock(pin);
     else if(a === 'tac') lgOpenTac(pin);
     else if(a === 'npc'){ const n = pins.find(p => p.id === el.dataset.id); if(n){ lgClose(); map.setView([n.lat, n.lng], Math.max(map.getZoom(), 17)); } }
+  }
+  // fixar: o marcador não é mais arrastado por engano (reposicionar continua funcionando)
+  function lgToggleLock(pin){
+    if(!lgCanEdit(pin)) return;
+    pin.locked = !pin.locked;
+    const mk = pinMarkers[pin.id];
+    if(mk){ mk.setIcon(pinIcon(pin)); if(mk.dragging){ if(pin.locked) mk.dragging.disable(); else mk.dragging.enable(); } }
+    saveKey(KEY_PINS, pins); renderPins();
+    lgFill(pin);
+    toast(pin.locked ? 'Lugar fixado no mapa.' : 'Lugar solto: dá para arrastar.');
   }
   function lgOpenTac(pin){
     const sid = lgOf(pin).scene;
@@ -3492,6 +3834,7 @@
       routes = snap.val() || [];
       saveLocal(KEY_ROUTES, routes);
       if(!routePopupActive) renderRoutes();
+      routeRemoteSync();
       markLoaded(8);
       setSyncStatus('live');
     }, err => { console.error('Erro de sincronização (rotas)', err); setSyncStatus('offline'); markLoaded(8); });
@@ -5524,7 +5867,7 @@
   // ---------- ligar/desligar tudo de uma campanha ----------
   function resetCampaignState(){
     areaReset();   // fecha a folha/desenho de áreas sem gravar nada na campanha nova
-    lgReset();
+    lgReset(); routeReset();
     pins = []; tokens = []; shapes = []; routes = [];
     weather = { state:'calmo', updatedAt:null, updatedBy:null };
     inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {}; journal = {}; gmJournal = {};
@@ -7985,8 +8328,13 @@
         const im = await tacLoadImg(url);
         sc.src = { kind:'url', url }; sc.w = im.w; sc.h = im.h;
       } else {
-        const f = (tacEl('tn-file') || {}).files && tacEl('tn-file').files[0];
+        let f = (tacEl('tn-file') || {}).files && tacEl('tn-file').files[0];
         if(!f){ toast('Escolha uma imagem.', true); return; }
+        if(!/^image\/gif$/i.test(f.type)){
+          const adj = await window.tvAdjustImage(f, { title:'Ajustar o mapa da cena', ratios:[{ id:'orig', label:'Original', ratio:0 }, { id:'169', label:'16:9', ratio:16 / 9 }, { id:'43', label:'4:3', ratio:4 / 3 }, { id:'11', label:'1:1', ratio:1 }], out:1600, q:0.92, fill:'#0f1a22', noUpscale:true });
+          if(!adj) return;                                           // cancelou: nada é criado
+          f = await (await fetch(adj.data)).blob();
+        }
         const r = await tacFileToData(f);
         const okImg = await DB.set(scopedKey(KEY_TACIMG) + '/' + sid, { d:r.data });
         if(!okImg){ toast('Não consegui guardar a imagem (regras do Firebase v3 publicadas? Imagem muito grande?).', true); return; }
@@ -8233,7 +8581,7 @@
   // ---- folhas (índice, rolar, feed no celular) ----
   const hudSheetIds = [['idx-sheet', 'idx-backdrop'], ['qr-sheet', 'qr-backdrop'], ['lay-sheet', 'lay-backdrop']];
   function hudCloseSheets(except){
-    lgClose();
+    lgClose(); routeClose();
     if(!hudReady) return;
     hudSheetIds.forEach(p => { if(p[0] !== except){ hudEl(p[0]).classList.remove('open'); hudEl(p[1]).classList.remove('open'); } });
     if(except !== 'qr-sheet') hud.qrAttr = '';      // o atributo escolhido na folha Rolar vale só enquanto ela está aberta
@@ -9103,4 +9451,384 @@
     if(ios){ sec.hidden = false; btn.hidden = true; hint.hidden = false; }
   })();
 
+})();
+
+// ===== Seletores e sugestões do app (f17): nada de lista branca do navegador =====
+// <select>: o toque não chega mais ao seletor nativo (CSS: pointer-events:none); este bloco abre uma lista própria, escura,
+// e grava a escolha no próprio <select> (value + eventos input/change), então todo o resto do app continua igual.
+// <input list=...>: as sugestões do navegador também são brancas; aqui viram uma lista própria sob o campo.
+(function(){
+  'use strict';
+  const SKIP = s => !s || s.multiple || s.size > 1 || s.hasAttribute('data-native') || s.disabled;
+  const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  let cur = null;        // lista de <select> aberta: { sel, back, panel, items, act, sheet }
+  let sug = null;        // sugestões de campo aberta: { inp, box, items, act }
+  const mkEl = (tag, cls, txt) => { const e = document.createElement(tag); if(cls) e.className = cls; if(txt != null) e.textContent = txt; return e; };
+  const phone = () => window.matchMedia && window.matchMedia('(max-width: 700px)').matches;
+
+  // ----- qual <select> está sob o dedo? (o seletor ignora o toque, então a conta é pela posição)
+  function selectAt(x, y){
+    const all = document.querySelectorAll('select');
+    for(let i = 0; i < all.length; i++){
+      const s = all[i]; if(SKIP(s)) continue;
+      const r = s.getBoundingClientRect();
+      if(r.width < 4 || r.height < 4 || x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
+      const top = document.elementFromPoint(x, y); if(!top) continue;
+      const host = s.closest('label') || s.parentElement || s;
+      if(top === s || host === top || host.contains(top)) return s;
+    }
+    return null;
+  }
+  function labelOf(s){
+    const a = s.getAttribute('aria-label'); if(a) return a;
+    const l = (s.id && document.querySelector('label[for="' + s.id.replace(/"/g, '') + '"]')) || s.closest('label');
+    if(l){ const c = l.cloneNode(true); c.querySelectorAll('select,input,textarea,button').forEach(n => n.remove()); const t = c.textContent.trim(); if(t) return t.slice(0, 60); }
+    return 'Escolher';
+  }
+
+  // ----- lista do <select>
+  function closeSel(refocus){
+    if(!cur) return;
+    const c = cur; cur = null;
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('resize', onWin);
+    document.removeEventListener('scroll', onScroll, true);
+    c.panel.classList.remove('open'); c.back.classList.remove('open');
+    setTimeout(() => { c.panel.remove(); c.back.remove(); }, 160);
+    if(refocus && c.sel.isConnected){ try{ c.sel.focus({ preventScroll:true }); }catch(e){} }
+  }
+  function setActive(i, scroll){
+    if(!cur) return;
+    const n = cur.items.length; if(!n) return;
+    cur.act = Math.max(0, Math.min(n - 1, i));
+    cur.items.forEach((it, k) => it.el.classList.toggle('act', k === cur.act));
+    const el = cur.items[cur.act].el;
+    cur.panel.setAttribute('aria-activedescendant', el.id);
+    if(scroll !== false) el.scrollIntoView({ block:'nearest' });
+  }
+  function choose(i){
+    if(!cur) return;
+    const it = cur.items[i]; if(!it || it.dis) return;
+    const sel = cur.sel, changed = sel.selectedIndex !== it.idx;
+    sel.selectedIndex = it.idx;
+    closeSel(true);
+    if(changed){
+      sel.dispatchEvent(new Event('input', { bubbles:true }));
+      sel.dispatchEvent(new Event('change', { bubbles:true }));
+    }
+  }
+  function onKey(e){
+    if(!cur) return;
+    const k = e.key;
+    if(k === 'Escape'){ e.preventDefault(); e.stopPropagation(); closeSel(true); return; }
+    if(k === 'Tab'){ closeSel(false); return; }
+    const step = d => { let i = cur.act + d; while(i >= 0 && i < cur.items.length && cur.items[i].dis) i += d; if(i >= 0 && i < cur.items.length) setActive(i); };
+    if(k === 'ArrowDown'){ e.preventDefault(); step(1); }
+    else if(k === 'ArrowUp'){ e.preventDefault(); step(-1); }
+    else if(k === 'Home'){ e.preventDefault(); setActive(0); }
+    else if(k === 'End'){ e.preventDefault(); setActive(cur.items.length - 1); }
+    else if(k === 'Enter' || k === ' '){ e.preventDefault(); e.stopPropagation(); choose(cur.act); }
+    else if(k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey){
+      const q = norm(k), n = cur.items.length;
+      for(let d = 1; d <= n; d++){ const i = (cur.act + d) % n, it = cur.items[i]; if(!it.dis && norm(it.text).indexOf(q) === 0){ setActive(i); break; } }
+    }
+  }
+  function onWin(){ closeSel(false); }
+  function onScroll(e){ if(cur && !cur.sheet && !cur.panel.contains(e.target)) closeSel(false); }
+
+  function openSel(sel){
+    closeSel(false); closeSug();
+    const items = [], panel = mkEl('div', 'tvs-panel'), back = mkEl('div', 'tvs-back');
+    const sheet = phone();
+    panel.setAttribute('role', 'listbox'); panel.tabIndex = -1;
+    const title = labelOf(sel);
+    panel.setAttribute('aria-label', title);
+    if(sheet){
+      panel.classList.add('tvs-sheet');
+      const head = mkEl('div', 'tvs-head'); head.appendChild(mkEl('b', '', title));
+      const x = mkEl('button', 'tvs-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Fechar'); head.appendChild(x);
+      x.addEventListener('click', () => closeSel(true));
+      panel.appendChild(head);
+    }
+    const body = mkEl('div', 'tvs-list'); panel.appendChild(body);
+    let n = 0, optIdx = 0;
+    const add = (o, host) => {
+      if(o.hidden) { optIdx++; return; }
+      const el = mkEl('div', 'tvs-opt'); el.id = 'tvs-o' + (n++); el.setAttribute('role', 'option');
+      const dis = o.disabled || (o.parentElement && o.parentElement.tagName === 'OPTGROUP' && o.parentElement.disabled);
+      const text = (o.textContent || '').trim() || ' ';
+      el.appendChild(mkEl('span', 'tvs-t', text));
+      const on = o.index === sel.selectedIndex;
+      el.setAttribute('aria-selected', String(on)); if(on) el.classList.add('on');
+      if(dis){ el.classList.add('dis'); el.setAttribute('aria-disabled', 'true'); }
+      const rec = { el, idx:o.index, dis:!!dis, text };
+      el.addEventListener('click', () => choose(items.indexOf(rec)));
+      host.appendChild(el); items.push(rec);
+    };
+    Array.prototype.forEach.call(sel.children, ch => {
+      if(ch.tagName === 'OPTGROUP'){ const g = mkEl('div', 'tvs-grp', ch.label || ''); body.appendChild(g); Array.prototype.forEach.call(ch.children, o => { if(o.tagName === 'OPTION') add(o, body); }); }
+      else if(ch.tagName === 'OPTION') add(ch, body);
+    });
+    if(!items.length){ body.appendChild(mkEl('div', 'tvs-empty', 'Sem opções')); }
+    document.body.appendChild(back); document.body.appendChild(panel);
+    cur = { sel, back, panel, items, act:0, sheet };
+    back.addEventListener('click', () => closeSel(true));
+    if(!sheet){
+      const r = sel.getBoundingClientRect(), vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight, vw = window.innerWidth;
+      const w = Math.min(Math.max(r.width, 180), vw - 16), left = Math.max(8, Math.min(r.left, vw - w - 8));
+      const below = vh - r.bottom - 12, above = r.top - 12, up = below < 160 && above > below;
+      panel.style.left = left + 'px'; panel.style.width = w + 'px';
+      panel.style.maxHeight = Math.max(120, Math.min(320, up ? above : below)) + 'px';
+      if(up) panel.style.bottom = (vh - r.top + 4) + 'px'; else panel.style.top = (r.bottom + 4) + 'px';
+    }
+    let sIdx = items.findIndex(it => it.idx === sel.selectedIndex); if(sIdx < 0) sIdx = Math.max(0, items.findIndex(it => !it.dis));
+    requestAnimationFrame(() => { if(!cur) return; back.classList.add('open'); panel.classList.add('open'); setActive(sIdx); panel.focus({ preventScroll:true }); });
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', onWin);
+    document.addEventListener('scroll', onScroll, true);
+  }
+
+  // ----- sugestões de campo (no lugar da <datalist> do navegador)
+  function closeSug(){
+    if(!sug) return;
+    const s = sug; sug = null;
+    s.box.remove();
+  }
+  function dlOf(inp){
+    const id = inp.getAttribute('list') || inp.dataset.tvlist; if(!id) return null;
+    if(inp.hasAttribute('list')){ inp.dataset.tvlist = id; inp.removeAttribute('list'); }   // tira a lista nativa
+    return document.getElementById(id);
+  }
+  function showSug(inp){
+    const dl = dlOf(inp); if(!dl){ closeSug(); return; }
+    const q = norm(inp.value).trim();
+    const all = Array.prototype.map.call(dl.options, o => o.value).filter(Boolean);
+    const starts = [], has = [];
+    all.forEach(v => { const nv = norm(v); if(!q || nv.indexOf(q) === 0) starts.push(v); else if(nv.indexOf(q) > 0) has.push(v); });
+    const list = starts.concat(has).slice(0, 60);
+    if(!list.length || (list.length === 1 && norm(list[0]) === q)){ closeSug(); return; }
+    if(!sug || sug.inp !== inp){ closeSug(); const box = mkEl('div', 'tvs-sug'); box.setAttribute('role', 'listbox'); box.addEventListener('mousedown', e => e.preventDefault()); document.body.appendChild(box); sug = { inp, box, act:-1 }; }
+    const box = sug.box; box.textContent = ''; sug.act = -1;
+    list.forEach((v, i) => {
+      const o = mkEl('div', 'tvs-opt', v); o.setAttribute('role', 'option');
+      o.addEventListener('click', () => { inp.value = v; closeSug(); inp.dispatchEvent(new Event('input', { bubbles:true })); inp.dispatchEvent(new Event('change', { bubbles:true })); });
+      box.appendChild(o);
+    });
+    const r = inp.getBoundingClientRect(), vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight, vw = window.innerWidth;
+    const w = Math.min(Math.max(r.width, 200), vw - 16), left = Math.max(8, Math.min(r.left, vw - w - 8));
+    const below = vh - r.bottom - 8, above = r.top - 8, up = below < 140 && above > below;
+    box.style.left = left + 'px'; box.style.width = w + 'px'; box.style.maxHeight = Math.max(100, Math.min(260, up ? above : below)) + 'px';
+    if(up){ box.style.top = ''; box.style.bottom = (vh - r.top + 4) + 'px'; } else { box.style.bottom = ''; box.style.top = (r.bottom + 4) + 'px'; }
+  }
+  function moveSug(d){
+    if(!sug) return false;
+    const els = sug.box.querySelectorAll('.tvs-opt'); if(!els.length) return false;
+    sug.act = (sug.act + d + els.length) % els.length;
+    els.forEach((e, i) => e.classList.toggle('act', i === sug.act));
+    els[sug.act].scrollIntoView({ block:'nearest' });
+    return true;
+  }
+
+  // ----- ligações globais
+  document.addEventListener('click', e => {
+    if(cur && cur.panel.contains(e.target)) return;
+    if(e.target && e.target.tagName === 'SELECT') return;          // clique "sintético" de <label>: o seletor só é focado
+    const s = selectAt(e.clientX, e.clientY);
+    if(!s) return;
+    e.preventDefault(); e.stopPropagation();
+    openSel(s);
+  }, true);
+  document.addEventListener('keydown', e => {
+    if(cur) return;
+    const t = e.target;
+    if(t && t.tagName === 'SELECT' && !SKIP(t) && (e.key === 'Enter' || e.key === ' ' || e.key === 'F4' || (e.key === 'ArrowDown' && e.altKey) || (e.key === 'ArrowUp' && e.altKey))){
+      e.preventDefault(); e.stopPropagation(); openSel(t); return;
+    }
+    if(sug && t === sug.inp){
+      if(e.key === 'Escape'){ closeSug(); e.stopPropagation(); }
+      else if(e.key === 'ArrowDown'){ if(moveSug(1)) e.preventDefault(); }
+      else if(e.key === 'ArrowUp'){ if(moveSug(-1)) e.preventDefault(); }
+      else if(e.key === 'Enter' && sug.act >= 0){ e.preventDefault(); const el = sug.box.querySelectorAll('.tvs-opt')[sug.act]; if(el) el.click(); }
+    }
+  }, true);
+  document.addEventListener('focusin', e => { const t = e.target; if(t && t.tagName === 'INPUT' && (t.hasAttribute('list') || t.dataset.tvlist)) showSug(t); }, true);
+  document.addEventListener('input', e => { const t = e.target; if(t && t.tagName === 'INPUT' && (t.hasAttribute('list') || t.dataset.tvlist)) showSug(t); }, true);
+  document.addEventListener('focusout', e => { if(sug && e.target === sug.inp) setTimeout(() => { if(sug && document.activeElement !== sug.inp) closeSug(); }, 120); }, true);
+  window.addEventListener('resize', closeSug);
+  document.addEventListener('scroll', e => { if(sug && !sug.box.contains(e.target)) closeSug(); }, true);
+  // para os testes e para o resto do app
+  window.__tvSel = { open:openSel, close:closeSel, isOpen:() => !!cur };
+})();
+
+// ===== Ajuste de imagem (f18): enquadrar (arrastar), zoom, girar — antes de guardar qualquer foto enviada =====
+// tvAdjustImage(fonte, opções) abre uma tela própria e devolve { data, w, h } ou null se o usuário cancelar.
+//   fonte: File/Blob ou texto (endereço/data:).  opções: { title, ratio (largura/altura), ratios:[{id,label,ratio}], shape:'circle'|'rect', out (lado maior, px), q, fill, noUpscale (não passa do tamanho real da foto) }
+// pickImage(file, opções) -> texto data: ou null. GIF passa direto (para não perder a animação); o resto passa pelo ajuste.
+(function(){
+  'use strict';
+  const mk = (tag, cls, txt) => { const e = document.createElement(tag); if(cls) e.className = cls; if(txt != null) e.textContent = txt; return e; };
+  let busy = false;
+
+  function loadSource(src){
+    return new Promise((resolve, reject) => {
+      const done = (url, revoke) => {
+        const img = new Image();
+        img.onload = () => resolve({ img, revoke });
+        img.onerror = () => { if(revoke) URL.revokeObjectURL(url); reject(new Error('Não foi possível ler essa imagem.')); };
+        img.src = url;
+      };
+      if(typeof src === 'string') done(src, false);
+      else if(src && typeof src === 'object'){ const u = URL.createObjectURL(src); done(u, true); }
+      else reject(new Error('Sem imagem.'));
+    });
+  }
+  function rotated(img, quarter){
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, q = ((quarter % 4) + 4) % 4;
+    if(!q) return { src:img, w, h };
+    const cv = document.createElement('canvas'); cv.width = q % 2 ? h : w; cv.height = q % 2 ? w : h;
+    const cx = cv.getContext('2d'); cx.translate(cv.width / 2, cv.height / 2); cx.rotate(q * Math.PI / 2); cx.drawImage(img, -w / 2, -h / 2);
+    return { src:cv, w:cv.width, h:cv.height };
+  }
+
+  function tvAdjustImage(source, opts){
+    opts = opts || {};
+    if(busy) return Promise.resolve(null);
+    busy = true;
+    return loadSource(source).then(({ img, revoke }) => new Promise(resolve => {
+      const ratios = (opts.ratios && opts.ratios.length) ? opts.ratios : null;
+      let ridx = 0;
+      const st = { q:0, s:1, minS:1, x:0, y:0, bmp:rotated(img, 0) };
+      const ratioNow = () => { const r = ratios ? ratios[ridx].ratio : opts.ratio; return r || (st.bmp.w / st.bmp.h); };   // ratio 0 = "original": acompanha a imagem (e o giro)   // x,y: deslocamento do centro da imagem (px do quadro)
+      const root = mk('div', 'iadj'), card = mk('div', 'iadj-card');
+      root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-label', opts.title || 'Ajustar imagem');
+      const head = mk('div', 'iadj-head'); head.appendChild(mk('b', '', opts.title || 'Ajustar imagem'));
+      const xb = mk('button', 'iadj-x', '×'); xb.type = 'button'; xb.setAttribute('aria-label', 'Cancelar'); head.appendChild(xb);
+      const stage = mk('div', 'iadj-stage'), frame = mk('div', 'iadj-frame' + (opts.shape === 'circle' ? ' circle' : '')), cv = mk('canvas', 'iadj-cv');
+      cv.setAttribute('aria-label', 'Área da imagem: arraste para enquadrar, use dois dedos ou o controle para dar zoom');
+      frame.appendChild(cv); stage.appendChild(frame);
+      const hint = mk('p', 'iadj-hint', 'Arraste para enquadrar. Dois dedos ou o controle dão zoom.');
+      const ctr = mk('div', 'iadj-ctr');
+      const zOut = mk('button', 'iadj-b', '−'); zOut.type = 'button'; zOut.setAttribute('aria-label', 'Diminuir zoom');
+      const zr = mk('input'); zr.type = 'range'; zr.min = '0'; zr.max = '100'; zr.value = '0'; zr.setAttribute('aria-label', 'Zoom');
+      const zIn = mk('button', 'iadj-b', '+'); zIn.type = 'button'; zIn.setAttribute('aria-label', 'Aumentar zoom');
+      ctr.append(zOut, zr, zIn);
+      const row = mk('div', 'iadj-row');
+      const rl = mk('button', 'iadj-b wide', '⟲ Girar'); rl.type = 'button';
+      const fit = mk('button', 'iadj-b wide', 'Preencher'); fit.type = 'button';
+      const whole = mk('button', 'iadj-b wide', 'Inteira'); whole.type = 'button';
+      row.append(rl, fit, whole);
+      const foot = mk('div', 'iadj-foot');
+      const cancel = mk('button', 'iadj-b wide', 'Cancelar'); cancel.type = 'button';
+      const ok = mk('button', 'iadj-b wide go', 'Usar imagem'); ok.type = 'button';
+      foot.append(cancel, ok);
+      card.append(head, stage);
+      if(ratios && ratios.length > 1){
+        const rr = mk('div', 'iadj-ratios'); rr.setAttribute('role', 'radiogroup'); rr.setAttribute('aria-label', 'Formato');
+        ratios.forEach((r, i) => {
+          const b = mk('button', 'iadj-chip', r.label); b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.i = String(i);
+          b.setAttribute('aria-checked', String(i === 0)); if(i === 0) b.classList.add('on');
+          b.addEventListener('click', () => { ridx = i; rr.querySelectorAll('.iadj-chip').forEach(c => { const on = c === b; c.classList.toggle('on', on); c.setAttribute('aria-checked', String(on)); }); layout(true); });
+          rr.appendChild(b);
+        });
+        card.appendChild(rr);
+      }
+      card.append(hint, ctr, row, foot); root.appendChild(card); document.body.appendChild(root);
+      requestAnimationFrame(() => root.classList.add('open'));
+
+      let W = 0, H = 0;                                   // tamanho do quadro em px de tela
+      const coverS = () => Math.max(W / st.bmp.w, H / st.bmp.h), containS = () => Math.min(W / st.bmp.w, H / st.bmp.h);
+      const maxS = () => Math.max(coverS(), containS()) * 4;
+      function clamp(){
+        const sw = st.bmp.w * st.s, sh = st.bmp.h * st.s;
+        const lim = (box, size) => size >= box ? (size - box) / 2 : (box - size) / 2;
+        const lx = lim(W, sw), ly = lim(H, sh);
+        st.x = Math.max(-lx, Math.min(lx, st.x)); st.y = Math.max(-ly, Math.min(ly, st.y));
+      }
+      function draw(){
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        if(cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)){ cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+        const cx = cv.getContext('2d'); cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, W, H);
+        cx.imageSmoothingQuality = 'high';
+        cx.drawImage(st.bmp.src, W / 2 + st.x - st.bmp.w * st.s / 2, H / 2 + st.y - st.bmp.h * st.s / 2, st.bmp.w * st.s, st.bmp.h * st.s);
+      }
+      function syncSlider(){ const a = containS(), b = maxS(); zr.value = String(Math.round(100 * (Math.log(st.s / a) / Math.log(b / a)))); }
+      function setScale(s, keep){
+        const a = containS(), b = maxS(); const ns = Math.max(a, Math.min(b, s));
+        if(keep){ const k = ns / st.s; st.x = keep.x + (st.x - keep.x) * k; st.y = keep.y + (st.y - keep.y) * k; }
+        st.s = ns; clamp(); syncSlider(); draw();
+      }
+      function layout(reset){
+        const maxW = Math.max(120, Math.min((stage.clientWidth || (window.innerWidth - 56)) - 4, 520)), maxH = Math.max(160, Math.min(window.innerHeight * 0.46, 420));
+        const ratio = ratioNow(); let w = maxW, h = w / ratio; if(h > maxH){ h = maxH; w = h * ratio; }
+        W = Math.round(w); H = Math.round(h); frame.style.width = W + 'px'; frame.style.height = H + 'px';
+        if(reset){ st.x = st.y = 0; st.s = coverS(); }
+        else { st.s = Math.max(containS(), Math.min(maxS(), st.s)); clamp(); }
+        syncSlider(); draw();
+      }
+      layout(true);
+      const onResize = () => layout(false); window.addEventListener('resize', onResize);
+
+      // gestos: um dedo arrasta, dois dedos dão zoom
+      const ptrs = new Map(); let g = null;
+      const center = () => { const r = cv.getBoundingClientRect(); return { x:W / 2, y:H / 2, ox:r.left, oy:r.top }; };
+      cv.addEventListener('pointerdown', e => { try{ cv.setPointerCapture(e.pointerId); }catch(err){} ptrs.set(e.pointerId, { x:e.clientX, y:e.clientY }); g = null; });
+      cv.addEventListener('pointermove', e => {
+        if(!ptrs.has(e.pointerId)) return;
+        const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, { x:e.clientX, y:e.clientY });
+        if(ptrs.size === 1){ st.x += e.clientX - prev.x; st.y += e.clientY - prev.y; clamp(); draw(); }
+        else if(ptrs.size === 2){
+          const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y), c = center(), mx = (a.x + b.x) / 2 - c.ox - W / 2, my = (a.y + b.y) / 2 - c.oy - H / 2;
+          if(g && g.d > 0) setScale(st.s * d / g.d, { x:mx, y:my });
+          g = { d };
+        }
+      });
+      const up = e => { ptrs.delete(e.pointerId); g = null; };
+      cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+      cv.addEventListener('wheel', e => { e.preventDefault(); const c = center(); setScale(st.s * (e.deltaY < 0 ? 1.12 : 1 / 1.12), { x:e.clientX - c.ox - W / 2, y:e.clientY - c.oy - H / 2 }); }, { passive:false });
+      zr.addEventListener('input', () => { const a = containS(), b = maxS(); setScale(a * Math.pow(b / a, (+zr.value) / 100)); });
+      zOut.addEventListener('click', () => setScale(st.s / 1.25)); zIn.addEventListener('click', () => setScale(st.s * 1.25));
+      rl.addEventListener('click', () => { st.q = (st.q + 3) % 4; st.bmp = rotated(img, st.q); layout(true); });
+      fit.addEventListener('click', () => { st.x = st.y = 0; setScale(coverS()); });
+      whole.addEventListener('click', () => { st.x = st.y = 0; setScale(containS()); });
+
+      function finish(res){
+        document.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize);
+        root.classList.remove('open'); setTimeout(() => root.remove(), 160);
+        if(revoke) URL.revokeObjectURL(img.src);
+        busy = false; resolve(res);
+      }
+      function onKey(e){
+        if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); finish(null); }
+        else if(e.key === 'Tab'){                              // foco preso dentro da tela
+          const f = [...card.querySelectorAll('button, input')].filter(n => !n.disabled && n.offsetParent !== null); if(!f.length) return;
+          const first = f[0], last = f[f.length - 1];
+          if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); } else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+        }
+      }
+      document.addEventListener('keydown', onKey, true);
+      xb.addEventListener('click', () => finish(null)); cancel.addEventListener('click', () => finish(null));
+      ok.addEventListener('click', () => {
+        let maxSide = opts.out || 160;
+        if(opts.noUpscale) maxSide = Math.max(16, Math.min(maxSide, Math.round((W >= H ? W : H) / st.s)));   // nunca amplia além dos pixels que a foto tem
+        const rt = ratioNow(), ow = Math.max(1, W >= H ? maxSide : Math.round(maxSide * rt)), oh = Math.max(1, W >= H ? Math.round(maxSide / rt) : maxSide), f = ow / W, fy = oh / H;
+        const out = document.createElement('canvas'); out.width = ow; out.height = oh;
+        const cx = out.getContext('2d'); cx.imageSmoothingQuality = 'high';
+        if(opts.fill){ cx.fillStyle = opts.fill; cx.fillRect(0, 0, ow, oh); }
+        cx.drawImage(st.bmp.src, (W / 2 + st.x - st.bmp.w * st.s / 2) * f, (H / 2 + st.y - st.bmp.h * st.s / 2) * fy, st.bmp.w * st.s * f, st.bmp.h * st.s * fy);
+        let data; try{ data = out.toDataURL('image/webp', opts.q || 0.82); if(!/^data:image\/webp/.test(data)) data = out.toDataURL('image/png'); }catch(e){ data = out.toDataURL('image/png'); }
+        finish({ data, w:ow, h:oh });
+      });
+      ok.focus();
+    })).catch(err => { busy = false; throw err; });
+  }
+
+  // arquivo -> texto data: ajustado (ou null se cancelou). GIF animado passa direto, sem ajuste.
+  async function pickImage(file, opts, fallbackResize){
+    const isGif = file && (file.type === 'image/gif' || /\.gif$/i.test(file.name || ''));
+    if(isGif) return fallbackResize(file, (opts && opts.out) || 160);
+    const r = await tvAdjustImage(file, opts);
+    return r ? r.data : null;
+  }
+  window.tvAdjustImage = tvAdjustImage;
+  window.__tvPickImage = pickImage;
 })();
