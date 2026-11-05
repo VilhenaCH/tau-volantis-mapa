@@ -375,3 +375,202 @@ O Tau Volantis agora pode ser instalado no celular ou no computador, com ícone 
 - Offline: o app abre e mostra os dados já carregados, mas sem sinal não há mapa-base nem sincronização.
 - No iPhone, o app instalado não compartilha dados com o Safari: quem instalar precisa entrar de novo na conta/campanha dentro do app (os dados da mesa continuam no Firebase). No Android o armazenamento costuma ser o mesmo do Chrome.
 - A aparência do ícone (floco de neve sobre fundo escuro) só dá para julgar vendo na tela inicial; trocar é só substituir os três PNGs mantendo os nomes e tamanhos.
+
+## 26. Mapa base "Nevado" (f13)
+
+Uma quarta opção em **Camadas → Mapa base**, ao lado de Ruas, Relevo e Satélite: o mapa fica com cara de terreno coberto de neve. Chão claro azulado, água cor de aço, estradas brancas, nomes em preto. Serve para as cenas de nevasca e combina com o clima do Tau.
+
+**Como funciona.** O Nevado usa **os mesmos blocos de rua** do OpenStreetMap, só que com um filtro de cor aplicado pelo CSS (`#map.snow-map .leaflet-tile-pane`). Não baixa nada novo, não gasta mais dados e não mexe em pins, tokens, áreas nem rotas. Duas faixas leves, que **não pegam toques**: uma geada clara na borda da tela e uma sombra escura no topo, para o título do cabeçalho continuar legível sobre o chão claro.
+
+**Arquivos que mudam:** `index.html` (botão Nevado; links `?v=f13`), `app.js` (3 trechos na troca de camada: `setLayer`, `activeLayerBtnId` e o clique do botão) e `style.css` (filtro, geada, sombra do topo e botões de camada em grade 2×2, porque agora são quatro). Nenhum arquivo novo.
+
+**Detalhes.**
+- Como as outras camadas, a escolha vale só para este aparelho e **não fica guardada**: ao recarregar, volta para Ruas.
+- Não depende do clima. A nevasca animada continua sendo do botão Clima; os dois se somam (Nevado + Nevasca fica bem pesado de neve).
+- Para mudar a intensidade: o filtro está numa linha só no `style.css`, em `#map.snow-map .leaflet-tile-pane`. Menos `brightness` (0.66) escurece o chão; menos `contrast` (2.4) deixa as estradas menos marcadas; `hue-rotate` (172deg) troca o tom do azul.
+
+**Testes.** Suíte nova `t_f13snow` (19 verificações, 3 execuções seguidas sem falha): botão no lugar certo; classe e filtro ligam e desligam ao trocar entre as quatro camadas; só um botão fica ativo; o menu mostra "Camada: Nevado"; usa os mesmos blocos; as faixas não bloqueiam toque em marcadores; ferramentas de pin não derrubam o botão ativo; recarregar volta a Ruas; sem erros no console. A bateria antiga continua igual.
+
+**Não verificado.** Os blocos do mapa não carregam no ambiente de teste (rede restrita), então a aparência foi ajustada com **blocos de teste parecidos com os do OpenStreetMap** (chão bege, parque verde, água azul, estradas brancas e laranja). Num mapa real de São Paulo pode ficar um pouco mais claro ou mais escuro: se achar claro demais ou escuro demais, é só me dizer. Eu também não vi em celular de verdade.
+
+## 27. Áreas novas (f14)
+
+A ferramenta de áreas foi refeita: formas mais fáceis de desenhar, predefinições, cor/ícone/movimento/efeito por área e um nome pequeno que se agrupa.
+
+**Desenhar.** Em **Mais → Adicionar ao mapa → Áreas** continuam os três botões (Área livre, Retângulo, Círculo), mas agora abre uma **barra de desenho** no topo, com as 14 predefinições para escolher antes de desenhar (a última escolhida fica lembrada):
+- **Círculo:** toque no centro; aparecem duas alças. Arraste a alça da borda para o raio (a barra mostra "Raio 120 m"), a do centro para mover, ou toque em outro ponto do mapa. **Concluir** cria. (Antes eram 2 cliques, sem como ajustar.)
+- **Retângulo:** toque em um canto e depois no canto oposto.
+- **Área livre:** toque nos pontos; **Desfazer** tira o último; fecha tocando no primeiro ponto ou em **Concluir** (3 pontos ou mais). Não precisa mais de duplo toque.
+- ESC, **Cancelar** ou tocar de novo no botão cancela. Ao concluir, a área nasce com o nome da predefinição e a folha de edição abre.
+
+**Editar.** Tocar numa área (ou no nome dela, ou "ir até" na lista de Camadas) abre a **folha da área**, sem escurecer o mapa, para ver o efeito na hora. Tudo salva sozinho:
+- **Nome** e **Anotação**; **Predefinição** (14 opções); **Cor** (12 cores + qualquer cor); **Ícone** (20 opções, ou nenhum);
+- **Movimento dos ícones:** Parado, Cair, Subir, Deslizar; **Efeito da área:** Nenhum, Pulso, Raios (clarões irregulares), Borda (a borda "corre");
+- **Intensidade** (3% a 60%), **Quantidade de ícones**, **Borda** (lisa, tracejada, pontilhada, sem borda), **Nome no mapa** (Automático, Sempre, Oculto);
+- **Raio (metros)** nos círculos; **Editar contorno**: no polígono, arraste os pontos, toque num "+" para criar um ponto novo, selecione um ponto e use **Remover ponto**; no círculo, arraste o centro e a borda; **Duplicar**; **Excluir** (pede confirmação).
+- Predefinições: Zona perigosa (caveiras, pulsa), Criaturas (garras, borda correndo), Chuva (gotas caindo), **Tempestade** (roxa, gotas caindo e raios piscando), Nevasca, Neblina, Radiação, Fogo (chamas subindo), Gás tóxico (bolhas subindo), Anomalia, Água, Zona segura, Território, Livre. Qualquer uma pode ser mudada depois.
+
+**Nome no mapa.** A caixa grande e fixa virou uma **etiqueta pequena** (fonte 9,6 px, uma linha, borda na cor da área). Quando duas etiquetas se encostam, elas viram **"N áreas"** (toque para aproximar); áreas minúsculas na tela viram um **pontinho**. Com "Sempre" a etiqueta nunca agrupa; com "Oculto" não aparece.
+
+**Como é desenhado.** Cada área com ícone usa um **padrão SVG** (fundo colorido + ícones) e o movimento/raios são animações do próprio padrão; pulso e borda são animações CSS da linha. Em **Camadas → Áreas** há o botão **Animar áreas** (vale só neste aparelho; também desliga sozinho com "reduzir movimento" do sistema). Desligado, os ícones ficam parados e nada pisca.
+
+**Dados.** Cada área ganha um campo `st` (cor, ícone, movimento, efeito, intensidade, quantidade, borda, nome no mapa e a predefinição de origem). **Áreas antigas não mudam**: sem `st` seguem laranja, tracejadas, 10% e sem ícone, só com a etiqueta pequena. Círculo continua `{type:'circle', center, radius}` e o resto continua em `geojson`, então nada que já estava salvo quebra e **as regras do Firebase não precisam mudar** (shapes só exigem login).
+
+**Arquivos que mudam:** `app.js`, `index.html` (barra de desenho, folha da área, botão "Animar áreas"; `?v=f14`; o **Leaflet Draw saiu**, o app não carrega mais esse script nem o CSS dele) e `style.css`. Nenhum arquivo novo. O `tv-sons.mp3`, `sw.js` e ícones não mudam.
+
+**Testes.** Suíte nova `t_f14areas` (74 verificações, 2 execuções seguidas sem falha): agrupamento e ponto das etiquetas; etiqueta pequena e sem a caixa antiga; área antiga idêntica ao visual anterior; padrões e animações por predefinição; animações ligar/desligar; abrir a folha; todos os controles (predefinição, cor, ícone, movimento, efeito, quantidade, borda, nome no mapa, intensidade, nome, raio) gravando e refletindo no mapa; folhas que se excluem; filtro Perigos; desenhar círculo (alça, toque, barra), retângulo e polígono (desfazer, fechar no primeiro ponto, ESC); editar contorno de polígono (arrastar, "+", remover) e de círculo; duplicar; excluir. Suítes antigas atualizadas só onde o Leaflet Draw saiu (`t_pwa`).
+
+**Não verificado.** Não vi em celular de verdade: o arrastar das alças foi testado com mouse simulado no Chromium, e o toque no celular usa o mesmo mecanismo do Leaflet, mas vale conferir. As animações foram conferidas no Chromium; o Safari (iPhone) trata animação dentro de padrão SVG de forma um pouco diferente e o desempenho com muitas áreas animadas ao mesmo tempo não foi medido (por isso o botão para desligar). Eu não vejo as animações em movimento, só os quadros parados: o efeito de raios e a velocidade da chuva precisam do seu olho.
+
+
+## 28. Molduras de personagens e NPCs (f15)
+
+Personagens, NPCs e tokens do mapa tático ganharam **molduras**: um anel (ou forma) ao redor do avatar, com 14 estilos e cor própria. Vale no **mapa de campo** e no **tático**.
+
+**Estilos.** Padrão (sem moldura, o visual de sempre), Anel, Duplo, Aro grosso, Tracejado, Pontilhado, **Metálica**, **Dentada**, **Alerta** (listras), Brilho, **Pulso** (anima), **Órbita** (anima) e três **formas**: Hexágono, Octógono e Escudo (o avatar também é recortado na forma). A cor é a do token, ou uma cor própria da moldura.
+
+**Como escolher.**
+- **Personagem (token) e NPC:** no popup, o bloco **Moldura** (recolhido; toque para abrir) com 15 botões, "usar a cor do token" ou uma cor própria, e a prévia de 64 px já mostra o resultado. **Salvar** grava.
+- **Mapa tático:** tokens ligados a um personagem ou NPC do mapa **herdam a moldura dele** (nada é copiado para o banco tático; trocou no mapa, o tático acompanha). Os tokens criados no tático (inimigo, aliado, objeto) têm o próprio seletor no painel do token (só o mestre), gravado em `t.fr`.
+- Pilhas/grupos mostram a moldura do líder da pilha.
+
+**Dados.** Campo novo `fr = { s:'metal', c:'#rrggbb' }` (c vazio = cor do token) em token, NPC (pin) e token tático. "Padrão" apaga o campo. Valor desconhecido ou corrompido é ignorado (vira sem moldura). Os tokens antigos não mudam. **As regras do Firebase não precisam mudar** (não validam campos).
+
+**Como é desenhado.** Um elemento-anel (`.fr-ring`) vai antes do avatar, atrás dele, com a pintura no `::before` (assim a forma recorta só a pintura e o marcador ▶ de vez e o cadeado ficam fora do recorte). No tático, seleção, vez e oculto passam para o anel quando há moldura. As animações (Pulso, Órbita) seguem o botão de Camadas, que agora se chama **"Animar áreas e molduras"**, e o "reduzir movimento" do sistema (`html.tv-still`).
+
+**Outros ajustes feitos no caminho.**
+- **Corrigido (bug antigo):** salvar o popup de um token deixava **o marcador duplicado** no mapa (o fechamento do popup disparava um segundo redesenho dentro do primeiro). Valia desde antes do f12; agora só redesenha se o marcador ainda está no mapa.
+- **Popups altos** (token com seletor aberto, ficha etc.) agora respeitam a faixa do cabeçalho e do dock ao se posicionar, em vez de abrir por trás deles; ao abrir o seletor de moldura o popup se reajusta.
+
+**Arquivos que mudam:** `app.js`, `index.html` (`?v=f15` e o texto do botão de animações) e `style.css`. Nenhum arquivo novo.
+
+**Testes.** Suíte nova `t_f15frames` (68 verificações): moldura só onde foi escolhida, cor própria x cor do token, geometria (anel 10 px maior e centrado), formas, cadeado, valor inválido ignorado, seletor recolhido com alvo de toque, prévia ao vivo, gravar/reabrir/"Padrão" apagando o campo, sem marcador duplicado, popup abaixo do cabeçalho e acima do dock, NPC, animações ligar/desligar, tático (herdado, próprio, aviso nos ligados, vez de combate, acompanhar a troca feita no mapa).
+
+**Não verificado.** Não vi em celular de verdade nem no Safari (`color-mix` precisa de iOS 16.2+; em aparelho mais antigo a Metálica e as formas viram um aro de cor lisa em vez do degradê metálico, mas o app funciona). Vi só quadros parados de Pulso e Órbita. O mapa de fundo não carregou no ambiente de teste (sem internet), então a leitura das molduras sobre o mapa real das ruas não foi conferida.
+
+## 29. Lugar (f16)
+
+Novo tipo de marcador, o **Lugar**: um ponto do mapa com cara de cartão ("lugar para explorar"), que pode ser vasculhado, ter imagem, tags, NPCs, mapa tático e área.
+
+**Como criar.** Barra de pins → **Lugar** → toque no mapa. A folha do Lugar abre já em modo edição. Tocar no marcador depois abre o **cartão** (a edição fica recolhida em "Editar lugar").
+
+**O que o cartão mostra.** Imagem de representação (ou o ícone da categoria), categoria, estado de exploração (Inexplorado / Explorado parcialmente / Explorado / Esgotado / Bloqueado), nome, risco (desconhecido, baixo, médio, alto), distância até o seu personagem, tags, anotação, "Quem está aqui" (NPCs) e os botões **Vasculhar**, **Conteúdo** e **Mapa tático**.
+
+**Categoria.** Qualquer tipo de pin (saque, médico, perigo, ameaça, abrigo, veículo…). Define o ícone e a cor do marcador. O marcador é um quadrado arredondado (para não se confundir com os pins redondos), com o nome embaixo; muda de aparência conforme o estado de exploração.
+
+**Vasculhar com várias fontes.** O mestre marca quantas tabelas de saque quiser (casas, farmácias, bases, veículos, oficinas, mercados, acampamentos, fazendas, florestas, rios, anômalos). A busca sorteia os itens **de todas as fontes marcadas**, em rodízio, sem repetir item. Também define a faixa de itens por busca (0 a 8), a capacidade e se está bloqueado. O restante da regra de contêiner (busca única, mestre reabastece, esvazia, bloqueia) é a mesma de sempre. Lugar **sem fontes** não tem botão Vasculhar nem estado.
+
+**NPCs.** O mestre liga NPCs ao lugar com uma certeza: **Certo**, **Provável**, **Boato** ou **Oculto** (só o mestre vê). Tocar no NPC leva o mapa até ele.
+
+**Mapa tático.** O mestre escolhe uma cena do Tático para o lugar. O botão abre a cena (jogador só abre se ela estiver ativa); "Ativar p/ o grupo" a torna a cena ativa.
+
+**Áreas.** Dois jeitos: **raio** (círculo centrado no lugar, que acompanha o lugar quando ele é movido) e **ocupação** (polígono desenhado à mão). A área ligada ao lugar sai junto quando o lugar é excluído; as outras áreas não são tocadas. O estilo inicial vem da categoria (perigo, criaturas, radiação, água, zona segura, território) e pode ser mudado em "Estilo da área".
+
+**Posicionar bem à mão.** "Reposicionar no mapa": um toque no mapa leva o lugar (e o raio) para lá; Esc cancela. Arrastar o marcador também move o raio.
+
+**Dados.** Pin com `type:'lugar'` e campo `lg = { cat, img, tags[], src[], risk, npcs[{id,c}], scene, min, max }`; área ligada tem `placeId` e `follow`. A imagem pode ser um endereço ou um arquivo reduzido (guardado em base64 dentro do pin; limite de ~220 KB). As regras do Firebase não mudam.
+
+**Arquivos que mudam:** `app.js`, `index.html` (`?v=f16` e a folha `#lugar-sheet`) e `style.css`. Nenhum arquivo novo. O `app.js` expõe `window.__tvLoot` só para os testes (como já havia `__tvMap`).
+
+**Testes.** Suíte nova `t_f16lugar` (84 verificações): criação, categoria/cor do marcador, cartão, tags, imagem (arquivo, endereço válido e inválido), três fontes (seis buscas de 8 itens: nenhum item de fora, nenhuma repetição, cada fonte com itens exclusivos), NPCs com certeza, tático, raio/ocupação, reposicionar, exclusão que leva só a área do lugar, arrastar o marcador com o raio. Regressão completa das suítes antigas.
+
+**Não verificado.** Celular de verdade e Safari; a visão do jogador (o NPC "Oculto" some para quem não é mestre, mas só testei como mestre); animações só em quadros; mapa real (sem tiles aqui). Imagens grandes pesam no salvamento da lista de pins.
+
+## 30. Lugar: fixar, miniatura do NPC, agrupar no zoom · seletores sem o branco do navegador (f17)
+
+**Lugar.**
+- **Fixar:** botão **Fixar/Fixado** no cartão e **Fixar no mapa** na edição. Fixado = o marcador não é arrastado por engano (aparece o cadeado). "Reposicionar no mapa" continua funcionando. Quem pode editar o lugar pode fixar.
+- **NPCs ligados:** cartão e edição mostram a **miniatura** do NPC (a foto dele no mapa; sem foto, a bolinha da cor dele com o ícone) ao lado do nome.
+- **Agrupar ao afastar:** o Lugar entra nos grupos do zoom afastado junto com tokens, NPCs, veículos e abrigos ("2 lugares" na descrição do grupo). A **área ligada ao lugar** (raio ou ocupação) e o nome dela somem junto com o marcador enquanto ele está dentro de um grupo, e voltam ao aproximar. Áreas soltas não mudam. Vale o mesmo botão "Agrupar ao afastar" do menu.
+
+**Sem branco do navegador (todo o app).**
+- **`<select>`:** a lista nativa (branca, com azul) nunca mais abre. O seletor continua sendo o mesmo elemento (o resto do app lê e grava como antes), mas o toque abre uma **lista própria**: no celular uma folha escura de baixo (alvos de 44 px, opção atual marcada, botão ×), no computador uma lista colada ao campo. Esc, tocar fora, setas, Enter/espaço, Home/End e digitar a primeira letra funcionam. A escolha dispara `input` e `change` normalmente.
+- **Sugestões de campo** (`<input list=…>`, usados no nome de itens e perícias): a caixa branca do navegador foi trocada por uma lista própria sob o campo; filtra sem acento ("alco" acha "Álcool").
+- **Botão "Escolher arquivo"** e o texto ao lado agora usam as cores do app. `color-scheme: dark` deixa escuros os controles nativos que sobraram (seletor de data, barras de rolagem).
+- Seletor de **cor** (círculo de cor) e de **data** continuam nativos, mas escuros.
+
+**Arquivos que mudam:** `app.js`, `index.html` (`?v=f17`) e `style.css`.
+
+**Testes.** Suíte nova `t_f17` (46 verificações): miniatura com e sem foto, fixar/soltar (arrastar não move quando fixado; volta a mover solto), grupo de lugares com a área escondida e devolvida, toque no grupo aproxima, lista própria no celular e no desktop (fundo escuro, opção marcada, Esc, tocar fora, teclado, seletor desativado não abre, escolher dispara um `change` e o fluxo de ligar NPC funciona pela lista), sugestões, botão de arquivo escuro. Regressão completa das suítes antigas.
+
+**Não verificado.** Celular de verdade: o bloqueio da lista nativa funciona por CSS (`pointer-events:none`) e não depende do tipo de navegador, mas só vi em Chromium simulado. Também não vi o seletor de cor/data nativos em aparelho.
+
+## 31. Ajuste de imagem em todos os uploads (f18)
+
+**Pedido:** a função de ajustar a imagem enviada (enquadrar, aproximar) em todo lugar onde dá para enviar imagem: NPCs, tokens, o novo Lugar e a cena do modo tático.
+
+**O que mudou.** Uma tela própria de ajuste abre logo depois de escolher o arquivo:
+- **Mover** a imagem arrastando; **aproximar/afastar** com o gesto de pinça, a roda do mouse ou os botões − e +; **girar** de 90 em 90 graus.
+- **Proporções** quando o destino aceita mais de uma (cena: Original, 16:9, 4:3, 1:1; Lugar: retângulo próprio; NPC e token: círculo 1:1 com prévia da moldura).
+- O resultado sai **no tamanho exato** do destino (160 px para NPC/token), então o que aparece na tela é o que fica guardado. Na cena (até 1600 px) e no Lugar (até 600 px) a imagem **nunca é ampliada** além dos pixels que a foto tem: uma foto de 900 px continua com 900 px (corrigido na f19; na f18 ela era esticada até o máximo).
+- **Cancelar** não grava nada (na cena, nem cria a cena).
+- **GIF animado** continua passando direto, sem ajuste, para não perder a animação.
+
+**Onde entrou:** foto do NPC (ao escolher e botão "Ajustar" depois), imagem do token (idem), imagem do Lugar (ao escolher e botão "Ajustar" para reenquadrar a que já está lá) e mapa da cena tática. O envio de backup (.json) não é imagem e não mudou.
+
+**Arquivos que mudam:** `app.js`, `index.html` (`?v=f18`) e `style.css`.
+
+**Testes.** Suíte nova `t_f18` (39 verificações): abrir/cancelar/confirmar, tamanho exato de saída, arrastar e aproximar mudam o recorte, girar troca as dimensões, proporções, GIF direto, cada um dos quatro destinos. Duas suítes antigas (`t_f16lugar`, `t_tac`) passaram a clicar em "Usar imagem", porque agora existe essa etapa. Regressão completa verde.
+
+**Não verificado.** Pinça com dois dedos em aparelho de verdade (testei com eventos de ponteiro simulados).
+
+## 32. Rotas novas: tocar para traçar, estilo, nome pequeno que agrupa (f19)
+
+**Pedido:** a ferramenta "Medir rota" era arcaica, o duplo clique falhava, no celular era ruim de traçar com precisão, o nome ficava enorme na tela e não agrupava com os outros itens; e queriam cor, tracejado e ícones como nas áreas.
+
+**Desenhar (agora "Traçar rota").** Usa a mesma barra de desenho das áreas:
+- **Um toque marca um ponto.** Sem duplo clique. Para terminar: toque de novo no último ponto ou no botão **Concluir**.
+- **Desfazer** tira o último ponto; **Cancelar** (ou Esc) descarta tudo. Pontos já marcados se **arrastam** para ajustar.
+- A barra mostra a instrução do momento e, ao vivo, a **distância e o número de pontos**.
+- Enquanto desenha, o zoom por duplo toque fica desligado (era isso que atrapalhava no celular). Tocar sobre outra rota durante o desenho só marca um ponto, não abre a folha dela.
+- Escolha a **predefinição** na própria barra (a escolhida é lembrada): Trilha, Estrada, Rota de fuga, Patrulha, Comércio, Perigosa, Rio/água, Comboio e Livre.
+
+**Folha da rota** (toque na linha; faixa de toque de 26 px de largura, fácil de acertar com o dedo). Mesma aparência da folha das áreas, salva sozinha:
+- Nome, predefinição, **cor** (paleta + qualquer cor), **traço** (lisa, tracejada, pontilhada, traço e ponto), **espessura** (fina, média, grossa).
+- **Ícone repetido ao longo da linha** (os das áreas + pegadas, carro, abrigo, suprimentos, combustível, médico).
+- **Movimento da linha:** parada, fluxo (faixa clara correndo) ou pulso. Respeita o botão "Animar áreas, rotas e molduras" e a opção de movimento reduzido do aparelho.
+- **Sentido e pontas:** setas ao longo da linha, ponto de partida e bandeira de chegada, ou os dois.
+- **Nome no mapa:** automático, sempre ou oculto. Anotação. Distância, pontos e tempo estimado por tipo de deslocamento (como antes).
+- **Editar pontos** (arrastar alças, "+" no meio de cada trecho cria um ponto, "Remover ponto"; mínimo de 2), **Inverter sentido**, **Duplicar**, **Excluir**.
+
+**Nome da rota no mapa.** Em vez da caixa grande de antes, uma etiqueta pequena (nome · distância) que **agrupa** como a das áreas: quando duas se encostam viram "N rotas" (toque aproxima o mapa). Quando rotas e áreas se encostam o grupo diz "N itens".
+
+**Rotas antigas** continuam iguais (azul-gelo, fina, pontilhada) até você mudar o estilo. O estilo fica em `route.st` dentro da própria rota; não precisa mexer nas regras do Firebase.
+
+**Outras mudanças:** a cor da rota aparece na lista da folha Camadas; "Camadas → Animar áreas e molduras" agora também cobre as rotas; o botão do menu passou de "Medir rota" para "Traçar rota". O balão antigo da rota foi removido (a folha o substitui).
+
+**Arquivos que mudam:** `app.js`, `index.html` (`?v=f19`) e `style.css`.
+
+**Testes.** Suíte nova `t_f19routes` (85 verificações): rota antiga preservada, faixa de toque, etiqueta pequena e grupo, folha completa (cada controle muda a linha e é salvo), desenhar por toque (desfazer, arrastar, concluir, toque sobre outra rota), editar pontos, inverter/duplicar/excluir, camada Rotas, animações, dados ruins. As suítes `t_f4m` e `t_f4z` foram ajustadas ao desenho novo (várias linhas por rota; barra de desenho em vez da dica antiga). Regressão completa.
+
+**Não verificado.** Toque com o dedo em celular de verdade (testei com cliques simulados em tela de 390 px). As rotas já existentes em campanhas salvas não foram tocadas, mas só testei com dados de exemplo.
+
+**Correção junto (ajuste de imagem).** Foto pequena de cena ou de Lugar não é mais esticada até o tamanho máximo (opção `noUpscale`). `t_f18` ganhou verificações (40) e `t_tac`/`t_f15frames` foram atualizadas (clicar em "Usar imagem"; novo texto do botão de animação).
+
+## 33. Ficha de Ordem Paranormal em cartão do agente (f20)
+
+**Pedido:** deixar a ficha automática de Ordem Paranormal com cara de ficha de jogador (retrato, vida, defesa, esquiva, bloqueio), completa mas simples, bonita e com a identidade da Ordem, usando os símbolos originais que você enviou. Recursos: **só PV e PD** (PD é o principal; não existe PE nem Sanidade). Ordem Paranormal continua sendo uma **opção**: a ficha só aparece nos personagens migrados.
+
+**Cartão (topo da ficha).** Foto do token, nome, classe · origem, NEX, nível, jogador e a logo. Duas barras grandes, **PV** (vermelha) e **PD** (azul), com − e + de 44 px. Abaixo, **DEF · ESQ · BLO** e as condições ativas. Com uma **afinidade** escolhida (Sangue, Morte, Conhecimento, Energia ou Medo), o cartão ganha a cor e o símbolo do elemento como marca-d'água.
+
+**Fórmulas (confirmadas por você).** Defesa = 10 + AGI + equipamento + outros (Vulnerável −2). Esquiva = Defesa + bônus da perícia Reflexos. Bloqueio = bônus da perícia Fortitude. "Bônus da perícia" = treinamento + campo Outros; as penalidades de condição não entram em Esquiva e Bloqueio. Campos novos (todos opcionais): `card.defense.{equip, other, dodge, block}`.
+
+**Quatro abas.**
+- **Agente:** o **pentágono original** com o valor de cada atributo dentro do círculo. Toque no círculo para rolar o atributo (d20 pelo valor, fica o maior; com 0, 2d20 e fica o menor; condições entram). Botão **Editar** troca os números por campos. NEX e nível com − e +. Nome, classe, origem, jogador, afinidade, PV/PD atual e máximo; embaixo seguem lembretes, anotações, equipamento, necessidades e "voltar ao formato antigo".
+- **Perícias:** busca (ignora acento), filtros (Todas, Treinadas, AGI, FOR, INT, PRE, VIG). O selo de cada perícia muda o treinamento com um toque (— → +5 → +10 → +15). Tocar no nome abre treinamento, atributo e bônus. Os totais são os mesmos de antes.
+- **Combate:** defesa, esquiva e bloqueio com a conta explicada e os campos editáveis; ataques e condições como antes.
+- **Poderes:** **rituais** e **habilidades** em cartões coloridos pelo elemento, com filtro por elemento e por círculo. Ritual: elemento, círculo (I a IV), DT, e as formas Normal / Discente / Verdadeiro com custo em PD e dados de cada uma. **Conjurar** desconta o custo da barra de PD (avisa "PD insuficiente" e não gasta se faltar) e rola os dados; **Só rolar** não gasta. Habilidade: tipo, elemento, custo e dados opcionais. Nomes e efeitos vêm **em branco**: a mesa escreve com as próprias palavras.
+
+**Mini-ficha lateral (desktop):** mostra DEF · ESQ · BLO.
+
+**Símbolos dos elementos** (arquivos `op-sym-<elemento>.png`, 512×512, brancos com transparência; a cor vem do CSS): Sangue = cruz com base larga, Morte = espiral de anéis com raios, Conhecimento = roda de glifos, Energia = "V" com asas, Medo = gancho com duas bolinhas. A associação foi corrigida por você (os arquivos chegaram sem o nome do elemento). Para trocar um, basta trocar o arquivo. Também novos: `op-atributos.png` (pentágono) e `op-logo.png`.
+
+**Valores padrão não conferidos no livro** (todos editáveis): custo por círculo (I = 1, II = 3, III = 6, IV = 10 PD) e DT automática (10 + PRE, só quando o campo DT está vazio).
+
+**Arquivos que mudam:** `app.js`, `style.css`, `index.html` (`?v=f20`), `sw.js` (lista de arquivos guardados) e as 7 imagens `op-*.png`.
+
+**Testes.** Suíte nova `t_f20op` (83 verificações): cartão, fórmulas, pentágono, abas, filtros, rituais (gastar PD, falta de PD, formas), habilidades, permissões, símbolos, 360/390/420 px. `t_f2` e `t_f5pool` foram adaptadas às abas.
+
+**Não verificado.** Toque com o dedo em celular de verdade; a associação símbolo ↔ elemento depende da sua conferência; o repositório é público e o site oficial diz "All Rights Reserved" (aviso já dado).
+
+**Também corrigido:** o formulário de nova perícia e de nova condição agora guarda o que você digitou ou escolheu se a tela for redesenhada antes de tocar em Adicionar.

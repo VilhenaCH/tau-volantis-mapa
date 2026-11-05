@@ -233,7 +233,8 @@
     drop:'<path d="M12 2.5s6.5 7.2 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 9.7 12 2.5 12 2.5Z"/>',
     copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
     lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
-    unlock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/>'
+    unlock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/>',
+    shield:'<path d="M12 3l7 2.6v5.6c0 4.6-3 8.3-7 10-4-1.7-7-5.4-7-10V5.6z"/>'
   };
   function ic(name, size){
     const s = size || 20;
@@ -6828,6 +6829,7 @@
   }
 
   // --- ficha ---
+  const opTabNow = () => OP_TABS.some(t => t[0] === hub.opTab) ? hub.opTab : 'agente';
   function renderFicha(){
     const hl = holderList();
     if(!hl.length) return '<div class="inv-empty">Crie um token ou NPC no mapa para ter uma ficha.</div>';
@@ -6841,7 +6843,7 @@
     if(ordem){
       // ficha nova (Ordem Paranormal); os campos antigos (anotações, lembretes, necessidades, atalhos) continuam existindo
       html += renderFichaOrdem(h, card, dis);
-      if(cm.identity) html += renderReminders(card, dis);
+      if(cm.identity && opTabNow() === 'agente') html += renderReminders(card, dis);
     } else {
       html += opBanner(card, edit);
       if(cm.identity){
@@ -6859,21 +6861,22 @@
           <button type="button" class="inv-mini-btn" data-act="skill-add" ${dis}>${ic('plus', 16)} Perícia</button>`;
       }
     }
-    if(cm.notes) html += `<div class="hub-label">Anotações</div><textarea data-bind="card.notes" rows="4" ${dis}>${esc(card.notes)}</textarea>`;
+    const xs = !ordem || opTabNow() === 'agente';       // na ficha de Ordem, notas, equipamento e necessidades ficam na aba Agente
+    if(cm.notes && xs) html += `<div class="hub-label">Anotações</div><textarea data-bind="card.notes" rows="4" ${dis}>${esc(card.notes)}</textarea>`;
     if(!ordem) html += renderFichaExtras(h, card, dis);
-    if(cm.equip){
+    if(cm.equip && xs){
       const eq = equippedItems(h.id);
       html += `<div class="hub-label">Equipamento</div>${eq.length ? '<ul class="craft-ing">' + eq.map(i => `<li>${esc(slotLabel(i.slot))}: ${esc(i.name)}${i.cond != null ? ' · ' + esc(COND_LEVELS[i.cond]) : ''}</li>`).join('') + '</ul>' : '<p class="hub-hint">Nada equipado.</p>'}
         <p class="hub-hint">Inventário ${esc(capTxt(h.id))}</p><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(h.id)}">${ic('bag', 16)} Abrir inventário</button>`;
     }
-    if(mods.needs){
+    if(mods.needs && xs){
       const w = WEATHER_STATES[weather.state] || WEATHER_STATES.calmo;
       html += `<div class="hub-label">Necessidades (registro; o mestre decide os efeitos)</div><p class="hub-hint">${ic(w.icon, 14)} Clima agora: <b>${esc(w.label)}</b>. ${esc(w.desc)}${w.eff.length ? ' Efeitos: ' + esc(w.eff.join('; ')) + '.' : ''}</p>` + NEED_LIST.map(n => {
         const v = (card.needs && card.needs[n[0]]) || 0;
         return `<div class="need-row"><span>${n[1]}</span><button type="button" class="die-btn" data-act="need" data-n="${n[0]}" data-d="-1" ${dis} aria-label="Reduzir ${n[1]}">−</button><b class="need-v">${NEED_LEVELS[v]}</b><button type="button" class="die-btn" data-act="need" data-n="${n[0]}" data-d="1" ${dis} aria-label="Aumentar ${n[1]}">+</button></div>`;
       }).join('');
     }
-    if(ordem && edit) html += `<div class="hub-label">Formato da ficha</div><button type="button" class="inv-mini-btn" data-act="op-revert">Voltar ao formato antigo</button><p class="hub-hint">Os dados antigos (perícias e recursos) foram guardados na migração e voltam como estavam.</p>`;
+    if(ordem && edit && xs) html += `<div class="hub-label">Formato da ficha</div><button type="button" class="inv-mini-btn" data-act="op-revert">Voltar ao formato antigo</button><p class="hub-hint">Os dados antigos (perícias e recursos) foram guardados na migração e voltam como estavam.</p>`;
     return html + '</div>';
   }
 
@@ -7362,7 +7365,7 @@
   function opCompText(r){
     const sh = r.sheet || {}, t0 = r.terms && r.terms[0];
     let base;
-    if((sh.kind === 'skill' || sh.kind === 'attack') && t0 && t0.dice && t0.dice.length){
+    if((sh.kind === 'skill' || sh.kind === 'attack' || sh.kind === 'attr') && t0 && t0.dice && t0.dice.length){
       const n = t0.dice.length, at = sh.attr ? ' (' + opAttrLabel(sh.attr) + (sh.val != null ? ' ' + sh.val : '') + ')' : '';
       base = n === 1 ? 'd20' + at + ': ' + t0.value
         : n + 'd20 ' + (sh.keep === 'kl' ? 'menor' : 'maior') + at + ' [' + t0.dice.map(fmtDie).join(', ') + '] → ' + t0.value;
@@ -7490,6 +7493,7 @@
       const key = def ? def[0] : 'x_' + opSlug(txt);
       if(card.skillsV2[key]){ toast('Essa perícia já está na ficha.', true); return; }
       card.skillsV2[key] = def ? { training:'none', bonus:0 } : { training:'none', bonus:0, name:txt, attr:attr || '' };
+      hub.opSkNew = ''; hub.opSkNewAttr = '';
     }
     scheduleSaveCard(); renderHub();
   }
@@ -7521,6 +7525,7 @@
     const card = ensureCard(id), h = holderById(id);
     if(key !== 'outra' && (card.conditions || []).some(c => c.key === key)){ toast('Essa condição já está ativa.', true); return; }
     const c = { id:newUid('cd_'), key, note };
+    hub.opCondNote = '';
     card.conditions = (card.conditions || []).concat([c]);
     scheduleSaveCard(); renderHub();
     // aparece no feed e na linha do tempo da mesa
@@ -7538,15 +7543,113 @@
     let v = opNum(r.cur) + d; v = Math.max(0, opNum(r.max) > 0 ? Math.min(opNum(r.max), v) : v);
     r.cur = v; scheduleSaveCard(id); if(hubIsOpen() && hub.charToken === id) renderHub(); hudMiniChanged();
   }
-  // ---- desenho da ficha ----
-  function opBar(card, k, dis){
-    const r = opRes(card, k), pct = r.max > 0 ? Math.max(0, Math.min(100, Math.round(r.cur / r.max * 100))) : 0, low = r.max > 0 && r.cur / r.max < 0.3, nm = OP_RES[k];
-    return `<div class="op-res"><div class="op-res-head"><b title="${esc(nm[1])}">${nm[0]}<small>${esc(nm[1])}</small></b><span class="op-val">${low ? ic('alert', 14) : ''}${r.cur} / ${r.max}</span></div>
-      <div class="op-res-top"><button type="button" class="die-btn" data-act="op-res" data-k="${k}" data-d="-1" aria-label="Reduzir ${esc(nm[1])}" ${dis}>${ic('minus', 16)}</button>
-      <div class="op-bar${low ? ' low' : ''}" style="--c:${nm[2]}" role="meter" aria-valuemin="0" aria-valuemax="${r.max}" aria-valuenow="${r.cur}" aria-label="${esc(nm[1])}: ${r.cur} de ${r.max}"><i style="width:${pct}%"></i></div>
-      <button type="button" class="die-btn" data-act="op-res" data-k="${k}" data-d="1" aria-label="Aumentar ${esc(nm[1])}" ${dis}>${ic('plus', 16)}</button></div>
-      <div class="op-res-edit"><label>atual<input type="number" min="0" data-bind="card.resources2.${k}.cur" data-num data-sheet value="${esc(String(r.cur))}" ${dis}></label><label>máximo<input type="number" min="0" data-bind="card.resources2.${k}.max" data-num data-sheet value="${esc(String(r.max))}" ${dis}></label></div></div>`;
+  // ---- f20: cartão do agente, abas e poderes ----
+  // Símbolo e cor de cada elemento (o desenho vem de op-sym-<chave>.png; a cor é do CSS). Troca de símbolo = trocar o arquivo.
+  const OP_ELEM = {
+    sangue:{ n:'Sangue', c:'#ff5a5f' }, morte:{ n:'Morte', c:'#d6d6de' }, conhecimento:{ n:'Conhecimento', c:'#f2c14e' },
+    energia:{ n:'Energia', c:'#b86cf0' }, medo:{ n:'Medo', c:'#ffffff' }
+  };
+  const OP_ELEM_KEYS = ['sangue', 'morte', 'conhecimento', 'energia', 'medo'];
+  const OP_CIRCLE_COST = { 1:1, 2:3, 3:6, 4:10 };       // custo padrão (PD) por círculo; vem de memória, não foi conferido no livro. Editável em cada ritual
+  const OP_ROMAN = ['', 'I', 'II', 'III', 'IV'];
+  const OP_FORMS = [['n', 'Normal'], ['d', 'Discente'], ['v', 'Verdadeiro']];
+  // centro de cada círculo do pentágono original (704 × 681), em %
+  const OP_PENT = { agi:[49.72, 18.72], int:[81.82, 42.22], vig:[70.24, 81.06], pre:[28.27, 81.13], for:[18.25, 42.15] };
+  const OP_TABS = [['agente', 'Agente', 'user'], ['pericias', 'Perícias', 'list'], ['combate', 'Combate', 'swords'], ['poderes', 'Poderes', 'bolt']];
+  const opElemOk = k => OP_ELEM[k] ? k : '';
+  const opSym = (k, s) => OP_ELEM[k] ? `<i class="ox-sym ox-e-${k}" style="--s:${s || 26}px" aria-hidden="true"></i>` : '';
+  // bônus de uma perícia sem os dados: treinamento + "outros" (as condições não entram em Esquiva e Bloqueio)
+  function opSkillBonus(card, key){
+    const s = (card.skillsV2 && card.skillsV2[key]) || {};
+    return (OP_TRAIN[s.training] || OP_TRAIN.none)[1] + opNum(s.bonus);
   }
+  // Defesa = 10 + AGI + equipamento + outros (Vulnerável −2).  Esquiva = Defesa + bônus de Reflexos.  Bloqueio = bônus de Fortitude.
+  function opDefense(card){
+    const d = card.defense || {}, agi = opAttrOf(card, 'agi'), vul = (card.conditions || []).some(c => c.key === 'vulneravel') ? -2 : 0;
+    const refl = opSkillBonus(card, 'reflexos'), fort = opSkillBonus(card, 'fortitude');
+    const def = 10 + agi + opNum(d.equip) + opNum(d.other) + vul;
+    return { def, dodge:def + refl + opNum(d.dodge), block:fort + opNum(d.block), agi, refl, fort, vul, equip:opNum(d.equip), other:opNum(d.other), xd:opNum(d.dodge), xb:opNum(d.block) };
+  }
+  // teste de atributo puro (toque no círculo do pentágono)
+  async function opRollAttr(a, tokenId){
+    const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
+    const at = opAttrOk(a); if(!at) return;
+    const card = ensureCard(id), p = opParts(card, null, at, 'attr'), t = opD20(p.pool), nm = (OP_ATTRS.find(x => x[0] === at) || [])[2] || at;
+    await opRecord(id, nm + ' · teste', [t], p.parts.concat(p.conds), { kind:'attr', attr:at, val:p.pool.val, pool:p.pool.n, keep:p.pool.keep });
+  }
+  async function opRollExpr(id, title, expr, extra){
+    const pe = parseExpr(expr);
+    if(pe.error || !pe.terms.length){ toast(pe.error || 'Escreva os dados (ex.: 3d6).', true); return false; }
+    const results = pe.terms.map(t => rollTerm(t, makeSource(null)));
+    await opRecord(id, title, results, pe.bonus ? [{ label:'Fixo', value:pe.bonus }] : [], extra);
+    return true;
+  }
+  function opStep(f, d){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    const card = ensureCard(id);
+    if(f === 'nex'){
+      let i = OP_NEX.indexOf(card.nex == null ? 5 : card.nex);
+      if(i < 0){ i = 0; OP_NEX.forEach((n, k) => { if(n <= card.nex) i = k; }); }
+      card.nex = OP_NEX[Math.max(0, Math.min(OP_NEX.length - 1, i + d))];
+    } else if(f === 'level'){
+      card.level = Math.max(1, Math.min(20, (card.level == null ? 1 : opNum(card.level)) + d));
+    } else return;
+    scheduleSaveCard(); renderHub(); hudMiniChanged();
+  }
+  function opCycleTrain(key){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    const card = ensureCard(id), s = (card.skillsV2 || {})[key]; if(!s) return;
+    const ks = Object.keys(OP_TRAIN); s.training = ks[(Math.max(0, ks.indexOf(s.training || 'none')) + 1) % ks.length];
+    scheduleSaveCard(); renderHub();
+  }
+  // ---- rituais e habilidades ----
+  const opFormOn = (r, f) => { const x = (r.forms && r.forms[f]) || {}; return f === 'n' || (x.cost !== '' && x.cost != null) || !!String(x.dice || '').trim(); };
+  function opFormCost(r, f){
+    const x = (r.forms && r.forms[f]) || {};
+    if(x.cost !== '' && x.cost != null) return Math.max(0, Math.trunc(opNum(x.cost)));
+    const n = (r.forms && r.forms.n) || {};
+    return n.cost !== '' && n.cost != null ? Math.max(0, Math.trunc(opNum(n.cost))) : (OP_CIRCLE_COST[r.circle] || 0);
+  }
+  const opRitDT = (card, r) => r.dt === '' || r.dt == null ? 10 + opAttrOf(card, 'pre') : opNum(r.dt);
+  function opNewPower(kind){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    const card = ensureCard(id), el = opElemOk((card.meta || {}).element) || 'sangue';
+    if(kind === 'rit'){
+      const r = { id:newUid('rt_'), name:'Novo ritual', element:hub.opPEl || el, circle:1, dt:'', note:'', forms:{ n:{ cost:'', dice:'' }, d:{ cost:'', dice:'' }, v:{ cost:'', dice:'' } } };
+      card.rituals = (card.rituals || []).concat([r]); hub.opPOpen = r.id;
+    } else {
+      const a = { id:newUid('hb_'), name:'Nova habilidade', element:hub.opPEl || '', tag:'', cost:'', dice:'', note:'' };
+      card.abilities = (card.abilities || []).concat([a]); hub.opPOpen = a.id;
+    }
+    scheduleSaveCard(); renderHub();
+  }
+  function opDelPower(kind, pid){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    if(!window.confirm(kind === 'rit' ? 'Remover este ritual?' : 'Remover esta habilidade?')) return;
+    const card = ensureCard(id), key = kind === 'rit' ? 'rituals' : 'abilities';
+    card[key] = (card[key] || []).filter(x => x.id !== pid);
+    if(hub.opPOpen === pid) hub.opPOpen = null;
+    scheduleSaveCard(); renderHub();
+  }
+  // Conjurar / usar: desconta o custo da barra de PD (se tiver o bastante) e rola os dados, se houver. onlyDice = só rola.
+  async function opCast(kind, pid, onlyDice){
+    const id = hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) usa os poderes dele.')) return;
+    const card = ensureCard(id), it = ((kind === 'rit' ? card.rituals : card.abilities) || []).find(x => x.id === pid); if(!it) return;
+    const f = kind === 'rit' ? (((hub.opForm || {})[pid] && opFormOn(it, hub.opForm[pid])) ? hub.opForm[pid] : 'n') : 'n';
+    const cost = kind === 'rit' ? opFormCost(it, f) : Math.max(0, Math.trunc(opNum(it.cost)));
+    const dice = String(kind === 'rit' ? (((it.forms || {})[f] || {}).dice || '') : (it.dice || '')).trim();
+    const fl = kind === 'rit' && f !== 'n' ? ' · ' + (OP_FORMS.find(x => x[0] === f) || [])[1] : '';
+    const title = (it.name || (kind === 'rit' ? 'Ritual' : 'Habilidade')) + fl;
+    if(dice){ const pe = parseExpr(dice); if(pe.error || !pe.terms.length){ toast('Os dados de "' + title + '" estão inválidos (ex.: 3d6).', true); return; } }
+    if(!onlyDice && cost > 0){
+      const pd = opRes(card, 'pd');
+      if(pd.cur < cost){ toast('PD insuficiente para ' + title + ': faltam ' + (cost - pd.cur) + '.', true); return; }
+      opAdjustRes('pd', -cost, id);
+    }
+    if(dice) await opRollExpr(id, title + (onlyDice || !cost ? '' : ' (−' + cost + ' PD)'), dice, { kind:'power', pid, form:f });
+    else toast(title + (cost ? ': −' + cost + ' PD' : ': usado') + '.');
+  }
+
   function opBanner(card, edit){
     const id = hub.charToken;
     if(!edit || opSkipped(id)) return '';
@@ -7562,37 +7665,98 @@
         <button type="button" class="inv-mini-btn danger" data-act="rem-del" data-i="${i}" ${dis} aria-label="Remover lembrete">${ic('close', 16)}</button></div>`).join('')}
       <button type="button" class="inv-mini-btn" data-act="rem-add" ${dis}>${ic('plus', 16)} Lembrete</button>`;
   }
-  function renderFichaOrdem(h, card, dis){
-    const c = cfg(), nexLevel = c.progressionMode !== 'nex_only';
-    const A = card.attributes || {}, meta = card.meta || {}, nex = card.nex == null ? 5 : card.nex, lvl = card.level == null ? 1 : card.level;
-    let html = `<div class="hub-label">Personagem</div>
-      <input type="text" data-bind="card.name" value="${esc(card.name)}" placeholder="Nome do personagem" ${dis}>
+  // ---- desenho da ficha (f20) ----
+  function opPortraitData(h){
+    const t = tokens.find(x => x.id === h.id), p = t ? null : pins.find(x => x.id === h.id);
+    return { img:(t && t.image) || (p && p.image) || '' };
+  }
+  function opMeter(card, k, dis){
+    const r = opRes(card, k), pct = r.max > 0 ? Math.max(0, Math.min(100, Math.round(r.cur / r.max * 100))) : 0, low = r.max > 0 && r.cur / r.max < 0.3, nm = OP_RES[k];
+    return `<div class="ox-res"><button type="button" class="die-btn" data-act="op-res" data-k="${k}" data-d="-1" aria-label="Reduzir ${esc(nm[1])}" ${dis}>${ic('minus', 16)}</button>
+      <div class="ox-meter${low ? ' low' : ''}" style="--c:${nm[2]}" role="meter" aria-valuemin="0" aria-valuemax="${r.max}" aria-valuenow="${r.cur}" aria-label="${esc(nm[1])}: ${r.cur} de ${r.max}"><i style="width:${pct}%"></i>
+        <span class="ox-meter-lb">${low ? ic('alert', 14) : ''}${nm[0]} <b>${r.cur} / ${r.max}</b></span></div>
+      <button type="button" class="die-btn" data-act="op-res" data-k="${k}" data-d="1" aria-label="Aumentar ${esc(nm[1])}" ${dis}>${ic('plus', 16)}</button></div>`;
+  }
+  function opCardHead(h, card, dis){
+    const meta = card.meta || {}, nex = card.nex == null ? 5 : card.nex, lvl = card.level == null ? 1 : card.level, nexLevel = cfg().progressionMode !== 'nex_only';
+    const el = opElemOk(meta.element), d = opDefense(card), pt = opPortraitData(h), nm = card.name || h.name || '';
+    const sub = [meta.class, meta.origin].filter(Boolean).join(' · ');
+    const sh = (k, lab, icn, val, how, main) => `<button type="button" class="ox-sh${main ? ' main' : ''}" data-act="op-tab" data-t="combate" aria-label="${lab}: ${val}. ${esc(how)}. Toque para ajustar"><small>${ic(icn, 12)}${k}</small><b>${val}</b><span>${esc(how)}</span></button>`;
+    return `<div class="ox-card${el ? ' ox-e-' + el : ''}">
+      <div class="ox-top"><div class="ox-portrait"><div class="ox-ph">${pt.img ? `<img src="${esc(pt.img)}" alt="Foto de ${esc(nm)}">` : esc(nm.trim().slice(0, 2).toUpperCase() || '?')}</div><span class="ox-nex">NEX ${nex}%</span></div>
+        <div class="ox-id"><b class="ox-name">${esc(nm || 'Sem nome')}</b>${sub ? `<span class="ox-sub">${esc(sub)}</span>` : ''}
+          <span class="ox-sub2">${el ? opSym(el, 14) + esc(OP_ELEM[el].n) + ' · ' : ''}${nexLevel ? 'Nível ' + esc(String(lvl)) : ''}${card.player ? (nexLevel ? ' · ' : '') + esc(card.player) : ''}</span></div>
+        <img class="ox-logo" src="op-logo.png" alt="Ordem Paranormal"></div>
+      ${opMeter(card, 'pv', dis)}${opMeter(card, 'pd', dis)}
+      <div class="ox-def">${sh('DEF', 'Defesa', 'shield', d.def, '10 + AGI ' + d.agi + (d.equip + d.other + d.vul ? ' ' + opSgn(d.equip + d.other + d.vul) : ''), true)}${sh('ESQ', 'Esquiva', 'wind', d.dodge, 'DEF + Reflexos ' + opSgn(d.refl + d.xd))}${sh('BLO', 'Bloqueio', 'layers', d.block, 'Fortitude ' + opSgn(d.fort + d.xb))}</div>
+      <div class="ox-chips">${(card.conditions || []).map(cd => `<button type="button" class="ox-cchip" data-act="op-tab" data-t="combate" aria-label="Condição ${esc(opCondName(cd))}. Abrir condições">${ic((OP_COND[cd.key] || {}).i || 'alert', 13)}${esc(opCondName(cd))}</button>`).join('')}
+        <button type="button" class="ox-cchip add" data-act="op-tab" data-t="combate" aria-label="Adicionar condição">+ condição</button></div></div>`;
+  }
+  function opPentagon(card, edit, dis){
+    const A = card.attributes || {};
+    const nodes = OP_ATTRS.map(a => {
+      const v = opNum(A[a[0]]), pos = OP_PENT[a[0]], pool = opPool(card, a[0]), st = `left:${pos[0]}%;top:${pos[1]}%`;
+      if(edit) return `<label class="ox-node" style="${st}"><input type="number" inputmode="numeric" min="0" max="20" data-bind="card.attributes.${a[0]}" data-num data-sheet value="${esc(String(v))}" aria-label="${a[2]}" ${dis}></label>`;
+      return `<button type="button" class="ox-node${v < 1 ? ' zero' : ''}" style="${st}" data-act="op-attr-roll" data-a="${a[0]}" aria-label="Rolar ${a[2]}, ${esc(pool.label)}" ${dis}><b>${v}</b></button>`;
+    }).join('');
+    return `<div class="ox-pent" role="group" aria-label="Atributos: ${OP_ATTRS.map(a => a[2] + ' ' + opNum(A[a[0]])).join(', ')}"><div class="ox-pent-art" aria-hidden="true"></div>${nodes}</div>`;
+  }
+  const opStepper = (lab, val, f, ariaLab, dis) => `<div class="ox-step"><button type="button" class="die-btn" data-act="op-step" data-f="${f}" data-d="-1" aria-label="Reduzir ${ariaLab}" ${dis}>${ic('minus', 16)}</button><div><small>${lab}</small><b>${val}</b></div><button type="button" class="die-btn" data-act="op-step" data-f="${f}" data-d="1" aria-label="Aumentar ${ariaLab}" ${dis}>${ic('plus', 16)}</button></div>`;
+  const opNumFld = (lab, path, val, dis) => `<label class="ox-lb">${lab}<input type="number" data-bind="${path}" data-num data-sheet value="${esc(String(val))}" ${dis}></label>`;
+  function renderOpAgente(card, dis){
+    const nexLevel = cfg().progressionMode !== 'nex_only', meta = card.meta || {}, nex = card.nex == null ? 5 : card.nex, lvl = card.level == null ? 1 : card.level;
+    const edit = !!hub.opAttrEdit && !dis;
+    let html = `<div class="ox-pwrap"><div class="ox-ptop"><span>Valor = quantidade de d20.<br>Fica o maior (com 0, o menor).</span>
+      <div class="ox-seg" role="group" aria-label="Modo dos atributos"><button type="button" data-act="op-attr-mode" data-m="roll" aria-pressed="${!edit}">Rolar</button><button type="button" data-act="op-attr-mode" data-m="edit" aria-pressed="${edit}" ${dis}>Editar</button></div></div>
+      ${opPentagon(card, edit, dis)}<p class="ox-pnote">${edit ? 'Digite o valor de cada atributo.' : 'Toque num círculo para rolar o atributo.'}</p></div>
+      <div class="ox-two">${opStepper('NEX', nex + '%', 'nex', 'o NEX', dis)}${nexLevel ? opStepper('NÍVEL', lvl, 'level', 'o nível', dis) : '<div></div>'}</div>
+      <div class="hub-label">Personagem</div>
+      <input type="text" data-bind="card.name" data-sheet value="${esc(card.name)}" placeholder="Nome do personagem" ${dis}>
       <div class="bonus-row"><input type="text" data-bind="card.meta.class" data-sheet value="${esc(meta.class || '')}" placeholder="Classe" ${dis}><input type="text" data-bind="card.meta.origin" data-sheet value="${esc(meta.origin || '')}" placeholder="Origem" ${dis}></div>
-      <div class="bonus-row"><label class="op-fld">NEX<select data-bind="card.nex" data-num data-rerender ${dis}>${OP_NEX.map(n => opt(n, n + '%', nex)).join('')}</select></label>
-        ${nexLevel ? `<label class="op-fld">Nível (1 a 20)<input type="number" min="1" max="20" data-bind="card.level" data-num data-sheet value="${esc(String(lvl))}" ${dis}></label>` : ''}</div>
-      <input type="text" data-bind="card.player" value="${esc(card.player)}" placeholder="Jogador" ${dis}>
-      <div class="op-sum">${esc([meta.class, meta.origin].filter(Boolean).join(' · '))}${(meta.class || meta.origin) ? ' · ' : ''}NEX ${nex}%${nexLevel ? ' · Nível ' + esc(String(lvl)) : ''}</div>`;
-    html += `<div class="hub-label">Atributos</div><p class="hub-hint">O valor do atributo é a quantidade de d20 do teste: rola todos e fica o maior. Com atributo 0 rola 2d20 e fica o menor. Treinamento e bônus avulso somam no resultado.</p><div class="op-attrs">${OP_ATTRS.map(a => `<label class="op-attr"><span>${a[1]}</span><input type="number" min="0" max="20" data-bind="card.attributes.${a[0]}" data-num data-sheet value="${esc(String(opNum(A[a[0]])))}" aria-label="${a[2]}" ${dis}></label>`).join('')}</div>`;
-    html += `<div class="hub-label">Recursos</div>${opBar(card, 'pv', dis)}${opBar(card, 'pd', dis)}`;
-    // perícias
-    const rows = Object.keys(card.skillsV2 || {}).map(k => opSkillDef(card, k)).sort((x, y) => x.name.localeCompare(y.name, 'pt-BR'));
-    html += `<div class="hub-label">Perícias</div>${rows.map(sd => {
-      const p = opParts(card, sd.key, null, 'skill'), tot = opSum(p), pen = p.conds.reduce((a, x) => a + x.value, 0), custom = !!sd.defAttr && sd.attr !== sd.defAttr;
-      return `<div class="op-skill"><div class="op-sk-name"><b>${esc(sd.name)}</b><small>${sd.attr ? opAttrLabel(sd.attr) + ' ' + opNum(A[sd.attr]) : 'livre'}${custom ? ' · padrão ' + opAttrLabel(sd.defAttr) : ''}</small></div>
-        <span class="op-total" title="${esc(opPoolHelp(p.pool))} + treinamento + bônus${pen ? ' + condições/clima' : ''}"><span class="op-pool${p.pool.low ? ' low' : ''}">${p.pool.label}</span> ${opSgn(tot)}${pen ? '<small>' + opSgn(pen) + (p.conds.some(x => x.weather) ? (p.conds.some(x => !x.weather) ? ' cond.+clima' : ' clima') : ' cond.') + '</small>' : ''}</span>
-        <button type="button" class="inv-mini-btn primary op-roll" data-act="op-skill-roll" data-k="${esc(sd.key)}" aria-label="Rolar ${esc(sd.name)} (${p.pool.label})" ${dis}>${ic('dice', 18)}</button>
-        <button type="button" class="inv-mini-btn danger op-del" data-act="op-skill-del" data-k="${esc(sd.key)}" aria-label="Remover ${esc(sd.name)}" ${dis}>${ic('close', 16)}</button>
-        <div class="op-sk-ctl"><select data-bind="card.skillsV2.${esc(sd.key)}.training" data-rerender aria-label="Treinamento de ${esc(sd.name)}" ${dis}>${Object.keys(OP_TRAIN).map(t => opt(t, OP_TRAIN[t][0], sd.s.training || 'none')).join('')}</select>
-        <select class="op-attr-sel${custom ? ' custom' : ''}" data-bind="card.skillsV2.${esc(sd.key)}.attr" data-rerender aria-label="Atributo usado em ${esc(sd.name)}" title="Atributo usado nesta perícia" ${dis}>${sd.attr ? '' : '<option value="" selected>—</option>'}${OP_ATTRS.map(x => opt(x[0], x[1], sd.attr)).join('')}</select>
-        <input type="number" class="op-n" data-bind="card.skillsV2.${esc(sd.key)}.bonus" data-num data-sheet value="${esc(String(opNum(sd.s.bonus)))}" aria-label="Bônus avulso de ${esc(sd.name)}" placeholder="Outros" ${dis}></div></div>`;
-    }).join('') || '<p class="hub-hint">Nenhuma perícia ainda. Escolha uma da lista, escreva uma livre ou adicione todas.</p>'}
-      <datalist id="op-skill-list">${OP_SKILLS.map(s => `<option value="${esc(s[1])}">`).join('')}</datalist>
-      <div class="op-add"><input type="text" id="op-skill-new" list="op-skill-list" placeholder="Nova perícia (ex.: Furtividade)" ${dis}><select id="op-skill-attr" aria-label="Atributo da perícia livre" ${dis}><option value="">atributo (se livre)</option>${OP_ATTRS.map(a => `<option value="${a[0]}">${a[1]}</option>`).join('')}</select>
-      <button type="button" class="inv-mini-btn" data-act="op-skill-add" ${dis}>${ic('plus', 16)} Nova</button>
-      <button type="button" class="inv-mini-btn" data-act="op-skill-all" ${dis}>Adicionar todas as 28</button></div>`;
+      <input type="text" data-bind="card.player" data-sheet value="${esc(card.player)}" placeholder="Jogador" ${dis}>
+      <label class="ox-lb">Afinidade (cor e símbolo do cartão)<select data-bind="card.meta.element" data-rerender ${dis}><option value="">— nenhuma —</option>${OP_ELEM_KEYS.map(k => opt(k, OP_ELEM[k].n, meta.element || '')).join('')}</select></label>
+      <div class="hub-label">Vida e determinação</div>
+      <div class="ox-two">${opNumFld('PV atual', 'card.resources2.pv.cur', opRes(card, 'pv').cur, dis)}${opNumFld('PV máximo', 'card.resources2.pv.max', opRes(card, 'pv').max, dis)}${opNumFld('PD atual', 'card.resources2.pd.cur', opRes(card, 'pd').cur, dis)}${opNumFld('PD máximo', 'card.resources2.pd.max', opRes(card, 'pd').max, dis)}</div>
+      <p class="hub-hint">PD (pontos de determinação) é o recurso principal desta mesa.</p>`;
+    return html;
+  }
+  function opSkillRow(card, sd, dis){
+    const A = card.attributes || {}, p = opParts(card, sd.key, null, 'skill'), tot = opSum(p), pen = p.conds.reduce((a, x) => a + x.value, 0), custom = !!sd.defAttr && sd.attr !== sd.defAttr;
+    const tk = Object.keys(OP_TRAIN), ti = Math.max(0, tk.indexOf(sd.s.training || 'none')), tr = OP_TRAIN[tk[ti]], open = hub.opSkOpen === sd.key, k = esc(sd.key);
+    return `<div class="ox-sk"><div class="ox-sk-row">
+      <button type="button" class="ox-sk-main" data-act="op-sk-open" data-k="${k}" aria-expanded="${open}"><b>${esc(sd.name)}</b><small>${sd.attr ? opAttrLabel(sd.attr) + ' ' + opNum(A[sd.attr]) : 'livre'}${custom ? ' · padrão ' + opAttrLabel(sd.defAttr) : ''}</small></button>
+      <button type="button" class="ox-train t${ti}" data-act="op-train" data-k="${k}" aria-label="Treinamento de ${esc(sd.name)}: ${esc(tr[0])}. Toque para mudar" ${dis}>${ti ? '+' + tr[1] : '—'}</button>
+      <span class="ox-sk-tot" title="${esc(opPoolHelp(p.pool))} + treinamento + bônus${pen ? ' + condições/clima' : ''}"><span class="op-pool${p.pool.low ? ' low' : ''}">${p.pool.label}</span>${opSgn(tot)}${pen ? '<small>' + opSgn(pen) + (p.conds.some(x => x.weather) ? (p.conds.some(x => !x.weather) ? ' cond.+clima' : ' clima') : ' cond.') + '</small>' : ''}</span>
+      <button type="button" class="inv-mini-btn primary op-roll" data-act="op-skill-roll" data-k="${k}" aria-label="Rolar ${esc(sd.name)} (${esc(p.pool.label)})" ${dis}>${ic('dice', 18)}</button></div>
+      ${open ? `<div class="ox-sk-edit"><select data-bind="card.skillsV2.${k}.training" data-rerender aria-label="Treinamento de ${esc(sd.name)}" ${dis}>${tk.map(t => opt(t, OP_TRAIN[t][0], sd.s.training || 'none')).join('')}</select>
+        <select data-bind="card.skillsV2.${k}.attr" data-rerender aria-label="Atributo usado em ${esc(sd.name)}" title="Atributo usado nesta perícia" ${dis}>${sd.attr ? '' : '<option value="" selected>—</option>'}${OP_ATTRS.map(x => opt(x[0], x[1], sd.attr)).join('')}</select>
+        <input type="number" data-bind="card.skillsV2.${k}.bonus" data-num data-sheet value="${esc(String(opNum(sd.s.bonus)))}" aria-label="Bônus avulso de ${esc(sd.name)}" placeholder="Outros" ${dis}>
+        <button type="button" class="inv-mini-btn danger op-del" data-act="op-skill-del" data-k="${k}" aria-label="Remover ${esc(sd.name)}" ${dis}>${ic('close', 16)}</button></div>` : ''}</div>`;
+  }
+  function renderOpPericias(card, dis){
+    const all = Object.keys(card.skillsV2 || {}).map(k => opSkillDef(card, k)).sort((x, y) => x.name.localeCompare(y.name, 'pt-BR'));
+    const f = hub.opSkF || 'all', q = opSlug(hub.opSkQ || '');
+    const rows = all.filter(sd => (f === 'all' || (f === 'trained' ? (sd.s.training && sd.s.training !== 'none') : sd.attr === f)) && (!q || opSlug(sd.name).indexOf(q) >= 0));
+    const chip = (v, lab) => `<button type="button" class="ox-chip" data-act="op-sk-filter" data-f="${v}" aria-pressed="${f === v}">${lab}</button>`;
+    let html = `<input type="text" inputmode="search" data-bind="hub.opSkQ" data-rerender value="${esc(hub.opSkQ || '')}" placeholder="Buscar perícia" aria-label="Buscar perícia">
+      <div class="ox-filters" role="group" aria-label="Filtrar perícias">${chip('all', 'Todas')}${chip('trained', 'Treinadas')}${OP_ATTRS.map(a => chip(a[0], a[1])).join('')}</div>`;
+    if(!all.length) html += `<p class="hub-hint">Nenhuma perícia ainda.</p><button type="button" class="inv-mini-btn primary" data-act="op-skill-all" ${dis}>${ic('plus', 16)} Adicionar as 28 perícias</button>`;
+    else html += `<p class="hub-hint">${rows.length} de ${all.length} perícias. Toque no nome para editar, no selo para mudar o treinamento e no dado para rolar.</p>${rows.map(sd => opSkillRow(card, sd, dis)).join('') || '<p class="hub-hint">Nenhuma perícia com esse filtro.</p>'}`;
+    html += `<div class="ox-more"><button type="button" class="ox-more-btn" data-act="op-sk-more" aria-expanded="${!!hub.opSkMore}">${ic(hub.opSkMore ? 'minus' : 'plus', 16)} Adicionar perícia</button>${hub.opSkMore ? `<datalist id="op-skill-list">${OP_SKILLS.map(s => `<option value="${esc(s[1])}">`).join('')}</datalist>
+      <div class="op-add"><input type="text" id="op-skill-new" data-bind="hub.opSkNew" value="${esc(hub.opSkNew || '')}" list="op-skill-list" placeholder="Nova perícia (ex.: Furtividade)" ${dis}><select id="op-skill-attr" data-bind="hub.opSkNewAttr" aria-label="Atributo da perícia livre" ${dis}><option value="">atributo (se livre)</option>${OP_ATTRS.map(a => `<option value="${a[0]}"${hub.opSkNewAttr === a[0] ? ' selected' : ''}>${a[1]}</option>`).join('')}</select>
+      <button type="button" class="inv-mini-btn" data-act="op-skill-add" ${dis}>${ic('plus', 16)} Nova</button><button type="button" class="inv-mini-btn" data-act="op-skill-all" ${dis}>Adicionar todas as 28</button></div>` : ''}</div>`;
+    return html;
+  }
+  function renderOpCombate(card, dis){
+    const d = opDefense(card);
+    let html = `<div class="ox-hd"><h3>Defesas</h3><small>valores calculados</small></div>
+      <div class="ox-def">${[['DEF', 'Defesa', 'shield', d.def, true], ['ESQ', 'Esquiva', 'wind', d.dodge], ['BLO', 'Bloqueio', 'layers', d.block]].map(x => `<div class="ox-sh${x[4] ? ' main' : ''}"><small>${ic(x[2], 12)}${x[0]}</small><b>${x[3]}</b></div>`).join('')}</div>
+      <p class="ox-bd"><b>Defesa</b> = 10 + AGI ${d.agi}${d.equip ? ' + equipamento ' + d.equip : ''}${d.other ? ' + outros ' + d.other : ''}${d.vul ? ' − 2 (Vulnerável)' : ''}.<br><b>Esquiva</b> = Defesa + Reflexos ${opSgn(d.refl)}${d.xd ? ' + outros ' + d.xd : ''}.<br><b>Bloqueio</b> = Fortitude ${opSgn(d.fort)}${d.xb ? ' + outros ' + d.xb : ''}.</p>
+      <div class="ox-defed">${opNumFld('Defesa · equipamento', 'card.defense.equip', d.equip, dis)}${opNumFld('Defesa · outros', 'card.defense.other', d.other, dis)}${opNumFld('Esquiva · outros', 'card.defense.dodge', d.xd, dis)}${opNumFld('Bloqueio · outros', 'card.defense.block', d.xb, dis)}</div>`;
     // ataques
+    const A = card.attributes || {};
     const skillOpts = a => OP_SKILLS.map(x => opt(x[0], x[1], a.skill)).join('') + Object.keys(card.skillsV2 || {}).filter(k => k.indexOf('x_') === 0).map(k => opt(k, opSkillDef(card, k).name, a.skill)).join('');
-    html += `<div class="hub-label">Ataques</div>${(card.attacks || []).map((a, i) => {
+    html += `<div class="ox-hd"><h3>Ataques</h3></div>${(card.attacks || []).map((a, i) => {
       const p = opParts(card, a.skill || '', a.attribute || '', 'attack'), open = hub.opEdit === a.id, sk = a.skill ? opSkillDef(card, a.skill).name : '';
       const crit = !!(hub.opCrit && hub.opCrit[a.id]);
       return `<div class="op-atk"><div class="op-atk-top"><div><b>${esc(a.name || 'Ataque')}</b><small>${esc(a.damage || '—')} · ${esc(String(a.critMargin || 20))}/×${esc(String(a.critMult || 2))} · ${esc([a.attribute ? opAttrLabel(a.attribute) : '', sk].filter(Boolean).join(' + ') || 'sem perícia')}</small></div>
@@ -7612,15 +7776,73 @@
     }).join('') || '<p class="hub-hint">Nenhum ataque ainda.</p>'}
       <button type="button" class="inv-mini-btn" data-act="op-atk-new" ${dis}>${ic('plus', 16)} Novo ataque</button>`;
     // condições
-    html += `<div class="hub-label">Condições ativas</div><div class="op-conds">${(card.conditions || []).map(cd => {
-      const d = OP_COND[cd.key] || {};
-      return `<span class="op-cond">${ic(d.i || 'alert', 14)}<span>${esc(opCondName(cd))}${cd.note && cd.key !== 'outra' ? ' · ' + esc(cd.note) : ''}</span><button type="button" data-act="op-cond-del" data-id="${esc(cd.id)}" aria-label="Remover ${esc(opCondName(cd))}" ${dis}>${ic('close', 14)}</button></span>`;
+    html += `<div class="ox-hd"><h3>Condições</h3></div><div class="op-conds">${(card.conditions || []).map(cd => {
+      const dd = OP_COND[cd.key] || {};
+      return `<span class="op-cond">${ic(dd.i || 'alert', 14)}<span>${esc(opCondName(cd))}${cd.note && cd.key !== 'outra' ? ' · ' + esc(cd.note) : ''}</span><button type="button" data-act="op-cond-del" data-id="${esc(cd.id)}" aria-label="Remover ${esc(opCondName(cd))}" ${dis}>${ic('close', 14)}</button></span>`;
     }).join('') || '<span class="hub-hint">Nenhuma.</span>'}</div>
       ${(card.conditions || []).filter(cd => OP_COND[cd.key] && OP_COND[cd.key].t).map(cd => `<div class="hub-hint"><b>${esc(OP_COND[cd.key].n)}:</b> ${esc(OP_COND[cd.key].t)}</div>`).join('')}
-      <div class="op-add"><select id="op-cond-key" aria-label="Condição" ${dis}>${OP_COND_ORDER.concat(Object.keys(OP_COND).filter(k => !OP_COND_ORDER.includes(k))).map(k => `<option value="${k}">${esc(OP_COND[k].n)}</option>`).join('')}</select>
-      <input type="text" id="op-cond-note" placeholder="Observação ou nome" ${dis}><button type="button" class="inv-mini-btn" data-act="op-cond-add" ${dis}>${ic('plus', 16)} Adicionar</button></div>
+      <div class="op-add"><select id="op-cond-key" data-bind="hub.opCondSel" aria-label="Condição" ${dis}>${OP_COND_ORDER.concat(Object.keys(OP_COND).filter(k => !OP_COND_ORDER.includes(k))).map(k => `<option value="${k}"${(hub.opCondSel || 'abalado') === k ? ' selected' : ''}>${esc(OP_COND[k].n)}</option>`).join('')}</select>
+      <input type="text" id="op-cond-note" data-bind="hub.opCondNote" value="${esc(hub.opCondNote || '')}" placeholder="Observação ou nome" ${dis}><button type="button" class="inv-mini-btn" data-act="op-cond-add" ${dis}>${ic('plus', 16)} Adicionar</button></div>
       <p class="hub-hint">Os modificadores das condições entram sozinhos nas rolagens desta ficha. Condições com o mesmo efeito não se somam: vale a pior. As demais ficam só como marcação.</p>`;
     return html;
+  }
+  // ---- poderes ----
+  function opRitualCard(card, r, i, dis){
+    const el = opElemOk(r.element), open = hub.opPOpen === r.id, req = (hub.opForm || {})[r.id];
+    const avail = OP_FORMS.filter(x => opFormOn(r, x[0])), f = avail.some(x => x[0] === req) ? req : 'n';
+    const cost = opFormCost(r, f), dice = String(((r.forms || {})[f] || {}).dice || '').trim(), auto = r.dt === '' || r.dt == null;
+    const id = esc(r.id), nmF = n => (OP_FORMS.find(x => x[0] === n) || [])[1];
+    return `<div class="ox-pw${el ? ' ox-e-' + el : ''}"><div class="ox-pw-top">${opSym(el, 32)}<div class="ox-pw-id"><b>${esc(r.name || 'Ritual')}</b><small>${esc((el ? OP_ELEM[el].n + ' · ' : '') + (r.circle || 1) + 'º círculo')} · DT ${opRitDT(card, r)}${auto ? ' (auto)' : ''}</small></div><span class="ox-circ" title="${esc((r.circle || 1) + 'º círculo')}">${OP_ROMAN[r.circle] || '?'}</span></div>
+      ${avail.length > 1 ? `<div class="ox-forms" role="group" aria-label="Forma do ritual">${avail.map(x => `<button type="button" data-act="op-p-form" data-id="${id}" data-f="${x[0]}" aria-pressed="${x[0] === f}">${x[1]}</button>`).join('')}</div>` : ''}
+      <div class="ox-meta"><span><small>CUSTO</small>${cost} PD</span>${dice ? `<span><small>DADOS</small>${esc(dice)}</span>` : ''}</div>
+      ${r.note ? `<p class="ox-note">${esc(r.note)}</p>` : ''}
+      <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="op-p-cast" data-k="rit" data-id="${id}" ${dis}>${ic('bolt', 16)} Conjurar${cost ? ' · −' + cost + ' PD' : ''}</button>
+        ${dice ? `<button type="button" class="inv-mini-btn" data-act="op-p-roll" data-k="rit" data-id="${id}" ${dis}>${ic('dice', 16)} Só rolar</button>` : ''}
+        <button type="button" class="inv-mini-btn" data-act="op-p-edit" data-id="${id}" aria-expanded="${open}">${open ? 'Fechar' : 'Editar'}</button></div>
+      ${open ? `<div class="ox-pw-form"><input type="text" data-bind="card.rituals.${i}.name" data-sheet value="${esc(r.name || '')}" placeholder="Nome do ritual" ${dis}>
+        <div class="ox-two"><label class="ox-lb">Elemento<select data-bind="card.rituals.${i}.element" data-rerender ${dis}>${OP_ELEM_KEYS.map(k => opt(k, OP_ELEM[k].n, r.element)).join('')}</select></label>
+          <label class="ox-lb">Círculo<select data-bind="card.rituals.${i}.circle" data-num data-rerender ${dis}>${[1, 2, 3, 4].map(n => opt(n, n + 'º círculo', r.circle || 1)).join('')}</select></label></div>
+        <label class="ox-lb">DT (em branco = 10 + PRE)<input type="number" data-bind="card.rituals.${i}.dt" data-num data-sheet value="${esc(r.dt == null ? '' : String(r.dt))}" placeholder="${10 + opAttrOf(card, 'pre')}" ${dis}></label>
+        ${OP_FORMS.map(x => `<div class="ox-frm"><span>${x[1]}</span><input type="number" min="0" data-bind="card.rituals.${i}.forms.${x[0]}.cost" data-num data-sheet value="${esc(String(((r.forms || {})[x[0]] || {}).cost == null ? '' : r.forms[x[0]].cost))}" placeholder="${x[0] === 'n' ? (OP_CIRCLE_COST[r.circle] || 0) + ' PD' : 'custo'}" aria-label="Custo em PD, forma ${nmF(x[0])}" ${dis}><input type="text" data-bind="card.rituals.${i}.forms.${x[0]}.dice" data-sheet value="${esc(String(((r.forms || {})[x[0]] || {}).dice || ''))}" placeholder="dados (3d6)" aria-label="Dados, forma ${nmF(x[0])}" ${dis}></div>`).join('')}
+        <textarea data-bind="card.rituals.${i}.note" data-sheet rows="3" placeholder="Efeito, alcance, duração (escreva com as suas palavras)" ${dis}>${esc(r.note || '')}</textarea>
+        <p class="hub-hint">Custo em branco: usa o do círculo (I = 1, II = 3, III = 6, IV = 10 PD). Discente e Verdadeiro só aparecem se tiverem custo ou dados. Custos e DT padrão não foram conferidos no livro: ajuste à regra da sua mesa.</p>
+        <button type="button" class="inv-mini-btn danger" data-act="op-p-del" data-k="rit" data-id="${id}" ${dis}>${ic('close', 16)} Remover ritual</button></div>` : ''}</div>`;
+  }
+  function opAbilityCard(card, a, i, dis){
+    const el = opElemOk(a.element), open = hub.opPOpen === a.id, cost = Math.max(0, Math.trunc(opNum(a.cost))), dice = String(a.dice || '').trim(), id = esc(a.id);
+    return `<div class="ox-pw${el ? ' ox-e-' + el : ''}"><div class="ox-pw-top">${opSym(el, 28)}<div class="ox-pw-id"><b>${esc(a.name || 'Habilidade')}</b>${(a.tag || el) ? `<small>${esc([a.tag, el ? OP_ELEM[el].n : ''].filter(Boolean).join(' · '))}</small>` : ''}</div></div>
+      ${(cost || dice) ? `<div class="ox-meta">${cost ? `<span><small>CUSTO</small>${cost} PD</span>` : ''}${dice ? `<span><small>DADOS</small>${esc(dice)}</span>` : ''}</div>` : ''}
+      ${a.note ? `<p class="ox-note">${esc(a.note)}</p>` : ''}
+      <div class="inv-item-actions">${(cost || dice) ? `<button type="button" class="inv-mini-btn primary" data-act="op-p-cast" data-k="hab" data-id="${id}" ${dis}>${ic('bolt', 16)} Usar${cost ? ' · −' + cost + ' PD' : ''}</button>` : ''}
+        <button type="button" class="inv-mini-btn" data-act="op-p-edit" data-id="${id}" aria-expanded="${open}">${open ? 'Fechar' : 'Editar'}</button></div>
+      ${open ? `<div class="ox-pw-form"><input type="text" data-bind="card.abilities.${i}.name" data-sheet value="${esc(a.name || '')}" placeholder="Nome da habilidade" ${dis}>
+        <div class="ox-two"><input type="text" data-bind="card.abilities.${i}.tag" data-sheet value="${esc(a.tag || '')}" placeholder="Tipo (classe, trilha, poder…)" ${dis}>
+          <select data-bind="card.abilities.${i}.element" data-rerender aria-label="Elemento" ${dis}><option value="">— sem elemento —</option>${OP_ELEM_KEYS.map(k => opt(k, OP_ELEM[k].n, a.element || '')).join('')}</select></div>
+        <div class="ox-two">${opNumFld('Custo em PD', 'card.abilities.' + i + '.cost', a.cost == null ? '' : a.cost, dis)}<label class="ox-lb">Dados (opcional)<input type="text" data-bind="card.abilities.${i}.dice" data-sheet value="${esc(a.dice || '')}" placeholder="3d6" ${dis}></label></div>
+        <textarea data-bind="card.abilities.${i}.note" data-sheet rows="3" placeholder="O que a habilidade faz (escreva com as suas palavras)" ${dis}>${esc(a.note || '')}</textarea>
+        <button type="button" class="inv-mini-btn danger" data-act="op-p-del" data-k="hab" data-id="${id}" ${dis}>${ic('close', 16)} Remover habilidade</button></div>` : ''}</div>`;
+  }
+  function renderOpPoderes(card, dis){
+    const fe = opElemOk(hub.opPEl), fc = hub.opPC || 0;
+    const rits = (card.rituals || []).map((r, i) => [r, i]).filter(x => (!fe || x[0].element === fe) && (!fc || (x[0].circle || 1) === fc));
+    const habs = (card.abilities || []).map((a, i) => [a, i]).filter(x => !fe || x[0].element === fe);
+    const eChip = (k, lab) => `<button type="button" class="ox-chip${k ? ' ox-e-' + k : ''}" data-act="op-p-el" data-e="${k}" aria-pressed="${fe === k}">${k ? opSym(k, 16) : ''}${lab}</button>`;
+    const cChip = n => `<button type="button" class="ox-chip" data-act="op-p-circ" data-c="${n}" aria-pressed="${fc === n}">${n ? OP_ROMAN[n] + 'º' : 'Todos'}</button>`;
+    return `<div class="ox-filters" role="group" aria-label="Filtrar por elemento">${eChip('', 'Todos')}${OP_ELEM_KEYS.map(k => eChip(k, OP_ELEM[k].n)).join('')}</div>
+      <div class="ox-hd"><h3>Rituais</h3><small>PD ${opRes(card, 'pd').cur} / ${opRes(card, 'pd').max}</small></div>
+      <div class="ox-filters" role="group" aria-label="Filtrar por círculo">${[0, 1, 2, 3, 4].map(cChip).join('')}</div>
+      ${rits.map(x => opRitualCard(card, x[0], x[1], dis)).join('') || `<p class="hub-hint">${(card.rituals || []).length ? 'Nenhum ritual com esse filtro.' : 'Nenhum ritual ainda. Nomes e efeitos ficam em branco para a sua mesa preencher.'}</p>`}
+      <button type="button" class="inv-mini-btn" data-act="op-p-new" data-k="rit" ${dis}>${ic('plus', 16)} Novo ritual</button>
+      <div class="ox-hd"><h3>Habilidades</h3></div>
+      ${habs.map(x => opAbilityCard(card, x[0], x[1], dis)).join('') || `<p class="hub-hint">${(card.abilities || []).length ? 'Nenhuma habilidade com esse filtro.' : 'Nenhuma habilidade ainda (classe, trilha, poderes paranormais…).'}</p>`}
+      <button type="button" class="inv-mini-btn" data-act="op-p-new" data-k="hab" ${dis}>${ic('plus', 16)} Nova habilidade</button>`;
+  }
+  function renderFichaOrdem(h, card, dis){
+    const tab = OP_TABS.some(t => t[0] === hub.opTab) ? hub.opTab : 'agente';
+    const body = tab === 'pericias' ? renderOpPericias(card, dis) : tab === 'combate' ? renderOpCombate(card, dis) : tab === 'poderes' ? renderOpPoderes(card, dis) : renderOpAgente(card, dis);
+    return `<div class="ox" data-optab="${tab}">${opCardHead(h, card, dis)}
+      <div class="ox-tabs" role="tablist" aria-label="Seções da ficha">${OP_TABS.map(t => `<button type="button" class="ox-tab" role="tab" id="ox-t-${t[0]}" aria-selected="${t[0] === tab}" aria-controls="ox-panel" data-act="op-tab" data-t="${t[0]}">${ic(t[2], 20)}<span>${t[1]}</span></button>`).join('')}</div>
+      <div id="ox-panel" role="tabpanel" aria-labelledby="ox-t-${tab}">${body}</div></div>`;
   }
 
   // ---------- eventos do painel ----------
@@ -7719,6 +7941,22 @@
       case 'op-cond-add': opAddCondition(); break;
       case 'op-cond-del': opDelCondition(D.id); break;
       case 'op-res': opAdjustRes(D.k, +D.d); break;
+      case 'op-tab': hub.opTab = D.t; renderHub(); break;
+      case 'op-attr-mode': hub.opAttrEdit = D.m === 'edit'; renderHub(); break;
+      case 'op-attr-roll': opRollAttr(D.a); break;
+      case 'op-step': opStep(D.f, +D.d); break;
+      case 'op-sk-filter': hub.opSkF = D.f; renderHub(); break;
+      case 'op-sk-more': hub.opSkMore = !hub.opSkMore; renderHub(); break;
+      case 'op-sk-open': hub.opSkOpen = hub.opSkOpen === D.k ? null : D.k; renderHub(); break;
+      case 'op-train': opCycleTrain(D.k); break;
+      case 'op-p-el': hub.opPEl = D.e; renderHub(); break;
+      case 'op-p-circ': hub.opPC = +D.c; renderHub(); break;
+      case 'op-p-new': opNewPower(D.k); break;
+      case 'op-p-edit': hub.opPOpen = hub.opPOpen === D.id ? null : D.id; renderHub(); break;
+      case 'op-p-del': opDelPower(D.k, D.id); break;
+      case 'op-p-form': hub.opForm = hub.opForm || {}; hub.opForm[D.id] = D.f; renderHub(); break;
+      case 'op-p-cast': opCast(D.k, D.id, false); break;
+      case 'op-p-roll': opCast(D.k, D.id, true); break;
       case 'need': { const c = ensureCard(hub.charToken); c.needs = c.needs || {}; c.needs[D.n] = Math.min(4, Math.max(0, (c.needs[D.n] || 0) + (+D.d))); scheduleSaveCard(); renderHub(); break; }
       case 'open-inv': openInventory(D.id); break;
       case 'sess-new': newSession(); break;
@@ -8946,6 +9184,7 @@
       const meta = card.meta || {}, nex = card.nex == null ? 5 : card.nex, lvl = card.level == null ? 1 : card.level;
       html += `<div class="mn-sub">${esc([meta.class, meta.origin].filter(Boolean).join(' · '))}${(meta.class || meta.origin) ? ' · ' : ''}NEX ${nex}%${cfg().progressionMode !== 'nex_only' ? ' · Nível ' + esc(String(lvl)) : ''}</div>
         ${hudMiniBar(card, 'pv', can)}${hudMiniBar(card, 'pd', can)}
+        ${(() => { const d = opDefense(card); return `<div class="mn-def"><div><small>DEF</small><b>${d.def}</b></div><div><small>ESQ</small><b>${d.dodge}</b></div><div><small>BLO</small><b>${d.block}</b></div></div>`; })()}
         <div class="mn-attrs">${OP_ATTRS.map(a => `<div><small>${a[1]}</small><b>${opNum(card.attributes && card.attributes[a[0]])}</b></div>`).join('')}</div>
         <div class="op-conds">${(card.conditions || []).map(cd => `<span class="op-cond mn-cond">${ic((OP_COND[cd.key] || {}).i || 'alert', 13)}<span>${esc(opCondName(cd))}</span></span>`).join('') || '<span class="hub-hint">Sem condições.</span>'}</div>`;
     } else if(card){
