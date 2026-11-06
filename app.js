@@ -467,7 +467,7 @@
   const AREA_DN = [['baixa', 'Pouca'], ['media', 'Média'], ['alta', 'Muita']];
   const AREA_BD = [['solido', 'Lisa'], ['tracejado', 'Tracejada'], ['pontilhado', 'Pontilhada'], ['nenhum', 'Sem borda']];
   const AREA_LB = [['auto', 'Automático'], ['sempre', 'Sempre'], ['oculto', 'Oculto']];
-  const AREA_COLORS = ['#e5484d', '#f2752c', '#f5b53d', '#c9d94a', '#3ecf8e', '#38bdf8', '#5b8def', '#8b5cf6', '#d946ef', '#e8edf1', '#8fd7e8', '#6b7a86'];
+  const AREA_COLORS = ['#e5484d', '#f2752c', '#f5b53d', '#c9d94a', '#3ecf8e', '#38bdf8', '#5b8def', '#8b5cf6', '#d946ef', '#ffffff', '#a3a3a3', '#6b6b6b'];
   const AREA_PRESETS = [
     { id:'perigo',     t:'Zona perigosa', c:'#e5484d', ic:'skull',  mv:'',       ef:'pulso', op:0.16, dn:'media', bd:'tracejado' },
     { id:'criaturas',  t:'Criaturas',     c:'#c2410c', ic:'claw',   mv:'',       ef:'borda', op:0.14, dn:'media', bd:'tracejado' },
@@ -482,7 +482,7 @@
     { id:'agua',       t:'Água',          c:'#38bdf8', ic:'wave',   mv:'deriva', ef:'',      op:0.18, dn:'media', bd:'solido' },
     { id:'segura',     t:'Zona segura',   c:'#3ecf8e', ic:'shield', mv:'',       ef:'pulso', op:0.12, dn:'baixa', bd:'solido' },
     { id:'territorio', t:'Território',    c:'#f5b53d', ic:'flag',   mv:'',       ef:'borda', op:0.12, dn:'baixa', bd:'tracejado' },
-    { id:'livre',      t:'Livre',         c:'#8fd7e8', ic:'',       mv:'',       ef:'',      op:0.12, dn:'media', bd:'solido' }
+    { id:'livre',      t:'Livre',         c:'#ffffff', ic:'',       mv:'',       ef:'',      op:0.12, dn:'media', bd:'solido' }
   ];
   const areaPreset = id => AREA_PRESETS.find(p => p.id === id) || null;
   const areaHex = c => /^#[0-9a-f]{6}$/i.test(c || '');
@@ -508,7 +508,7 @@
   // ================= ROTAS (f19) =================
   // Cada rota guarda o estilo em route.st = { c:cor, w:espessura, ds:traço, ic:ícone repetido, ev:movimento, dir:sentido, lb:nome no mapa }.
   // Rota sem "st" (criada antes) usa ROUTE_DEF, que é o visual antigo (azul-gelo, fina, pontilhada, sem ícone).
-  const ROUTE_DEF = { c:'#8fd7e8', w:'fina', ds:'pontilhado', ic:'', ev:'', dir:'', lb:'auto' };
+  const ROUTE_DEF = { c:'#ffffff', w:'fina', ds:'pontilhado', ic:'', ev:'', dir:'', lb:'auto' };
   const ROUTE_W = { fina:3, media:4.5, grossa:7 };
   const ROUTE_WL = [['fina', 'Fina'], ['media', 'Média'], ['grossa', 'Grossa']];
   const ROUTE_DS = [['solido', 'Lisa'], ['tracejado', 'Tracejada'], ['pontilhado', 'Pontilhada'], ['traco', 'Traço e ponto']];
@@ -531,7 +531,7 @@
     { id:'perigosa', t:'Perigosa',     c:'#e5484d', w:'media', ds:'tracejado',  ic:'skull',  ev:'pulso', dir:'' },
     { id:'rio',      t:'Rio / água',   c:'#38bdf8', w:'grossa', ds:'solido',    ic:'wave',   ev:'fluxo', dir:'' },
     { id:'comboio',  t:'Comboio',      c:'#8b5cf6', w:'media', ds:'solido',     ic:'car',    ev:'fluxo', dir:'setas' },
-    { id:'livre',    t:'Livre',        c:'#8fd7e8', w:'fina',  ds:'solido',     ic:'',       ev:'',      dir:'' }
+    { id:'livre',    t:'Livre',        c:'#ffffff', w:'fina',  ds:'solido',     ic:'',       ev:'',      dir:'' }
   ];
   const routePreset = id => ROUTE_PRESETS.find(p => p.id === id) || null;
   function routeSt(route){
@@ -577,7 +577,7 @@
     const st = frSt(fr);
     if(!st) return { ring:'', sh:'', wrap:'' };
     o = o || {};
-    const sh = FRAME_SHAPE[st.s] || '', col = st.c || base || '#8fd7e8';
+    const sh = FRAME_SHAPE[st.s] || '', col = st.c || base || '#ffffff';
     return {
       ring:`<i class="fr-ring${o.cls || ''}" data-fr="${st.s}" style="--fc:${escapeHtml(col)};--fd:${o.fd || 5}px${o.style || ''}"></i>`,
       sh: sh ? ` data-sh="${sh}"` : '',
@@ -586,7 +586,7 @@
   }
   // seletor de moldura (popups e painel tático): HTML + ligação. O estado fica no próprio elemento (data-s, caixa de cor).
   function frPickerHtml(fr, base, id){
-    const st = frSt(fr) || { s:'', c:'' }, col = st.c || (frHex(base) ? base : '#8fd7e8');
+    const st = frSt(fr) || { s:'', c:'' }, col = st.c || (frHex(base) ? base : '#ffffff');
     return `<details class="fr-pick"${id ? ` id="${id}"` : ''} data-s="${st.s}" style="--fr-pc:${col}">
       <summary class="fr-sum"><span class="token-field-label">Moldura</span><span class="fr-nm">${FRAME_NAME[st.s]}</span></summary>
       <div class="fr-grid" role="radiogroup" aria-label="Moldura">${FRAMES.map(f => {
@@ -606,7 +606,7 @@
   function frPickerWire(root, getBase, onChange){
     if(!root) return;
     const same = root.querySelector('.fr-same'), colorIn = root.querySelector('.fr-color'), nm = root.querySelector('.fr-nm');
-    const base = () => { const b = getBase ? getBase() : ''; return frHex(b) ? b : '#8fd7e8'; };
+    const base = () => { const b = getBase ? getBase() : ''; return frHex(b) ? b : '#ffffff'; };
     const paint = () => {
       const s = root.dataset.s || '', col = same.checked ? base() : colorIn.value;
       root.style.setProperty('--fr-pc', col);
@@ -1293,7 +1293,7 @@
     });
   }
   function tokenIcon(token, stackCount){
-    const borderColor = token.color || '#8fd7e8';
+    const borderColor = token.color || '#ffffff';
     const isSelected = (typeof selectedTokenIds !== 'undefined') && selectedTokenIds.has(token.id);
     let inner;
     if(token.image){
@@ -1532,7 +1532,7 @@
 
   function buildTokenPopupContent(token){
     const container = document.createElement('div');
-    const currentColor = token.color || '#8fd7e8';
+    const currentColor = token.color || '#ffffff';
     const initials = escapeHtml((token.label || 'TK').slice(0,2).toUpperCase());
 
     container.innerHTML = `
@@ -2575,7 +2575,7 @@
       <div class="ar-g">Predefinição</div>
       <div class="ar-chips" id="route-presets">${ROUTE_PRESETS.map(p => `<button type="button" class="ar-chip" data-rp="${p.id}" style="--c:${p.c}"><i></i>${p.t}</button>`).join('')}</div>
       <div class="ar-g">Cor</div>
-      <div class="ar-sw" id="route-colors">${AREA_COLORS.map(c => `<button type="button" class="ar-swb" data-rc="${c}" style="--c:${c}" aria-label="Cor ${c}"></button>`).join('')}<label class="ar-swb ar-swc" title="Outra cor"><input type="color" id="route-color-in" value="#8fd7e8" aria-label="Outra cor"></label></div>
+      <div class="ar-sw" id="route-colors">${AREA_COLORS.map(c => `<button type="button" class="ar-swb" data-rc="${c}" style="--c:${c}" aria-label="Cor ${c}"></button>`).join('')}<label class="ar-swb ar-swc" title="Outra cor"><input type="color" id="route-color-in" value="#ffffff" aria-label="Outra cor"></label></div>
       ${routeSeg('ds', 'Traço', ROUTE_DS)}
       ${routeSeg('w', 'Espessura', ROUTE_WL)}
       <div class="ar-g">Ícone repetido ao longo da rota</div>
@@ -2830,7 +2830,7 @@
       const name = t.label || 'Token';
       return {
         name,
-        color: t.color || '#8fd7e8',
+        color: t.color || '#ffffff',
         typeLabel: 'Token',
         go: () => {
           closeNavDrawer(); mapfReveal('tokens', true);
@@ -2961,7 +2961,7 @@
       <div class="ar-g">Predefinição</div>
       <div class="ar-chips" id="area-presets">${AREA_PRESETS.map(p => `<button type="button" class="ar-chip" data-ap="${p.id}" style="--c:${p.c}"><i></i>${p.t}</button>`).join('')}</div>
       <div class="ar-g">Cor</div>
-      <div class="ar-sw" id="area-colors">${AREA_COLORS.map(c => `<button type="button" class="ar-swb" data-ac="${c}" style="--c:${c}" aria-label="Cor ${c}"></button>`).join('')}<label class="ar-swb ar-swc" title="Outra cor"><input type="color" id="area-color-in" value="#8fd7e8" aria-label="Outra cor"></label></div>
+      <div class="ar-sw" id="area-colors">${AREA_COLORS.map(c => `<button type="button" class="ar-swb" data-ac="${c}" style="--c:${c}" aria-label="Cor ${c}"></button>`).join('')}<label class="ar-swb ar-swc" title="Outra cor"><input type="color" id="area-color-in" value="#ffffff" aria-label="Outra cor"></label></div>
       <div class="ar-g">Ícone</div>
       <div class="ar-ics" id="area-icons"><button type="button" class="ar-ic" data-ai="" title="Sem ícone" aria-label="Sem ícone"><span>—</span></button>${Object.keys(AREA_ICON).map(k => `<button type="button" class="ar-ic" data-ai="${k}" title="${AREA_ICON[k].t}" aria-label="${AREA_ICON[k].t}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${AREA_ICON[k].p}</svg></button>`).join('')}</div>
       ${areaSeg('mv', 'Movimento dos ícones', AREA_MV)}
@@ -4290,7 +4290,7 @@
         embeds: [{
           title: isNothing ? "Nada fisgou a isca" : entry.item.name,
           description: isNothing ? "A linha voltou vazia desta vez." : entry.item.utility,
-          color: isNothing ? 0x26333d : 0x1f8890,
+          color: isNothing ? 0x4a4a4a : 0x1f8890,
           fields,
           footer: { text: "Tau Volantis: Ano 0" },
           timestamp: new Date().toISOString()
@@ -4307,19 +4307,19 @@
       const anyAnom = its.some(i => i.category === 'Itens Anômalos e Paranormais');
       if(its.length === 0){
         payload = { username: "Tau Volantis — Registro de Saque", embeds: [{ title: "Nada de útil encontrado",
-          description: "A busca não rendeu nada desta vez.", color: 0x26333d, fields: base,
+          description: "A busca não rendeu nada desta vez.", color: 0x4a4a4a, fields: base,
           footer: { text: "Tau Volantis: Ano 0" }, timestamp: new Date().toISOString() }] };
       } else if(its.length === 1){
         const item = its[0], rarity = rarityInfo(item, locKey);
         payload = { username: "Tau Volantis — Registro de Saque", embeds: [{ title: item.name, description: item.utility,
-          color: anyAnom ? 0xd3572a : 0x3d6c8a,
+          color: anyAnom ? 0xd3572a : 0xb4b4b4,
           fields: [base[0], { name: "Categoria", value: item.category, inline: true }, { name: "Raridade", value: rarity.label, inline: true }].concat(base.slice(1)).concat(itemFactsText(item) ? [{ name: "Ficha", value: itemFactsText(item).slice(0, 1024) }] : []),
           footer: { text: "Tau Volantis: Ano 0" }, timestamp: new Date().toISOString() }] };
       } else {
         payload = { username: "Tau Volantis — Registro de Saque", embeds: [{
           title: `Saque: ${its.length} itens`,
           description: `Buscado em ${LOC_NAMES[locKey]}`,
-          color: anyAnom ? 0xd3572a : 0x3d6c8a,
+          color: anyAnom ? 0xd3572a : 0xb4b4b4,
           fields: base.concat(its.map(item => ({
             name: item.name.slice(0, 256),
             value: `${item.category} · ${rarityInfo(item, locKey).label}\n${item.utility}${itemFactsText(item) ? '\n' + itemFactsText(item) : ''}`.slice(0, 1024)
@@ -4747,10 +4747,10 @@
   // (limite de taxa do Discord, falha de rede) e sobrevive a recarregar a página.
   const AUDIT_QUEUE_KEY = 'tv-map:audit-queue';
   const AUDIT_STYLE = {
-    saque:['🔎 Saque', 0x3d6c8a], guardar:['🎒 Guardou', 0x4f9a63], recusar:['🗑 Não manteve', 0x8a5a4a],
+    saque:['🔎 Saque', 0xb4b4b4], guardar:['🎒 Guardou', 0x4f9a63], recusar:['🗑 Não manteve', 0x8a5a4a],
     adicionar:['➕ Adicionou pela tabela', 0x4f9a63], usar:['🧪 Usou', 0xd9a441], descartar:['🗑 Descartou', 0xb04a32],
     troca:['⇄ Troca', 0x7a64c8], craft:['🛠 Fabricação', 0xc9923a], inv_removido:['⚠ Inventário removido', 0xb04a32],
-    vasculhar:['📦 Contêiner vasculhado', 0x3d6c8a], pegar:['📤 Pegou de contêiner', 0x4f9a63], depositar:['📥 Guardou em contêiner', 0x4f9a63],
+    vasculhar:['📦 Contêiner vasculhado', 0xb4b4b4], pegar:['📤 Pegou de contêiner', 0x4f9a63], depositar:['📥 Guardou em contêiner', 0x4f9a63],
     condicao:['🔧 Condição alterada', 0xd9a441], reparar:['🔧 Reparo', 0xc9923a], ajuste:['🧰 Ajuste do mestre', 0x7a64c8]
   };
   let auditQueue = [];
@@ -4788,14 +4788,14 @@
     for(let i = 0; i < entries.length; i += 15){
       const chunk = entries.slice(i, i + 15);
       const same = chunk.every(e => e.action === chunk[0].action);
-      const st = AUDIT_STYLE[chunk[0].action] || ['Registro', 0x3d6c8a];
+      const st = AUDIT_STYLE[chunk[0].action] || ['Registro', 0xb4b4b4];
       auditQueue.push({ tries:0, payload:{
         username:'Tau Volantis — Auditoria',
         allowed_mentions:{ parse:[] },
         embeds:[{
           title: same ? st[0] + (chunk.length > 1 ? ' ×' + chunk.length : '') : 'Registro de transações',
           description: chunk.map(auditLine).join('\n').slice(0, 4000),
-          color: same ? st[1] : 0x3d6c8a,
+          color: same ? st[1] : 0xb4b4b4,
           footer:{ text:`${campaignMeta ? campaignMeta.name : 'Tau Volantis'}${ses ? ' · ' + ses.title : ''} · por ${chunk[0].actorName || '?'}` },
           timestamp:new Date().toISOString()
         }]
@@ -8019,7 +8019,7 @@
   // ao abrir a cena) e KEY_GMTAC (tokens ocultos: só o mestre recebe, se as regras v3 estiverem publicadas).
   // Valores de regra (metros por casa, deslocamento, diagonal) são padrões PROVISÓRIOS e configuráveis:
   // nada aqui afirma uma regra oficial; confirme com a sua mesa.
-  const TAC_KINDS = { pc:['Personagem', '#8fd7e8'], npc:['Aliado / NPC', '#7fb98a'], enemy:['Inimigo', '#d3572a'], obj:['Objeto', '#c9a15a'] };
+  const TAC_KINDS = { pc:['Personagem', '#ffffff'], npc:['Aliado / NPC', '#7fb98a'], enemy:['Inimigo', '#d3572a'], obj:['Objeto', '#c9a15a'] };
   const TAC_DIAG = [['cheb', 'Diagonal custa 1 casa'], ['alt', 'Diagonal alterna 1 e 2 casas'], ['eucl', 'Linha reta (arredonda para cima)']];
   const TAC_LIMIT = [['warn', 'Só avisar ao passar do limite'], ['block', 'Bloquear jogadores além do limite'], ['off', 'Sem limite']];
   const TAC_DEF = { size:64, mpc:1.5, diag:'cheb', limit:'warn', speed:6, cols:14, rows:10 };
@@ -8175,7 +8175,7 @@
       empty.hidden = true;
       if(url) tacBase = L.imageOverlay(url, bounds, { pane:'tacBase', interactive:false }).addTo(tacMap);
       else {
-        tacBase = L.rectangle(bounds, { pane:'tacBase', color:'#26333d', weight:2, fillColor:'#0f1a22', fillOpacity:1, interactive:false }).addTo(tacMap);
+        tacBase = L.rectangle(bounds, { pane:'tacBase', color:'#4a4a4a', weight:2, fillColor:'#0a0a0a', fillOpacity:1, interactive:false }).addTo(tacMap);
         if(sc.src && sc.src.kind && sc.src.kind !== 'blank') toast('Não foi possível carregar a imagem da cena. Mostrando só a grade.', true);
       }
       tacMap.invalidateSize();
@@ -8199,7 +8199,7 @@
     const lines = [];
     for(let x = ox; x <= sc.w + 0.01; x += sz) lines.push([[0, x], [sc.h, x]]);
     for(let y = oy; y <= sc.h + 0.01; y += sz) lines.push([[sc.h - y, 0], [sc.h - y, sc.w]]);
-    L.polyline(lines, { color:'#8fd7e8', weight:1, opacity:editing ? 0.75 : 0.32, interactive:false, noClip:true }).addTo(tacGridLayer);
+    L.polyline(lines, { color:'#ffffff', weight:1, opacity:editing ? 0.75 : 0.32, interactive:false, noClip:true }).addTo(tacGridLayer);
   }
   // imagem do token do mapa geográfico (ou NPC) ligado a este token tático; acompanha o original
   function tacImgOf(t){

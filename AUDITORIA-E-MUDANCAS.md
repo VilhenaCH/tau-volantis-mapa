@@ -574,3 +574,27 @@ Novo tipo de marcador, o **Lugar**: um ponto do mapa com cara de cartão ("lugar
 **Não verificado.** Toque com o dedo em celular de verdade; a associação símbolo ↔ elemento depende da sua conferência; o repositório é público e o site oficial diz "All Rights Reserved" (aviso já dado).
 
 **Também corrigido:** o formulário de nova perícia e de nova condição agora guarda o que você digitou ou escolheu se a tela for redesenhada antes de tocar em Adicionar.
+
+## 34. Tema escuro "Obsidiana": preto, contornos e fontes brancos (f21)
+
+**Pedido:** trocar a paleta azul-gelo do app inteiro por algo mais preto, com branco nos contornos e nas fontes, mantendo outras cores como acento (tags, itens, elementos).
+
+**Como foi feito (quase tudo por variáveis em `style.css`).**
+- Fundos: `--bg-0` #000000 (preto puro), `--bg-1` #0a0a0a, `--bg-2` #141414. O brilho azul/laranja de fundo do `body` saiu; o fundo é chapado.
+- Contornos: `--line` #5a5a5a (cinza claro) para divisórias e caixas; destaque, foco e botão ativo em branco (`--frost` agora é #ffffff). `--line-hi` #d4d4d4 ficou disponível.
+- Fontes: `--ink` #f5f5f5, `--ink-dim` #a3a3a3. Escala `--ice-*` virou cinza neutro (#fafafa, #e4e4e4, #b4b4b4, #6a6a6a).
+- Todas as cores azuladas fixas do CSS (fundos translúcidos, vidros do HUD, `#0b1014`, `rgba(143,215,232,…)`) viraram preto/branco neutro.
+- **Cores mantidas como acento:** perigo/laranja (`--hazard`), verde de abrigo, as cores de categoria dos pins e itens (água, suprimentos, combustível, médico, munição, radiação, ameaça, extração, rádio, armadilha, veículo), PV vermelho e PD azul, as cores dos 5 elementos da Ordem, Pesca (verde-água), Discord, clima.
+- **Mapa:** o filtro do mapa-base escuro ficou neutro (menos saturação), então o terreno não puxa mais para azul-esverdeado. O mapa "Nevado" continua gelado de propósito (é uma opção de mapa-base).
+- Controles de zoom do Leaflet agora usam o tema escuro (antes eram brancos).
+- `app.js`: cor padrão de token, moldura, rota e grade tática passou de azul-gelo (#8fd7e8) para branco (#ffffff); paleta de cores das áreas/rotas trocou os dois tons azul-acinzentados por branco e cinzas; fundo da cena tática em branco vazio ficou preto; cores do embed do Discord azuladas viraram cinza.
+- Ícones do app (`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`) refeitos: pino branco em fundo preto. `theme-color` e `manifest.webmanifest` agora são #000000.
+- `index.html`: `?v=f21`.
+
+**Contraste (WCAG).** Todos os textos de tema ficam entre 7,3:1 e 21:1 sobre os três fundos. Contornos cinza ficam em torno de 2,6:1 (decorativos); o foco e o estado ativo são brancos (mais de 18:1).
+
+**Itens já salvos.** Rotas, áreas ou molduras que já guardam uma cor própria (inclusive o azul-gelo antigo) mantêm essa cor até alguém trocar; o que usa o padrão passa a ser branco.
+
+**Testes.** Regressão completa. Ajustados três testes que fixavam as cores antigas: `t_f17` (fundos), `t_f19routes` (rota padrão branca) e `t_pwa` (`theme-color`).
+
+**Arquivos que mudam:** `style.css`, `app.js`, `index.html`, `manifest.webmanifest`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`.
