@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Tau Volantis">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="style.css?v=f21">
+<link rel="stylesheet" href="style.css?v=f23">
 </head>
 <body>
 
@@ -60,13 +60,18 @@
       <div class="app-popover-backdrop" id="search-backdrop"></div>
       <div class="app-popover hud-search" id="hud-search">
         <div class="vs-group-label">Buscar</div>
-        <input type="text" id="search-input" placeholder="Buscar cidade, local ou pin..." autocomplete="off">
+        <input type="text" id="search-input" placeholder="Buscar função, lugar, pin ou perícia…" autocomplete="off">
+        <div class="search-results" id="search-fn" role="listbox" aria-label="Funções do app"></div>
         <div class="search-results" id="search-results"></div>
       </div>
 
       <!-- Menu: identidade, stats, camadas, clima e diretor — tudo sob demanda -->
       <div class="app-popover-backdrop" id="menu-backdrop"></div>
-      <div class="app-popover" id="menu-popover">
+      <div class="app-popover" id="menu-popover" aria-label="Ajustes">
+        <div class="popover-section" id="cfg-section">
+          <div class="vs-group-label">Ajustes</div>
+          <div id="cfg-body"><!-- preenchido pelo app.js: ferramentas avançadas, mochila, atalhos, introdução --></div>
+        </div>
         <div class="popover-section">
           <div class="vs-group-label">Estado do mundo</div>
           <div class="hud-stats">
@@ -141,20 +146,27 @@
       <div class="vs-group-label">Clima em Tau Volantis</div>
       <p class="hint" style="font-size:0.65rem; color:var(--ink-dim); margin:0 0 0.6rem;">Afeta a visão de todo mundo conectado no mapa. Escolha o estado atual.</p>
       <div id="weather-options"><!-- preenchido via JS --></div>
+      <div id="wx-motion"><!-- animação do clima: Automática / Ligada / Desligada (preenchido via JS) --></div>
       <div class="weather-meta-line" id="weather-meta-line"></div>
     </div>
 
 
     <!-- Filtros do mapa: cada chip liga/desliga uma categoria; "Camadas" abre o mapa-base e a lista de itens -->
-    <nav id="map-chips" aria-label="Filtros do mapa">
+    <nav id="map-chips" aria-label="Mapa">
       <button type="button" class="mchip mchip-layers" id="mchip-layers" aria-haspopup="dialog" aria-expanded="false"><span class="mc-ic" data-ic="layers" data-ic-size="15"></span><span class="mc-t">Camadas</span><i class="mc-dot" hidden></i></button>
+      <button type="button" class="mchip mchip-filters" id="mchip-filters" aria-haspopup="true" aria-expanded="false" aria-controls="filt-pop"><span class="mc-ic" data-ic="sliders" data-ic-size="15"></span><span class="mc-t">Filtros</span><b class="mc-n" id="mchip-filters-n"></b></button>
+      <button type="button" class="mchip mchip-add" id="mchip-add" aria-haspopup="dialog" aria-expanded="false"><span class="mc-ic" data-ic="plus" data-ic-size="15"></span><span class="mc-t">Marcar</span></button>
+      <button type="button" class="mchip mchip-master" id="mchip-master" aria-haspopup="menu" aria-expanded="false" aria-controls="mstrip" hidden><span class="mc-ic" data-ic="lock" data-ic-size="15"></span><span class="mc-t">Mestre</span></button>
+    </nav>
+      <div id="mstrip" role="menu" aria-label="Ferramentas do mestre" hidden></div>
+    <div id="filt-pop" role="group" aria-label="Filtros do mapa" hidden>
       <button type="button" class="mchip" data-mf="pins" aria-pressed="true" title="Pins comuns (saque, abrigo, água, veículo…)"><span class="mc-ic" data-ic="pin" data-ic-size="15"></span><span class="mc-t">Pins</span><b class="mc-n"></b></button>
       <button type="button" class="mchip" data-mf="tokens" aria-pressed="true" title="Tokens dos jogadores e NPCs"><span class="mc-ic" data-ic="users" data-ic-size="15"></span><span class="mc-t">Tokens</span><b class="mc-n"></b></button>
       <button type="button" class="mchip" data-mf="perigos" aria-pressed="true" title="Pins de perigo, ameaça, radiação e armadilha + áreas marcadas"><span class="mc-ic" data-ic="alert" data-ic-size="15"></span><span class="mc-t">Perigos</span><b class="mc-n"></b></button>
       <button type="button" class="mchip" data-mf="rotas" aria-pressed="true" title="Rotas medidas"><span class="mc-ic" data-ic="route" data-ic-size="15"></span><span class="mc-t">Rotas</span><b class="mc-n"></b></button>
       <button type="button" class="mchip" data-mf="notas" aria-pressed="true" title="Pins de nota"><span class="mc-ic" data-ic="note" data-ic-size="15"></span><span class="mc-t">Notas</span><b class="mc-n"></b></button>
       <button type="button" class="mchip" data-mf="lugares" aria-pressed="true" hidden title="Lugares reais do OpenStreetMap (hotéis, farmácias, postos…)"><span class="mc-ic" data-ic="compass" data-ic-size="15"></span><span class="mc-t">Lugares</span><b class="mc-n"></b></button>
-    </nav>
+      </div>
 
     <div id="pl-status" role="status" aria-live="polite" hidden></div>
     <div class="hud-credits">
@@ -164,33 +176,33 @@
 </main>
 
 <!-- Coluna esquerda no desktop: mini-ficha do personagem ativo -->
-<aside id="mini" aria-label="Personagem ativo" hidden></aside>
+<aside id="mini" aria-label="Ficha do personagem" hidden>
+  <div id="fp-head"></div>
+  <div id="fichap-body"></div>
+</aside>
 <button type="button" id="mini-tab" hidden aria-controls="mini" aria-expanded="false" aria-label="Mostrar o painel do personagem" title="Mostrar o personagem"></button>
 
-<!-- Índice: tudo que não está no dock, com busca -->
-<div class="app-popover-backdrop" id="idx-backdrop"></div>
-<section id="idx-sheet" class="hud-sheet" role="dialog" aria-label="Índice">
+<!-- Marcar no mapa: nota e token para todos; pins de tipo, áreas e rotas só para o mestre (f23) -->
+<div class="app-popover-backdrop" id="add-backdrop"></div>
+<section id="add-sheet" class="hud-sheet" role="dialog" aria-label="Marcar no mapa">
   <div class="sheet-grab" aria-hidden="true"></div>
-  <div class="sheet-head"><b>Índice</b><button type="button" class="sheet-x" id="idx-close" aria-label="Fechar o índice"></button></div>
-  <input type="search" id="idx-search" placeholder="Buscar no índice…" autocomplete="off" aria-label="Buscar no índice">
-  <div id="idx-list"></div>
-  <!-- Conteúdo de "Adicionar ao mapa" (os botões continuam com os mesmos ids de antes) -->
-  <div id="idx-add-body" hidden>
-    <div class="vs-group-label">Pins</div>
+  <div class="sheet-head"><b>Marcar no mapa</b><button type="button" class="sheet-x" id="add-close" aria-label="Fechar"></button></div>
+  <div id="idx-add-body">
+    <div class="vs-group-label" id="add-pins-label">Pins</div>
     <div class="toolbar-group" id="pin-buttons"><!-- botões de pin criados pelo app.js --></div>
     <div class="vs-group-label">Token</div>
     <div class="toolbar-group">
       <button class="tool-btn" id="tool-token" type="button"><span class="dot" style="background:var(--frost)"></span>Token</button>
       <button class="tool-btn" id="token-select-toggle-btn" type="button"><span class="dot" style="background:var(--frost)"></span>Selecionar Tokens</button>
     </div>
-    <div class="vs-group-label">Áreas</div>
-    <div class="toolbar-group">
+    <div class="vs-group-label" data-master-only>Áreas</div>
+    <div class="toolbar-group" data-master-only>
       <button class="tool-btn" id="tool-area-polygon" type="button"><span class="dot" style="background:var(--hazard)"></span>Área livre</button>
       <button class="tool-btn" id="tool-area-rect" type="button"><span class="dot" style="background:var(--hazard)"></span>Retângulo</button>
       <button class="tool-btn" id="tool-area-circle" type="button"><span class="dot" style="background:var(--hazard)"></span>Círculo</button>
     </div>
-    <div class="vs-group-label">Rotas</div>
-    <div class="toolbar-group">
+    <div class="vs-group-label" data-master-only>Rotas</div>
+    <div class="toolbar-group" data-master-only>
       <button class="tool-btn" id="tool-route" type="button"><span class="dot" style="background:var(--frost)"></span>Traçar rota</button>
     </div>
   </div>
@@ -224,9 +236,9 @@
   <div class="hud-layer" id="hud-layer">
     <div class="hud-layer-body" id="hud-layer-body">
       <button class="tool-btn active" id="layer-streets" data-layer="streets">Ruas</button>
-      <button class="tool-btn" id="layer-topo" data-layer="topo">Relevo</button>
+      <button class="tool-btn" id="layer-topo" data-layer="topo" data-adv>Relevo</button>
       <button class="tool-btn" id="layer-sat" data-layer="sat">Satélite</button>
-      <button class="tool-btn" id="layer-snow" data-layer="snow">Nevado</button>
+      <button class="tool-btn" id="layer-snow" data-layer="snow" data-adv>Nevado</button>
     </div>
   </div>
   <div class="vs-group-label">Tokens no mapa afastado</div>
@@ -264,15 +276,23 @@
 <div class="app-popover-backdrop" id="feed-backdrop"></div>
 <aside id="feed" aria-label="Feed da mesa">
   <div class="sheet-grab" id="feed-grab" aria-hidden="true"></div>
-  <div class="sheet-head"><b>Feed da mesa</b><button type="button" class="sheet-x" id="feed-close" aria-label="Fechar o feed"></button></div>
-  <div class="feed-filters" id="feed-filters" role="group" aria-label="Filtrar o feed"></div>
-  <div class="feed-filters feed-mfilters" id="feed-mfilters" role="group" aria-label="Filtrar por autor" hidden></div>
-  <div id="feed-list" role="log" aria-live="polite"></div>
+  <div class="sheet-head"><b>Mesa</b><button type="button" class="sheet-x" id="feed-close" aria-label="Fechar o feed"></button></div>
+  <div class="mesa-tabs" id="mesa-tabs" role="tablist" aria-label="Mesa"></div>
+  <div id="mesa-feed">
+    <div class="feed-filters" id="feed-filters" role="group" aria-label="Filtrar o feed"></div>
+    <div class="feed-filters feed-mfilters" id="feed-mfilters" role="group" aria-label="Filtrar por autor" hidden></div>
+    <div id="feed-list" role="log" aria-live="polite"></div>
+  </div>
+  <div id="mesa-body" role="tabpanel" hidden></div>
 </aside>
 
 <!-- Dock (fica fora do <main> para sempre ficar por cima das gavetas): as 5 ações mais usadas na mesa (substitui os 3 botões flutuantes e o menu Áreas).
          Os botões são desenhados pelo app.js (ícones SVG). -->
+<!-- Barra de verbos da cena (f23): muda com a cena que o mestre escolheu -->
+<div id="verbs" role="toolbar" aria-label="Ações da cena" hidden></div>
 <nav id="dock" aria-label="Ações principais"></nav>
+<!-- Dado: o gesto mais repetido da mesa fica sempre à mão -->
+<button type="button" id="dock-roll" aria-label="Rolar dados" title="Rolar dados (D)"></button>
 <!-- Chip do feed: mostra a última ocorrência da mesa e quantas você ainda não viu -->
 <button type="button" id="feed-chip" hidden aria-controls="feed" aria-expanded="false"></button>
 
@@ -376,8 +396,8 @@
   <div class="drawer-backdrop" id="hub-drawer-backdrop"></div>
   <div id="hub-drawer" role="dialog" aria-label="Mesa de jogo">
     <div class="drawer-header">
-      <div class="eyebrow">Tau Volantis · Mesa</div>
-      <h2>Mesa de jogo
+      <div class="eyebrow" id="hub-eyebrow">Tau Volantis · Mesa</div>
+      <h2><span id="hub-title">Mesa de jogo</span>
         <button type="button" class="drawer-close" id="hub-drawer-close-btn" title="Fechar" aria-label="Fechar">&times;</button>
       </h2>
     </div>
@@ -415,7 +435,7 @@
       </h2>
     </div>
     <div class="drawer-body">
-      <select id="inv-holder-select"></select>
+      <select id="inv-holder-select" data-nochips></select>
 
       <div id="inv-pane-inv">
         <div class="inv-cap">
@@ -425,11 +445,12 @@
         <div id="inv-extra"></div>
         <div class="inv-toolbar">
           <input type="text" id="inv-filter" placeholder="Filtrar por nome…" autocomplete="off" aria-label="Filtrar itens por nome">
-          <select id="inv-cat" aria-label="Filtrar por categoria"><option value="">Todas as categorias</option></select>
+          <select id="inv-cat" aria-label="Filtrar por categoria" data-chips="scroll"><option value="">Todas as categorias</option></select>
         </div>
         <div class="inv-item-actions">
           <button type="button" class="inv-mini-btn" id="inv-trade-open">⇄ Trocar com outro…</button>
           <button type="button" class="inv-mini-btn" id="inv-merge" title="Junta pilhas iguais">▣ Agrupar iguais</button>
+          <button type="button" class="inv-mini-btn" id="inv-find" title="Abrir saque e pesca">Procurar itens</button>
         </div>
         <div id="inv-trade-panel"></div>
         <div id="inv-list"></div>
@@ -443,6 +464,6 @@
 <!-- Efeitos sonoros: para desligar de vez, troque true por false. O jogador também liga/desliga em Menu → Som. -->
 <script>window.TV_SOUND = true;</script>
 <script src="tv-icons.js"></script>
-  <script src="app.js?v=f21"></script>
+  <script src="app.js?v=f23"></script>
 </body>
 </html>

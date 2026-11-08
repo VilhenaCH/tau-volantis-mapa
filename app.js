@@ -282,7 +282,8 @@
   const KEY_TAC = 'tv-map:tactical';          // mapa tático: cenas, grade, regras, tokens públicos
   const KEY_TACIMG = 'tv-map:tactical-img';   // imagens de cena enviadas do celular (lidas só ao abrir a cena)
   const KEY_GMTAC = 'tv-map:gm-tactical';     // tokens ocultos do mestre
-  const DB_KEYS = new Set([KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC]);
+  const KEY_SCENE = 'tv-map:scene';           // cena da mesa (Exploração, Combate, Descanso): só o mestre muda (f23)
+  const DB_KEYS = new Set([KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC, KEY_SCENE]);
   const SCOPED_KEYS = new Set([KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG].concat(Array.from(DB_KEYS)));
 
   // ---------- campanhas: todo dado de jogo pertence a uma campanha ----------
@@ -1188,6 +1189,8 @@
   appPopovers.forEach(p => {
     p.trigger.addEventListener('click', () => {
       appPopovers.forEach(other => { if(other !== p) other.close(); });
+      // celular: o popover vira folha inferior e ficaria escondido atrás das gavetas (mochila, ficha, mesa)
+      if(p.popover.classList.contains('open') && window.innerWidth < 721){ try{ hudCloseSheets(); closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); }catch(e){} }
     });
   });
 
@@ -1638,12 +1641,14 @@
       else if(weather.state === 'espectral') TVSound.play('anom', { remote:true });
     }
     lastWx = weather.state;
+    wxMotionHintOnce();
     if(hudReady){ hubChanged(); hudMiniChanged(); hudQRChanged(); if(tacUI.open) tacChanged(); }   // totais da ficha e terreno do tático acompanham o clima
   }
 
   function renderWeatherOptions(){
     const wrap = document.getElementById('weather-options');
     if(!wrap) return;
+    renderWxMotion();
     wrap.innerHTML = Object.keys(WEATHER_STATES).map(key => {
       const cfg = WEATHER_STATES[key];
       const isCurrent = key === weather.state;
@@ -1711,7 +1716,42 @@
     catch(e){ /* narração é só um extra — falha aqui não deve travar nada */ }
   }
 
+  // Animação do clima (f22). O CSS congela a neve/chuva/névoa quando o navegador pede "reduzir movimento" (no Windows: Configurações > Acessibilidade >
+  // Efeitos visuais > Efeitos de animação desligado; Brave e Opera GX seguem isso). Aqui cada aparelho escolhe: Automática (segue o aparelho), Ligada ou Desligada.
+  const KEY_WXM = 'tv-map:wx-motion', KEY_WXM_HINT = 'tv-map:wx-hint';
+  const osReducesMotion = () => { try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(e){ return false; } };
+  function wxMotionPref(){ try{ const v = localStorage.getItem(KEY_WXM); return v === 'on' || v === 'off' ? v : 'auto'; }catch(e){ return 'auto'; } }
+  function applyWxMotion(){
+    const p = wxMotionPref(), el = document.documentElement;
+    if(p === 'auto') el.removeAttribute('data-wx-motion'); else el.setAttribute('data-wx-motion', p);
+  }
+  function renderWxMotion(){
+    const wrap = document.getElementById('wx-motion'); if(!wrap) return;
+    const p = wxMotionPref(), os = osReducesMotion();
+    const note = p === 'on' ? 'Sempre animada neste aparelho.'
+      : p === 'off' ? 'Parada neste aparelho (poupa bateria e desempenho).'
+      : os ? 'Seu navegador ou o Windows pede menos movimento, então a animação está parada. Toque em “Ligada” para ver a neve e a chuva mesmo assim.'
+      : 'Segue a configuração do seu aparelho.';
+    wrap.innerHTML = `<div class="wx-motion-label">Animação do clima · só neste aparelho</div>
+      <div class="wx-seg" role="group" aria-label="Animação do clima">${[['auto', 'Automática'], ['on', 'Ligada'], ['off', 'Desligada']].map(m =>
+        `<button type="button" data-wxm="${m[0]}" aria-pressed="${p === m[0]}">${m[1]}</button>`).join('')}</div>
+      <p class="wx-motion-note" id="wx-motion-note">${note}</p>`;
+    wrap.querySelectorAll('[data-wxm]').forEach(b => b.addEventListener('click', () => {
+      try{ if(b.dataset.wxm === 'auto') localStorage.removeItem(KEY_WXM); else localStorage.setItem(KEY_WXM, b.dataset.wxm); }catch(e){}
+      applyWxMotion(); renderWxMotion();
+    }));
+  }
+  // avisa uma única vez por aparelho que a animação está parada pelo navegador (senão parece defeito)
+  function wxMotionHintOnce(){
+    if(!osReducesMotion() || wxMotionPref() !== 'auto' || weather.state === 'calmo') return;
+    try{ if(localStorage.getItem(KEY_WXM_HINT)) return; localStorage.setItem(KEY_WXM_HINT, '1'); }catch(e){ return; }
+    toast('A animação do clima está parada porque o navegador pede menos movimento. Em Clima, toque em “Ligada” para ver.');
+  }
+  applyWxMotion();
+
   function openWeatherPopover(){
+    // celular: gavetas (ficha, mochila, mesa) ficariam por cima do popover do clima
+    if(window.innerWidth < 721){ try{ hudCloseSheets(); closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); }catch(e){} }
     renderWeatherOptions();
     document.getElementById('weather-backdrop').classList.add('open');
     document.getElementById('weather-popover').classList.add('open');
@@ -2913,6 +2953,7 @@
     if(area.draw){ areaDrawTap(e.latlng); return; }
     if(area.edit) return;
 
+    if(selectedPinType && !isMaster() && selectedPinType !== 'nota'){ clearModes(); toast('Só o mestre cria esse tipo de pin. Você pode marcar notas e tokens.', true); return; }
     if(selectedPinType){
       const typeLabel = (PIN_TYPES.find(t => t.id === selectedPinType) || {}).label || selectedPinType;
       const pin = {
@@ -3732,6 +3773,7 @@
   searchInput.addEventListener('input', () => {
     clearTimeout(searchDebounce);
     const q = searchInput.value.trim();
+    if(typeof f23RenderSearchFns === 'function') f23RenderSearchFns(q);
     if(!q){ clearSearchResults(); return; }
     const mySeq = ++searchSeq;
     const local = searchLocal(q);
@@ -3745,7 +3787,7 @@
   searchInput.addEventListener('keydown', (e) => {
     if(e.key === 'Escape'){ searchInput.blur(); clearSearchResults(); }
     if(e.key === 'Enter'){
-      const first = searchResultsEl.querySelector('.search-result');
+      const first = document.querySelector('#search-fn .search-fn-item') || searchResultsEl.querySelector('.search-result');
       if(first) first.click();
     }
   });
@@ -4560,7 +4602,7 @@
   const invDrawer = document.getElementById('inv-drawer');
   const invBackdrop = document.getElementById('inv-drawer-backdrop');
   const itemAddDest = document.getElementById('item-add-dest');
-  const invUI = { holderId:null, tab:'inv', trade:null, panel:null, logHolder:'', logAction:'', takeTo:null, depositOpen:false, filter:'', cat:'' };
+  const invUI = { sel:null, holderId:null, tab:'inv', trade:null, panel:null, logHolder:'', logAction:'', takeTo:null, depositOpen:false, filter:'', cat:'' };
   let lastHolderSig = '';
 
   function toast(msg, isErr){
@@ -5409,10 +5451,12 @@
     const cats = Array.from(new Set(invItems(hid).map(i => i.category))).sort();
     if(invUI.cat && !cats.includes(invUI.cat)) invUI.cat = '';
     catSel.innerHTML = '<option value="">Todas as categorias</option>' + cats.map(c => `<option value="${escapeHtml(c)}" ${c === invUI.cat ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
-    document.getElementById('inv-extra').innerHTML = !hid ? '' : (isCont ? containerHeaderHtml(hobj) : slotsHtml(hid));
+    const gridView = f23InvView() === 'grid';
+    document.getElementById('inv-extra').innerHTML = !hid ? '' : (isCont ? containerHeaderHtml(hobj) : (gridView ? eqStripHtml(hid) : slotsHtml(hid)));
 
     const list = document.getElementById('inv-list');
     list.innerHTML = '';
+    list.classList.toggle('inv-grid', gridView);
     if(!hid){
       list.innerHTML = '<div class="inv-empty">Crie um token, um NPC ou um contêiner no mapa para ter um inventário.</div>';
       return;
@@ -5424,7 +5468,13 @@
       return;
     }
     if(!items.length){ list.innerHTML = '<div class="inv-empty">Nenhum item com esse filtro.</div>'; return; }
-    items.forEach(inv => {
+    const mkRow = inv => invRowEl(inv, hid, isCont);
+    if(gridView) invGridFill(list, items, mkRow);
+    else items.forEach(inv => list.appendChild(mkRow(inv)));
+  }
+
+  // uma linha de item com todas as ações (a lista usa direto; a grade mostra a linha do item aberto)
+  function invRowEl(inv, hid, isCont){
       const ref = ITEMS_BY_ID[inv.itemId];
       const row = document.createElement('div');
       row.className = 'inv-item' + (inv.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '') + (inv.cond === 0 ? ' broken' : '');
@@ -5455,9 +5505,49 @@
       });
       const pn = invUI.panel;
       if(pn && pn.uid === inv.uid) row.appendChild(buildInvPanel(pn, inv, hid, isCont));
-      list.appendChild(row);
-    });
+      return row;
   }
+
+  // ---- mochila em grade (f23): cada item é um quadro; tocar abre os detalhes logo abaixo da linha ----
+  function eqStripHtml(hid){
+    const eq = equippedItems(hid), caps = cfg().equipSlots;
+    return `<div class="eq-strip" role="group" aria-label="Equipamento">${EQUIP_SLOTS.map(s => {
+      const list = eq.filter(i => i.slot === s[0]), cap = caps[s[0]] != null ? caps[s[0]] : 1;
+      if(!list.length) return `<div class="eq-tile"><span class="eq-tile-name">${escapeHtml(s[1])}</span><span class="eq-tile-empty">vazio</span></div>`;
+      return `<button type="button" class="eq-tile on" data-act="eq-pick" data-uid="${escapeHtml(list[0].uid)}" aria-label="${escapeHtml(s[1])}: ${escapeHtml(list.map(i => i.name).join(', '))}. Tocar para ver o item"><span class="eq-tile-name">${escapeHtml(s[1])}${cap > 1 ? ` <small>${list.length}/${cap}</small>` : ''}</span>${iconHtml({ id:list[0].itemId, name:list[0].name, category:list[0].category })}<span class="eq-tile-item">${escapeHtml(list[0].name)}${list.length > 1 ? ' +' + (list.length - 1) : ''}</span></button>`;
+    }).join('')}</div>`;
+  }
+  function invGridFill(list, items, mkRow){
+    if(invUI.panel && items.some(i => i.uid === invUI.panel.uid)) invUI.sel = invUI.panel.uid;
+    if(invUI.sel && !items.some(i => i.uid === invUI.sel)) invUI.sel = null;
+    items.forEach(inv => {
+      const on = invUI.sel === inv.uid, q = instQty(inv);
+      const b = document.createElement('button');
+      b.type = 'button'; b.dataset.uid = inv.uid; b.setAttribute('aria-pressed', String(on));
+      b.className = 'inv-tile' + (on ? ' sel' : '') + (inv.slot ? ' eq' : '') + (inv.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '') + (inv.cond === 0 ? ' broken' : '');
+      b.setAttribute('aria-label', inv.name + (q > 1 ? ', quantidade ' + q : '') + (inv.slot ? ', equipado em ' + slotLabel(inv.slot) : '') + (inv.cond != null ? ', ' + COND_LEVELS[inv.cond] : ''));
+      b.innerHTML = `${iconHtml({ id:inv.itemId, name:inv.name, category:inv.category })}<span class="it-name">${escapeHtml(inv.name)}</span>${q > 1 ? `<span class="it-qty">×${q}</span>` : ''}${inv.slot ? '<i class="it-eq" title="Equipado"></i>' : ''}${inv.cond != null && inv.cond < 2 ? `<i class="it-cond c${inv.cond}" title="${escapeHtml(COND_LEVELS[inv.cond])}"></i>` : ''}`;
+      b.addEventListener('click', () => { invUI.sel = on ? null : inv.uid; if(on) invUI.panel = null; invUI.focus = inv.uid; invUI.reveal = !on; renderInvDrawer(); });
+      list.appendChild(b);
+      if(on){ const d = document.createElement('div'); d.className = 'inv-detail'; d.id = 'inv-detail'; d.appendChild(mkRow(inv)); list.appendChild(d); }
+    });
+    if(invUI.focus){ const t = list.querySelector('.inv-tile[data-uid="' + invUI.focus.replace(/"/g, '') + '"]'); invUI.focus = null; if(t) t.focus({ preventScroll:true }); }
+    if(invUI.reveal){ invUI.reveal = false; const d = list.querySelector('#inv-detail'); if(d && d.scrollIntoView) d.scrollIntoView({ block:'nearest' }); }
+  }
+  // setas movem entre os quadros (para cima e para baixo respeitam a coluna)
+  document.getElementById('inv-list').addEventListener('keydown', e => {
+    const t = e.target.closest && e.target.closest('.inv-tile'); if(!t || !/^Arrow/.test(e.key)) return;
+    const tiles = Array.from(document.querySelectorAll('#inv-list .inv-tile')), i = tiles.indexOf(t); if(i < 0) return;
+    const r = t.getBoundingClientRect(); let n = null;
+    if(e.key === 'ArrowRight') n = tiles[i + 1]; else if(e.key === 'ArrowLeft') n = tiles[i - 1];
+    else {
+      const dir = e.key === 'ArrowDown' ? 1 : -1, cx = r.left + r.width / 2;
+      const cand = tiles.filter(x => { const b = x.getBoundingClientRect(); return dir > 0 ? b.top > r.bottom - 4 : b.bottom < r.top + 4; });
+      if(dir < 0) cand.reverse();
+      if(cand.length){ const row = cand[0].getBoundingClientRect().top; n = cand.filter(x => Math.abs(x.getBoundingClientRect().top - row) < 6).sort((a, b) => Math.abs(a.getBoundingClientRect().left + a.offsetWidth / 2 - cx) - Math.abs(b.getBoundingClientRect().left + b.offsetWidth / 2 - cx))[0]; }
+    }
+    if(n){ e.preventDefault(); n.focus(); }
+  });
 
   function itemHistory(uid){
     const hit = e => (e.item && e.item.uid === uid) || [e.gave, e.got, e.used, e.made, e.items].some(a => (a || []).some(i => i && i.uid === uid));
@@ -5677,12 +5767,14 @@
   document.getElementById('inv-filter').addEventListener('input', e => { invUI.filter = e.target.value; renderInvDrawer(); const f = document.getElementById('inv-filter'); f.focus(); try{ f.setSelectionRange(f.value.length, f.value.length); }catch(err){} });
   document.getElementById('inv-cat').addEventListener('change', e => { invUI.cat = e.target.value; renderInvDrawer(); });
   document.getElementById('inv-merge').addEventListener('click', () => { if(invUI.holderId) doMerge(invUI.holderId); });
+  { const f = document.getElementById('inv-find'); if(f) f.addEventListener('click', () => { closeInventory(); hudOpenSaque(); }); }
   // contêineres e equipamento: um único ouvinte no painel que é redesenhado
   document.getElementById('inv-extra').addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
     if(!b) return;
     const hid = invUI.holderId, a = b.dataset.act;
     if(a === 'unequip') doEquip(hid, b.dataset.uid, null);
+    else if(a === 'eq-pick'){ invUI.sel = b.dataset.uid; invUI.focus = null; invUI.reveal = true; invUI.panel = null; renderInvDrawer(); }
     else if(a === 'cont-search') generateContainer(hid, false);
     else if(a === 'cont-refill'){ if(window.confirm('Reabastecer sorteia novos itens e os soma ao que já existe. Continuar?')) generateContainer(hid, true); }
     else if(a === 'cont-take-all') containerTake(hid, invItems(hid).map(i => i.uid), invUI.takeTo);
@@ -5799,6 +5891,7 @@
     if(sel) sel.style.display = c.modules.explore ? '' : 'none';
     refreshLootPins();
     placesRefresh();
+    f23Refresh();
   }
   // volume do catálogo (0 a 4) vira peso quando a mesa liga a opção; volume 0 pesa um pouco, para pilhas grandes contarem
   const ESP_W = [0.25, 1, 2, 3, 4];
@@ -5873,7 +5966,7 @@
     weather = { state:'calmo', updatedAt:null, updatedBy:null };
     inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {}; journal = {}; gmJournal = {};
     hub.resDraft = null; hub.slotDraft = null; hub.cfgDraft = null;
-    tacReset();
+    tacReset(); f23SceneReset();
     rollsSeen = null;
     lootHistory = []; fishHistory = [];
     renderPins(); renderTokens(); renderShapes(); renderRoutes(); applyWeatherVisual();
@@ -5889,6 +5982,7 @@
     syncOff.push(DB.on('campaign-sessions/' + activeCampaignId, v => { sessions = v || {}; updateHud(); hubChanged(); }));
     on(KEY_JOURNAL, v => { journal = v || {}; hubChanged(); hudFeedChanged(); }, 300);
     on(KEY_TAC, v => tacOnData(v));
+    on(KEY_SCENE, v => f23SceneData(v));
     syncOff.push(() => { if(gmOff){ gmOff(); gmOff = null; } if(tacGmOff){ tacGmOff(); tacGmOff = null; } });
     syncGm();
   }
@@ -6143,7 +6237,7 @@
     if(cfg().modules.clock && clockText()) parts.push(clockText());
     chip.innerHTML = ic('book', 13) + '<span>' + esc(parts.join(' · ')) + '</span>';
     chip.setAttribute('aria-label', 'Campanha ativa: ' + parts.join(', ') + '. Abrir campanhas e sessões.');
-    hudMiniChanged(); hudFeedChanged();
+    hudMiniChanged(); hudFeedChanged(); f23Refresh();
   }
 
   // ---------- roller ----------
@@ -6420,7 +6514,7 @@
     if(scope === 'character'){
       if(!rollUI.who){
         toast('Selecione primeiro o personagem: o atalho fica salvo só nele.', true);
-        const sel = hubBody.querySelector('[data-bind="rollUI.who"]'); if(sel) sel.focus();
+        const sel = hubQ('[data-bind="rollUI.who"]'); if(sel) sel.focus();
         return;
       }
       if(!canEditHolder(holderById(rollUI.who))){ toast('Você não pode editar a ficha desse personagem.', true); return; }
@@ -6673,55 +6767,97 @@
 
   // ---------- painel "Mesa de jogo" ----------
   const esc = escapeHtml;
-  function hubTabs(){
-    const c = cfg().modules;
-    const t = [['mundo', ic('map', 14) + ' Mundo'], ['ficha', ic('user', 14) + ' Personagem'], ['grupo', ic('users', 14) + ' Grupo'], ['diario', ic('book', 14) + ' Diário'], ['dados', ic('dice', 14) + ' Dados'], ['sessao', ic('list', 14) + ' Sessão']];
-    if(c.crafting) t.push(['oficio', ic('tool', 14) + ' Ofício']);
-    t.push(['campanhas', ic('layers', 14) + ' Campanhas']);
-    if(isMaster()) t.push(['mestre', ic('lock', 14) + ' Mestre']);
+  // Grupos de abas (f23): a antiga "Mesa de jogo" de 8 abas foi repartida.
+  //  ficha  → coluna da esquerda (computador) ou gaveta (celular)
+  //  mesa   → painel Mesa (Feed, Grupo, Diário, Mundo, Ofício): coluna da direita ou folha
+  //  cfg    → gaveta de Ajustes e mestre (Campanhas, Sessão, Mestre, Dados completos)
+  const HUB_MESA_TABS = ['feed', 'grupo', 'diario', 'mundo', 'oficio'];
+  function hubGroupOf(tab){ return tab === 'ficha' ? 'ficha' : (HUB_MESA_TABS.includes(tab) ? 'mesa' : 'cfg'); }
+  function hubTabsFor(group){
+    const c = cfg().modules, m = isMaster();
+    if(group === 'ficha') return [['ficha', ic('user', 14) + ' Ficha']];
+    if(group === 'mesa'){
+      const t = [['feed', ic('list', 14) + ' Feed'], ['grupo', ic('users', 14) + ' Grupo'], ['diario', ic('book', 14) + ' Diário'], ['mundo', ic('map', 14) + ' Mundo']];
+      if(c.crafting) t.push(['oficio', ic('tool', 14) + ' Ofício']);
+      return t;
+    }
+    const t = [['campanhas', ic('layers', 14) + ' Campanhas']];
+    if(m) t.push(['sessao', ic('list', 14) + ' Sessão'], ['mestre', ic('lock', 14) + ' Mestre']);
+    t.push(['dados', ic('dice', 14) + ' Dados completos']);
     return t;
   }
+  function hubTabs(){ return hubTabsFor(hubGroupOf(hub.tab)); }
+  const fichapBody = document.getElementById('fichap-body'), fpHead = document.getElementById('fp-head'), mesaBody = document.getElementById('mesa-body');
+  let fichaDocked = false;
+  // o primeiro campo que casar entre as telas abertas (ids dos formulários são únicos entre elas)
+  function hubQ(sel){ return [hubBody, fpHead, fichapBody, mesaBody].map(r => r && r.querySelector(sel)).find(Boolean) || null; }
+  function hubViewDefs(){
+    return [
+      { id:'drawer', roots:[hubBody], body:hubBody, on:() => hubDrawer.classList.contains('open'), tab:() => hub.tab },
+      { id:'ficha', roots:[fpHead, fichapBody], body:fichapBody, on:() => hudCol() && !hud.miniOff, tab:() => 'ficha' },
+      { id:'mesa', roots:[mesaBody], body:mesaBody, on:() => f23MesaVisible() && F23.mesaTab !== 'feed', tab:() => F23.mesaTab }
+    ];
+  }
   function openHub(tab){
+    tab = tab || hub.tab;
+    const g = hubGroupOf(tab);
+    if(g === 'mesa'){ f23OpenMesa(tab); return; }
+    if(g === 'ficha' && hudCol()){ f23ShowFicha(); return; }
     closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets();
-    if(tab) hub.tab = tab;
-    if(!hubTabs().some(t => t[0] === hub.tab)) hub.tab = 'mundo';
+    hub.tab = hubTabsFor(g).some(t => t[0] === tab) ? tab : hubTabsFor(g)[0][0];
     ensurePersonalSub();
+    hubTitleSync();
+    hubDrawer.classList.add('open'); hubBackdrop.classList.add('open');   // antes do render: a visão da gaveta só renderiza quando está aberta
     renderHub();
-    hubDrawer.classList.add('open'); hubBackdrop.classList.add('open');
+  }
+  function hubTitleSync(){
+    const g = hubGroupOf(hub.tab), t = document.getElementById('hub-title'), e = document.getElementById('hub-eyebrow');
+    if(t) t.textContent = g === 'ficha' ? 'Ficha' : (isMaster() ? 'Mestre e ajustes' : 'Ajustes');
+    if(e) e.textContent = g === 'ficha' ? 'Tau Volantis · Personagem' : 'Tau Volantis · Campanha';
   }
   function closeHub(){ hubDrawer.classList.remove('open'); hubBackdrop.classList.remove('open'); }
   function hubIsOpen(){ return hubDrawer.classList.contains('open'); }
   function hubChanged(){
-    if(!invReady || !hubIsOpen()) return;
+    if(!invReady) return;
+    const vs = hubViewDefs().filter(v => v.body && v.on());
+    if(!vs.length) return;
     const ae = document.activeElement;
-    if(ae && hubBody.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)){ hubDirty = true; return; }
+    if(ae && vs.some(v => v.roots.some(r => r && r.contains(ae))) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)){ hubDirty = true; return; }
     renderHub();
   }
   function opt(v, label, sel){ return `<option value="${esc(v)}" ${String(sel) === String(v) ? 'selected' : ''}>${esc(label)}</option>`; }
-  function holderSelect(bind, value, withNone){
-    const hl = holderList();
+  function holderSelect(bind, value, withNone, list){
+    const hl = list || holderList();
     return `<select data-bind="${bind}" data-rerender>${withNone ? '<option value="">— sem personagem —</option>' : ''}${
       hl.map(h => opt(h.id, (h.type === 'npc' ? 'NPC · ' : '') + h.name, value)).join('')}</select>`;
   }
   function renderHub(){
-    if(!hubBody) return;
-    const tabs = hubTabs();
-    if(!tabs.some(t => t[0] === hub.tab)) hub.tab = 'dados';
-    const ses = activeSession();
-    let html = `<div class="hub-context" role="status">${ic('book', 14)} <b>${esc(campaignMeta ? campaignMeta.name : 'Campanha')}</b> · ${esc(ses ? ses.title : 'sem sessão')}${isMaster() ? ' · mestre' : ''}</div>`;
-    html += '<div class="hub-tabs" role="tablist">' + tabs.map(t => `<button type="button" role="tab" aria-selected="${hub.tab === t[0]}" class="inv-tab${hub.tab === t[0] ? ' active' : ''}" data-act="tab" data-tab="${t[0]}">${t[1]}</button>`).join('') + '</div>';
-    const fn = { dados:renderDados, ficha:renderFicha, sessao:renderSessao, campanhas:renderCampanhas, mundo:renderMundo, oficio:renderOficio, diario:renderDiario, grupo:renderGrupo, mestre:renderMestre }[hub.tab];
-    html += fn();
-    // se a tela for redesenhada com um campo em foco, devolve o foco e o cursor
-    // à mesma posição (senão o texto digitado passa a entrar no começo do campo)
+    hubViewDefs().forEach(v => { if(v.body && v.on()) renderHubView(v); });
+    hubDirty = false;
+  }
+  function renderHubView(v){
+    const group = v.id === 'ficha' ? 'ficha' : hubGroupOf(v.tab()), tabs = hubTabsFor(group);
+    let cur = v.tab(); if(!tabs.some(t => t[0] === cur)) cur = tabs[0][0];
+    if(v.id === 'drawer') hub.tab = cur;
+    const fn = { dados:renderDados, ficha:renderFicha, sessao:renderSessao, campanhas:renderCampanhas, mundo:renderMundo, oficio:renderOficio, diario:renderDiario, grupo:renderGrupo, mestre:renderMestre }[cur];
     const ae = document.activeElement;
-    const keep = (ae && hubBody.contains(ae) && ae.dataset && ae.dataset.bind) ? { bind:ae.dataset.bind, s:ae.selectionStart, e:ae.selectionEnd } : null;
-    hubBody.innerHTML = html;
+    const inRoot = ae && v.roots.some(r => r && r.contains(ae));
+    const keep = (inRoot && ae.dataset && ae.dataset.bind) ? { bind:ae.dataset.bind, s:ae.selectionStart, e:ae.selectionEnd } : null;
+    if(v.id === 'ficha'){ f23RenderFicha(fn); }
+    else {
+      let html = '';
+      if(v.id === 'drawer'){
+        const ses = activeSession();
+        html += `<div class="hub-context" role="status">${ic('book', 14)} <b>${esc(campaignMeta ? campaignMeta.name : 'Campanha')}</b> · ${esc(ses ? ses.title : 'sem sessão')}${isMaster() ? ' · mestre' : ''}</div>`;
+        if(tabs.length > 1) html += '<div class="hub-tabs" role="tablist">' + tabs.map(t => `<button type="button" role="tab" aria-selected="${cur === t[0]}" class="inv-tab${cur === t[0] ? ' active' : ''}" data-act="tab" data-tab="${t[0]}">${t[1]}</button>`).join('') + '</div>';
+      }
+      html += fn ? fn() : '';
+      v.body.innerHTML = html;
+    }
     if(keep){
-      const el = Array.from(hubBody.querySelectorAll('[data-bind]')).find(x => x.dataset.bind === keep.bind);
+      const el = v.roots.map(r => r && Array.from(r.querySelectorAll('[data-bind]')).find(x => x.dataset.bind === keep.bind)).find(Boolean);
       if(el){ el.focus(); try{ if(keep.s != null) el.setSelectionRange(keep.s, keep.e); }catch(e){} }
     }
-    hubDirty = false;
   }
 
   // --- dados ---
@@ -6837,7 +6973,7 @@
     const h = holderById(hub.charToken), card = ensureCard(hub.charToken);
     const edit = canEditHolder(h), dis = edit ? '' : 'disabled';
     const cm = cfg().cardModules, mods = cfg().modules;
-    let html = `<div class="hub-sec"><label class="hub-label">Ficha de</label>${holderSelect('hub.charToken', hub.charToken, false)}
+    let html = `<div class="hub-sec">${fichaDocked ? '' : `<label class="hub-label">Ficha de</label>${holderSelect('hub.charToken', hub.charToken, false)}`}
       ${edit ? '' : '<p class="hub-hint">Somente leitura: esta ficha pertence a outra pessoa.</p>'}`;
     const ordem = card.systemId === 'ordem';
     if(ordem){
@@ -7214,7 +7350,7 @@
     hub.bulkPick = []; toast('Ajuste aplicado.'); renderHub();
   }
   // ---------- backup e restauração ----------
-  const BACKUP_KEYS = [KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG, KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC];
+  const BACKUP_KEYS = [KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG, KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC, KEY_SCENE];
   async function buildBackup(){
     const data = {};
     for(const k of BACKUP_KEYS){ try{ const v = await readScoped(activeCampaignId, k); if(v != null) data[k] = v; }catch(e){ /* sem permissão: segue */ } }
@@ -7519,7 +7655,7 @@
   }
   function opAddCondition(){
     const id = hub.charToken; if(!opCanEdit(id)) return;
-    const key = (hubBody.querySelector('#op-cond-key') || {}).value, note = ((hubBody.querySelector('#op-cond-note') || {}).value || '').trim();
+    const key = (hubQ('#op-cond-key') || {}).value, note = ((hubQ('#op-cond-note') || {}).value || '').trim();
     if(!key) return;
     if(key === 'outra' && !note){ toast('Escreva o nome da condição.', true); return; }
     const card = ensureCard(id), h = holderById(id);
@@ -7865,11 +8001,13 @@
     if(t.hasAttribute('data-sheet')) hubDirty = true;      // totais da ficha se refazem quando o campo perde o foco
     if(t.hasAttribute('data-rerender')) renderHub();
   }
-  hubBody.addEventListener('input', e => {
+  function wireHubRoot(root){
+  if(!root) return;
+  root.addEventListener('input', e => {
     const t = e.target;
     if(t.dataset && t.dataset.bind && t.type !== 'checkbox' && t.tagName !== 'SELECT') onBind(t);
   });
-  hubBody.addEventListener('change', e => {
+  root.addEventListener('change', e => {
     const t = e.target;
     if(t.dataset && t.dataset.pin){
       let v = t.value;
@@ -7892,12 +8030,14 @@
     }
     if(t.dataset && t.dataset.bind && (t.type === 'checkbox' || t.tagName === 'SELECT')) onBind(t);
   });
-  hubBody.addEventListener('focusout', () => { setTimeout(() => { if(hubDirty && !(document.activeElement && hubBody.contains(document.activeElement))) renderHub(); }, 50); });
-  hubBody.addEventListener('click', e => {
+  root.addEventListener('focusout', () => { setTimeout(() => { if(hubDirty && !(document.activeElement && [hubBody, fpHead, fichapBody, mesaBody].some(r => r && r.contains(document.activeElement)))) renderHub(); }, 50); });
+  root.addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
     if(!b || b.tagName === 'INPUT') return;
     hubAction(b.dataset.act, b);
   });
+  }
+  [hubBody, fpHead, fichapBody, mesaBody].forEach(wireHubRoot);
   function findShortcut(el){ return allShortcuts().find(s => s.id === el.dataset.id && s.scope === el.dataset.scope); }
   function hubAction(act, el){
     const D = el.dataset;
@@ -7925,13 +8065,13 @@
       case 'rem-del': characters[hub.charToken].reminders.splice(+D.i, 1); scheduleSaveCard(); renderHub(); break;
       case 'skill-add': ensureCard(hub.charToken).skills = (characters[hub.charToken].skills || []).concat([{ name:'', bonus:0 }]); scheduleSaveCard(); renderHub(); break;
       case 'skill-del': characters[hub.charToken].skills.splice(+D.i, 1); scheduleSaveCard(); renderHub(); break;
-      case 'skill-use': { const s = characters[hub.charToken].skills[+D.i]; rollUI.skill = s.name; rollUI.bonuses = Number(s.bonus) ? [{ label:s.name, value:Number(s.bonus) }] : []; rollUI.who = hub.charToken; hub.tab = 'dados'; renderHub(); break; }
+      case 'skill-use': { const s = characters[hub.charToken].skills[+D.i]; rollUI.skill = s.name; rollUI.bonuses = Number(s.bonus) ? [{ label:s.name, value:Number(s.bonus) }] : []; rollUI.who = hub.charToken; openHub('dados'); break; }
       case 'op-migrate': opMigrate(); break;
       case 'op-keep': opSkip(hub.charToken); break;
       case 'op-revert': opRevert(); break;
       case 'op-skill-roll': opRollSkill(D.k); break;
       case 'op-skill-del': opDelSkill(D.k); break;
-      case 'op-skill-add': opAddSkill((hubBody.querySelector('#op-skill-new') || {}).value, (hubBody.querySelector('#op-skill-attr') || {}).value, false); break;
+      case 'op-skill-add': opAddSkill((hubQ('#op-skill-new') || {}).value, (hubQ('#op-skill-attr') || {}).value, false); break;
       case 'op-skill-all': opAddSkill('', '', true); break;
       case 'op-atk-new': opNewAttack(); break;
       case 'op-atk-edit': hub.opEdit = hub.opEdit === D.id ? null : D.id; renderHub(); break;
@@ -7960,7 +8100,7 @@
       case 'need': { const c = ensureCard(hub.charToken); c.needs = c.needs || {}; c.needs[D.n] = Math.min(4, Math.max(0, (c.needs[D.n] || 0) + (+D.d))); scheduleSaveCard(); renderHub(); break; }
       case 'open-inv': openInventory(D.id); break;
       case 'sess-new': newSession(); break;
-      case 'sess-summary': { const ta = hubBody.querySelector('[data-bind="hub.summary"]'); saveSummary(ta ? ta.value : ''); break; }
+      case 'sess-summary': { const ta = hubQ('[data-bind="hub.summary"]'); saveSummary(ta ? ta.value : ''); break; }
       case 'sess-close': closeSession(); break;
       case 'camp-open': switchCampaign(D.id); break;
       case 'camp-archive': setArchived(D.id, true); break;
@@ -7977,7 +8117,7 @@
       case 'clock': advanceClock(+D.m); break;
       case 'pin-go': { const p = pins.find(x => x.id === D.id); if(p){ map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 16)); closeHub(); } break; }
       case 'craft': { const r = recipes[D.id]; if(r) craftDo(r, hub.craftHolder, D.o); break; }
-      case 'craft-roll': { const r = recipes[D.id]; if(r){ rollUI.skill = r.skill || r.name; rollUI.who = hub.craftHolder || ''; hub.tab = 'dados'; renderHub(); } break; }
+      case 'craft-roll': { const r = recipes[D.id]; if(r){ rollUI.skill = r.skill || r.name; rollUI.who = hub.craftHolder || ''; openHub('dados'); } break; }
       case 'recipe-new': hub.recipeForm = blankRecipe(); renderHub(); break;
       case 'recipe-edit': hub.recipeForm = recipeToForm(recipes[D.id]); renderHub(); break;
       case 'recipe-cancel': hub.recipeForm = null; renderHub(); break;
@@ -7988,7 +8128,7 @@
       case 'ing-del': hub.recipeForm.ingredients.splice(+D.i, 1); renderHub(); break;
       case 'close-hub': closeHub(); break;
       case 'weather-open': closeHub(); openWeatherPopover(); break;
-      case 'grp-sheet': hub.charToken = D.id; hub.tab = 'ficha'; renderHub(); break;
+      case 'grp-sheet': hub.charToken = D.id; hudSetWho(D.id); openHub('ficha'); break;
       case 'dj-add': {
         const f = hub.jf;
         if(!(f.text || '').trim() && !(f.title || '').trim()){ toast('Escreva algo para salvar.', true); break; }
@@ -8758,7 +8898,7 @@
     requestAnimationFrame(() => { tacMap.invalidateSize(); tacBuild(true); const bk = root0(); if(bk) bk.focus({ preventScroll:true }); });
   }
   function root0(){ return document.querySelector('#tac .tac-back'); }
-  function tacClose(){ tacUI.open = false; tacUI.ruler = false; tacUI.pts = []; tacEl('tac').hidden = true; tacRenderArea(); const f = document.getElementById('dock-tac'); if(f) f.focus({ preventScroll:true }); }
+  function tacClose(){ tacUI.open = false; tacUI.ruler = false; tacUI.pts = []; tacEl('tac').hidden = true; tacRenderArea(); const f = document.querySelector('[data-verb="tac"]') || document.getElementById('mchip-master'); if(f && f.offsetParent) f.focus({ preventScroll:true }); }
   (function tacWire(){
     const root = tacEl('tac');
     if(!root) return;
@@ -8783,6 +8923,7 @@
     if(/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || e.ctrlKey || e.metaKey || e.altKey) return;
     if(e.key === 'd' || e.key === 'D') hudOpenQuickRoll();
     else if(e.key === 'c' || e.key === 'C') openHub('campanhas');
+    else if(typeof f23Key === 'function' && hudReady) f23Key(e);
   });
 
   // ================= HUD: DOCK, ÍNDICE, ROLAGEM RÁPIDA, FEED VIVO E MINI-FICHA =================
@@ -8793,6 +8934,11 @@
   const hudPlain = html => { const d = document.createElement('div'); d.innerHTML = html; return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
   const hudCol = () => !!(window.matchMedia && window.matchMedia('(min-width:1100px)').matches);
   const hud = { who:null, idxAdd:false, idxQ:'', mapf:new Set(), feed:{ f:'all', m:'all', seen:0, collapsed:false, sheet:false, tall:false, open:null, more:false } };
+  // f23: estado dos painéis, da cena e dos ajustes (por aparelho: tv-map:adv, tv-map:inv-view, tv-map:tour, tv-map:mesa-tab)
+  const LS_ADV = 'tv-map:adv', LS_INVV = 'tv-map:inv-view', LS_TOUR = 'tv-map:tour', LS_MESAT = 'tv-map:mesa-tab';
+  const F23 = { mesaTab:'feed', tacLive:false, scene:'explorar', sceneBy:'', sceneAt:0, sceneSeen:false, mstrip:false, filt:false, sig:'', verbs:[], fnItems:[], modalClose:null, modalPrev:null };
+  const lsGet = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
+  const lsSet = (k, v) => { try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){} };
 
   // ---- personagem ativo (o que o dock usa por padrão) ----
   function hudWho(){
@@ -8817,7 +8963,7 @@
   function hudEnsureWho(){ const w = hudWho(); if(w && tokens.some(t => t.id === w) && !charSelect.value){ charSelect.value = w; charSelect.dispatchEvent(new Event('change')); } if(w && !hub.charToken) hub.charToken = w; }
 
   // ---- folhas (índice, rolar, feed no celular) ----
-  const hudSheetIds = [['idx-sheet', 'idx-backdrop'], ['qr-sheet', 'qr-backdrop'], ['lay-sheet', 'lay-backdrop']];
+  const hudSheetIds = [['add-sheet', 'add-backdrop'], ['qr-sheet', 'qr-backdrop'], ['lay-sheet', 'lay-backdrop']];
   function hudCloseSheets(except){
     lgClose(); routeClose();
     if(!hudReady) return;
@@ -8856,25 +9002,31 @@
     sheet.addEventListener('pointerup', end); sheet.addEventListener('pointercancel', end);
   }
 
-  // ---- dock ----
-  const HUD_DOCK = [['dock-roll', 'dice', 'Rolar'], ['dock-loot', 'compass', 'Saque'], ['dock-inv', 'bag', 'Inventário'], ['dock-tac', 'swords', 'Tático'], ['dock-more', 'more', 'Mais']];
+  // ---- dock (f23): Mapa, Ficha, Mochila, Mesa. O dado fica à parte, sempre à mão ----
+  const HUD_DOCK = [['dock-map', 'map', 'Mapa'], ['dock-ficha', 'user', 'Ficha'], ['dock-inv', 'bag', 'Mochila'], ['dock-mesa', 'users', 'Mesa']];
   function hudDockBuild(){
     hudEl('dock').innerHTML = HUD_DOCK.map(d => `<button type="button" class="dock-btn" id="${d[0]}" aria-pressed="false">${ic(d[1], 22)}<span>${d[2]}</span><i class="dock-live" hidden></i></button>`).join('');
+    hudEl('dock-roll').innerHTML = ic('dice', 28);
   }
   function hudDockSync(){
     if(!hudReady) return;
-    const st = { 'dock-roll':hudIsOpen('qr-sheet'), 'dock-loot':saqueDrawer.classList.contains('open'), 'dock-inv':invDrawer.classList.contains('open'), 'dock-tac':tacUI.open, 'dock-more':hudIsOpen('idx-sheet') };
+    const inv = invDrawer.classList.contains('open'), mesa = f23MesaVisible(), saque = saqueDrawer.classList.contains('open'), hubOpen = hubDrawer.classList.contains('open');
+    const ficha = hudCol() ? !hud.miniOff : (hubOpen && hubGroupOf(hub.tab) === 'ficha');
+    const sheets = hudIsOpen('qr-sheet') || hudIsOpen('add-sheet') || hudIsOpen('lay-sheet');
+    const st = { 'dock-roll':hudIsOpen('qr-sheet'), 'dock-ficha':ficha, 'dock-inv':inv, 'dock-mesa':mesa };
+    st['dock-map'] = !(sheets || inv || saque || hubOpen || tacUI.open || (!hudCol() && (mesa || ficha)));
     Object.keys(st).forEach(k => { const b = hudEl(k); if(b){ b.classList.toggle('active', !!st[k]); b.setAttribute('aria-pressed', String(!!st[k])); } });
-    hudEl('dock-more').setAttribute('aria-expanded', String(hudIsOpen('idx-sheet')));
     const lc = hudEl('mchip-layers'); if(lc){ lc.classList.toggle('active', hudIsOpen('lay-sheet')); lc.setAttribute('aria-expanded', String(hudIsOpen('lay-sheet'))); }
+    const ac = hudEl('mchip-add'); if(ac){ ac.classList.toggle('active', hudIsOpen('add-sheet')); ac.setAttribute('aria-expanded', String(hudIsOpen('add-sheet'))); }
     document.body.classList.toggle('tac-on', !!tacUI.open);
+    document.body.classList.toggle('sheet-open', sheets);
+    document.body.classList.toggle('mesa-open', mesa && !hudCol());
     document.body.classList.toggle('panel-open', [saqueDrawer, invDrawer, hubDrawer, navDrawer].some(el => el.classList.contains('open')));
   }
   function hudTacLive(sc){
+    F23.tacLive = !!sc;
     if(!hudReady) return;
-    const b = hudEl('dock-tac'); if(!b) return;
-    const dot = b.querySelector('.dock-live'); if(dot) dot.hidden = !sc;
-    b.title = sc ? 'Cena tática ativa: ' + (sc.name || 'Cena') : 'Mapa tático';
+    f23RenderMstrip(); f23RenderVerbs();
   }
   function hudTactical(){
     if(tacUI.open){ tacClose(); return; }
@@ -8882,68 +9034,63 @@
     if(!sc && !isMaster()){ toast('Nenhuma cena tática ativa no momento. O mestre precisa ativar uma.', true); return; }
     hudCloseSheets(); tacOpen();
   }
+  // fecha tudo e deixa só o mapa
+  function hudShowMap(){
+    hudCloseSheets(); closeHub(); closeDrawer(); closeNavDrawer(); closeInventory();
+    if(!hudCol() && hud.feed.sheet) hudFeedOpen(false);
+    if(tacUI.open) tacClose();
+    f23CloseMstrip(); f23CloseFilters();
+    hudDockSync();
+  }
+  function hudOpenSaque(){ hudCloseSheets(); hudEnsureWho(); openDrawer(); }
   function hudWireDock(){
     hudEl('dock-roll').addEventListener('click', () => hudToggleSheet('qr-sheet', () => { hud.qrAttr = ''; hudRenderQR(); }));
-    hudEl('dock-loot').addEventListener('click', () => { if(saqueDrawer.classList.contains('open')){ closeDrawer(); return; } hudCloseSheets(); hudEnsureWho(); openDrawer(); });
+    hudEl('dock-map').addEventListener('click', hudShowMap);
+    hudEl('dock-ficha').addEventListener('click', f23ToggleFicha);
     hudEl('dock-inv').addEventListener('click', () => { if(invDrawer.classList.contains('open')){ closeInventory(); return; } hudCloseSheets(); hudEnsureWho(); openInventory(null); });
-    hudEl('dock-tac').addEventListener('click', hudTactical);
-    hudEl('dock-more').addEventListener('click', () => hudToggleSheet('idx-sheet', hudRenderIndex));
+    hudEl('dock-mesa').addEventListener('click', f23ToggleMesa);
     // o dock reflete o que está aberto, mesmo quando outra parte do app abre/fecha as folhas
     const mo = new MutationObserver(hudDockSync);
-    [saqueDrawer, invDrawer, hubDrawer, navDrawer, hudEl('qr-sheet'), hudEl('idx-sheet')].forEach(el => mo.observe(el, { attributes:true, attributeFilter:['class'] }));
-    document.addEventListener('keydown', e => { if(e.key === 'Escape' && (hudIsOpen('idx-sheet') || hudIsOpen('qr-sheet') || hudIsOpen('lay-sheet') || (hud.feed.sheet && !hudCol()))) hudCloseSheets(); });
-    ['idx', 'qr', 'lay'].forEach(k => {
+    [saqueDrawer, invDrawer, hubDrawer, navDrawer, hudEl('qr-sheet'), hudEl('add-sheet')].forEach(el => mo.observe(el, { attributes:true, attributeFilter:['class'] }));
+    document.addEventListener('keydown', e => { if(e.key === 'Escape' && (hudIsOpen('add-sheet') || hudIsOpen('qr-sheet') || hudIsOpen('lay-sheet') || (hud.feed.sheet && !hudCol()))) hudCloseSheets(); });
+    ['add', 'qr', 'lay'].forEach(k => {
       hudEl(k + '-backdrop').addEventListener('click', () => hudCloseSheets());
       hudDrag(hudEl(k + '-sheet'), () => hudCloseSheets());
     });
-    hudEl('idx-close').addEventListener('click', () => hudCloseSheets());
+    hudEl('add-close').addEventListener('click', () => hudCloseSheets());
     hudEl('lay-close').addEventListener('click', () => hudCloseSheets());
+    // ao escolher uma ferramenta do mapa a folha se fecha para você tocar no mapa
+    hudEl('idx-add-body').addEventListener('click', e => { if(e.target.closest('.tool-btn')) setTimeout(() => hudCloseSheets(), 120); });
   }
 
-  // ---- índice ----
+  // ---- funções do app (alimentam a busca única; o antigo Índice foi removido) ----
   function hudIndexItems(){
-    const m = isMaster(), mods = cfg().modules;
+    const m = isMaster(), mods = cfg().modules, adv = f23Adv();
     const tab = (t, extra) => () => { hudCloseSheets(); const w = hudWho(); if(w && t === 'ficha') hub.charToken = w; openHub(t); if(extra) extra(); };
     const pinWords = PIN_TYPES.map(t => t.label).join(' ');
     const L = [
-      { id:'add', ic:'plus', t:'Adicionar ao mapa', d:'Pins, token, áreas e rotas', kw:'pin token area rota medir selecionar ' + pinWords, toggle:true, run:() => { hud.idxAdd = !hud.idxAdd; hudRenderIndex(); } },
-      { id:'list', ic:'list', t:'Camadas e lista do mapa', d:'Mapa-base e ir até pins, tokens, áreas e rotas', kw:'lista navegar viagem rapida buscar mapa camadas base satelite relevo ruas filtros', run:() => { hudCloseSheets(); openNavDrawer(); } },
-      { id:'char', ic:'user', t:'Personagem', d:'Ficha, perícias, ataques e condições', kw:'ficha personagem pericia ataque condicao atributo', run:tab('ficha') },
+      { id:'add', ic:'plus', t:'Marcar no mapa', d:m ? 'Pins, token, nota, áreas e rotas' : 'Nota e token', kw:'marcar adicionar nota token pin ' + (m ? 'area rota medir selecionar ' + pinWords : ''), run:() => { hudCloseSheets(); hudToggleSheet('add-sheet'); } },
+      { id:'list', ic:'layers', t:'Camadas e lista do mapa', d:'Mapa-base e ir até pins, tokens, áreas e rotas', kw:'lista navegar viagem rapida buscar mapa camadas base satelite ruas filtros', run:() => { hudCloseSheets(); hudToggleSheet('lay-sheet', renderNavList); } },
+      { id:'char', ic:'user', t:'Ficha', d:'Perícias, ataques, poderes e condições', kw:'ficha personagem pericia ataque condicao atributo poder', run:tab('ficha') },
+      { id:'inv', ic:'bag', t:'Mochila', d:'Itens, equipamento e trocas', kw:'mochila inventario item equipar trocar', run:() => { hudCloseSheets(); hudEnsureWho(); openInventory(null); } },
+      { id:'roll', ic:'dice', t:'Rolar dados', d:'d20, perícias e ataques', kw:'rolar dado dados d20 teste', run:() => hudOpenQuickRoll() },
       { id:'diary', ic:'book', t:'Diário', d:'Pistas, objetivos e linha do tempo', kw:'diario pista objetivo nota linha tempo', run:tab('diario') },
       { id:'group', ic:'users', t:'Grupo', d:'Personagens e participantes da mesa', kw:'grupo jogadores participantes', run:tab('grupo') },
-      { id:'session', ic:'list', t:'Sessão', d:'Abrir, encerrar e resumir sessões', kw:'sessao resumo encerrar', run:tab('sessao') },
+      m ? { id:'session', ic:'list', t:'Sessão', d:'Abrir, encerrar e resumir sessões', kw:'sessao resumo encerrar', run:tab('sessao') } : null,
       { id:'world', ic:'map', t:'Mundo', d:'Relógio, locais e exploração', kw:'mundo relogio locais exploracao hora dia', run:tab('mundo') },
       mods.crafting ? { id:'craft', ic:'tool', t:'Ofício', d:'Receitas e fabricação', kw:'oficio receita fabricar craft', run:tab('oficio') } : null,
-      { id:'dice', ic:'dice', t:'Dados completos', d:'Construtor de rolagens, atalhos e histórico', kw:'dados rolagem atalho historico expressao', run:tab('dados') },
-      { id:'loot', ic:'compass', t:'Saque e pesca', d:'Locais, pesca e tabela completa de itens', kw:'saque pesca expedicao tabela itens discord webhook', run:() => { hudCloseSheets(); hudEnsureWho(); openDrawer(); } },
-      { id:'weather', ic:'snow', t:'Clima', d:'Ver e mudar o clima da mesa', kw:'clima tempo neblina vento tempestade nevasca', run:() => { hudCloseSheets(); openWeatherPopover(); } },
-      { id:'camp', ic:'layers', t:'Campanhas', d:'Trocar, criar e convidar com código', kw:'campanha convite codigo trocar nova arquivar excluir', run:tab('campanhas') },
+      { id:'dice', ic:'dice', t:'Dados completos', d:'Construtor de rolagens, atalhos e histórico', kw:'dados completos rolagem atalho historico expressao construtor', run:tab('dados') },
+      { id:'loot', ic:'compass', t:'Saque e pesca', d:'Locais, pesca e tabela completa de itens', kw:'saque pesca procurar expedicao tabela itens discord webhook', run:() => hudOpenSaque() },
+      { id:'tac', ic:'swords', t:'Mapa tático', d:'Cena de combate, grade e turnos', kw:'tatico combate grade turno iniciativa cena', run:() => hudTactical() },
+      { id:'weather', ic:'snow', t:'Clima', d:m ? 'Ver e mudar o clima da mesa' : 'Ver o clima da mesa', kw:'clima tempo neblina vento tempestade nevasca animacao', run:() => { hudCloseSheets(); openWeatherPopover(); } },
+      m ? { id:'scene', ic:'swords', t:'Cena da mesa', d:'Exploração, Combate ou Descanso', kw:'cena exploracao combate descanso verbos', run:() => { f23OpenMstrip(); } } : null,
+      { id:'camp', ic:'layers', t:'Campanhas', d:'Trocar, criar e convidar com código', kw:'campanha convite codigo trocar nova arquivar excluir entrar', run:tab('campanhas') },
       m ? { id:'cfg', ic:'sliders', t:'Configuração da campanha', d:'Nome, sistema, módulos e progressão', kw:'configuracao config nome sistema modulos nex nivel inventario', run:tab('campanhas', () => setTimeout(() => { const a = hudEl('cfg-anchor'); if(a) a.scrollIntoView({ block:'start' }); }, 60)) } : null,
       m ? { id:'master', ic:'lock', t:'Mestre', d:'Contêineres, recursos e backup', kw:'mestre conteiner backup restaurar recursos espacos necessidades', run:tab('mestre') } : null,
-      { id:'csv', ic:'copy', t:'Registro de itens (CSV)', d:'Baixar o histórico de transações do inventário', kw:'registro csv exportar historico log baixar', run:() => { hudCloseSheets(); exportLogCsv(); } }
+      m && adv ? { id:'csv', ic:'copy', t:'Registro de itens (CSV)', d:'Baixar o histórico de transações do inventário', kw:'registro csv exportar historico log baixar', run:() => { hudCloseSheets(); exportLogCsv(); } } : null,
+      { id:'cfgapp', ic:'sliders', t:'Ajustes do app', d:'Ferramentas avançadas, mochila, atalhos e introdução', kw:'ajustes configuracoes avancadas ferramentas som instalar atalhos introducao tour lista grade', run:() => { hudCloseSheets(); f23OpenSettings(); } }
     ];
     return L.filter(Boolean);
-  }
-  function hudRenderIndex(){
-    const list = hudEl('idx-list'), body = hudEl('idx-add-body'), sheet = hudEl('idx-sheet');
-    sheet.appendChild(body); body.hidden = true;                    // guarda o conteúdo de "Adicionar" antes de redesenhar
-    const q = hudNorm(hud.idxQ).split(/\s+/).filter(Boolean);
-    const items = hudIndexItems().filter(it => { const hay = hudNorm(it.t + ' ' + it.d + ' ' + it.kw); return q.every(w => hay.includes(w)); });
-    list.innerHTML = items.map(it => `<button type="button" class="idx-item" data-idx="${it.id}"${it.toggle ? ` aria-expanded="${hud.idxAdd}"` : ''}>
-        <span class="idx-ic">${ic(it.ic, 20)}</span><span class="idx-tx"><b>${esc(it.t)}</b><small>${esc(it.d)}</small></span><span class="idx-go">${ic(it.toggle ? (hud.idxAdd ? 'minus' : 'plus') : 'chev', 16)}</span></button>${it.toggle ? '<div id="idx-add-slot"></div>' : ''}`).join('')
-      || '<div class="inv-empty">Nada encontrado. Tente outra palavra.</div>';
-    const slot = hudEl('idx-add-slot');
-    if(slot && hud.idxAdd){ slot.appendChild(body); body.hidden = false; }
-  }
-  function hudWireIndex(){
-    hudEl('idx-list').addEventListener('click', e => {
-      const b = e.target.closest('[data-idx]'); if(!b) return;
-      const it = hudIndexItems().find(x => x.id === b.dataset.idx); if(it) it.run();
-    });
-    hudEl('idx-search').addEventListener('input', e => { hud.idxQ = e.target.value; hudRenderIndex(); });
-    hudEl('idx-search').addEventListener('keydown', e => { if(e.key === 'Enter'){ const b = hudEl('idx-list').querySelector('[data-idx]'); if(b) b.click(); } });
-    // ao escolher uma ferramenta do mapa o índice se fecha para você tocar no mapa
-    hudEl('idx-add-body').addEventListener('click', e => { if(e.target.closest('.tool-btn')) setTimeout(() => hudCloseSheets(), 120); });
   }
 
   // ---- rolar (rápido) ----
@@ -9027,7 +9174,7 @@
   const HUD_J_IC = { resumo:'book', pista:'eye', decisao:'check', objetivo:'target', nota:'note', evento:'alert' };
   function hudPrefKey(){ return 'tv-feed:' + activeCampaignId; }
   function hudLoadPrefs(){
-    const f = hud.feed; f.f = 'all'; f.m = 'all'; f.collapsed = false; hud.miniOff = false; f.seen = Date.now(); f.open = null; f.more = false; f.sheet = false; f.tall = false;
+    const f = hud.feed; f.f = 'all'; f.m = 'all'; f.collapsed = (window.innerWidth || 1400) < 1360; hud.miniOff = false; f.seen = Date.now(); f.open = null; f.more = false; f.sheet = false; f.tall = false;
     try{
       const o = JSON.parse(localStorage.getItem(hudPrefKey()) || 'null');
       if(o){ if(HUD_FEED_FILTERS.some(x => x[0] === o.f)) f.f = o.f; if(HUD_FEED_M.some(x => x[0] === o.m)) f.m = o.m; f.collapsed = !!o.collapsed; hud.miniOff = !!o.mo; if(o.seen) f.seen = o.seen; }
@@ -9110,18 +9257,19 @@
     chip.setAttribute('aria-expanded', String(visibleNow));
     chip.innerHTML = `<span class="fc-ic">${ic(last ? hudIconOf(last) : 'list', 16)}</span><span class="fc-tx">${last ? esc(hudShort(last)) : 'Feed da mesa'}</span>${n && !visibleNow ? `<span class="fc-badge" aria-label="${n} novas">${n > 99 ? '99+' : n}</span>` : ''}`;
     chip.setAttribute('aria-label', 'Abrir o feed da mesa' + (n && !visibleNow ? ', ' + n + ' novas' : ''));
+    f23DockBadge(n && !visibleNow ? n : 0);
   }
-  function hudMarkSeen(){ const f = hud.feed; if(!(hudCol() ? !f.collapsed : f.sheet)) return; const top = hudFeedItems()[0]; const t = Math.max(f.seen, top ? top.ts : 0, Date.now() - 2000); if(t !== f.seen){ f.seen = t; hudSavePrefs(); } }
+  function hudMarkSeen(){ const f = hud.feed; if(!(hudCol() ? !f.collapsed : f.sheet) || F23.mesaTab !== 'feed') return; const top = hudFeedItems()[0]; const t = Math.max(f.seen, top ? top.ts : 0, Date.now() - 2000); if(t !== f.seen){ f.seen = t; hudSavePrefs(); } }
   function hudFeedLayout(){
     const f = hud.feed, col = hudCol(), feed = hudEl('feed');
     document.body.classList.toggle('feed-col', col && !f.collapsed);
     document.body.classList.toggle('mini-col', col && !hud.miniOff);
     const open = col ? !f.collapsed : f.sheet;
-    feed.classList.toggle('open', open); feed.classList.toggle('tall', !col && f.tall);
+    feed.classList.toggle('open', open); feed.classList.toggle('tall', !col && (f.tall || F23.mesaTab !== 'feed'));
     hudEl('feed-backdrop').classList.toggle('open', !col && f.sheet);
     hudEl('feed-close').setAttribute('aria-label', col ? 'Recolher o feed' : 'Fechar o feed');
     if(open) hudMarkSeen();
-    hudRenderFeed(); hudRenderMini();
+    f23RenderMesa(); hudRenderFeed(); hudRenderMini();
     hudDockSync();
   }
   function hudFeedOpen(v){
@@ -9157,14 +9305,8 @@
     setInterval(() => { if(document.visibilityState === 'visible') hudFeedChip(); }, 30000);   // "2 min" → "3 min"
   }
 
-  // ---- mini-ficha (coluna esquerda no desktop largo) ----
-  function hudMiniBar(card, k, can){
-    const r = opRes(card, k), pct = r.max > 0 ? Math.max(0, Math.min(100, Math.round(r.cur / r.max * 100))) : 0, low = r.max > 0 && r.cur / r.max < 0.3, nm = OP_RES[k], dis = can ? '' : 'disabled';
-    return `<div class="mn-bar"><div class="mn-bar-top"><b>${nm[0]}</b><span>${low ? ic('alert', 13) : ''}${r.cur} / ${r.max}</span></div>
-      <div class="mn-bar-row"><button type="button" class="die-btn" data-hud="mres" data-k="${k}" data-d="-1" aria-label="Reduzir ${esc(nm[1])}" ${dis}>${ic('minus', 14)}</button>
-      <div class="op-bar${low ? ' low' : ''}" style="--c:${nm[2]}" role="meter" aria-valuemin="0" aria-valuemax="${r.max}" aria-valuenow="${r.cur}" aria-label="${esc(nm[1])}"><i style="width:${pct}%"></i></div>
-      <button type="button" class="die-btn" data-hud="mres" data-k="${k}" data-d="1" aria-label="Aumentar ${esc(nm[1])}" ${dis}>${ic('plus', 14)}</button></div></div>`;
-  }
+  // ---- ficha na coluna da esquerda (f23): a ficha COMPLETA, no mesmo desenho da gaveta ----
+  // Cabeçalho (retrato, PV, PD, defesas) e abas ficam fixos; só o conteúdo da aba rola.
   function hudRenderMini(){
     const el = hudEl('mini'); if(!el) return;
     const tab = hudEl('mini-tab');
@@ -9172,39 +9314,39 @@
     el.hidden = !!hud.miniOff;
     if(tab){ tab.hidden = !hud.miniOff; tab.innerHTML = ic('user', 20); tab.setAttribute('aria-expanded', 'false'); }
     if(hud.miniOff) return;
-    const ae = document.activeElement; if(ae && el.contains(ae) && ae.tagName === 'SELECT') return;
-    const w = hudWho(), h = holderById(w), card = w ? characters[w] : null, can = !!(h && canEditHolder(h));
-    const opts = holderList().filter(canEditHolder);
-    let html = `<div class="mn-head"><span class="mn-tag">Personagem</span><button type="button" class="mn-hide" data-hud="mhide" aria-label="Recolher o painel do personagem" title="Recolher">${ic('close', 18)}</button><select data-hud-mini aria-label="Personagem ativo"><option value="">— escolher —</option>${opts.map(x => opt(x.id, x.name, w)).join('')}</select></div>`;
-    if(!h){ html += '<p class="hub-hint">Escolha um personagem para ver a ficha resumida aqui. Crie um token no mapa se ainda não tiver um.</p>'; el.innerHTML = html; return; }
-    const ordem = !!(card && card.systemId === 'ordem');
-    const nm = (card && card.name) || h.name;
-    html += `<div class="mn-name">${esc(nm)}</div>`;
-    if(ordem){
-      const meta = card.meta || {}, nex = card.nex == null ? 5 : card.nex, lvl = card.level == null ? 1 : card.level;
-      html += `<div class="mn-sub">${esc([meta.class, meta.origin].filter(Boolean).join(' · '))}${(meta.class || meta.origin) ? ' · ' : ''}NEX ${nex}%${cfg().progressionMode !== 'nex_only' ? ' · Nível ' + esc(String(lvl)) : ''}</div>
-        ${hudMiniBar(card, 'pv', can)}${hudMiniBar(card, 'pd', can)}
-        ${(() => { const d = opDefense(card); return `<div class="mn-def"><div><small>DEF</small><b>${d.def}</b></div><div><small>ESQ</small><b>${d.dodge}</b></div><div><small>BLO</small><b>${d.block}</b></div></div>`; })()}
-        <div class="mn-attrs">${OP_ATTRS.map(a => `<div><small>${a[1]}</small><b>${opNum(card.attributes && card.attributes[a[0]])}</b></div>`).join('')}</div>
-        <div class="op-conds">${(card.conditions || []).map(cd => `<span class="op-cond mn-cond">${ic((OP_COND[cd.key] || {}).i || 'alert', 13)}<span>${esc(opCondName(cd))}</span></span>`).join('') || '<span class="hub-hint">Sem condições.</span>'}</div>`;
-    } else if(card){
-      html += `<div class="mn-sub">Formato antigo da ficha. Abra a ficha completa para migrar para Ordem Paranormal.</div>${cfg().resources.map(r => `<div class="mn-res"><span>${esc(r.label)}</span><b>${resVal(card, r)}${r.max ? ' / ' + r.max : ''}</b></div>`).join('')}`;
-    } else html += '<div class="mn-sub">Ficha ainda vazia. Abra a ficha completa para começar.</div>';
-    html += `<div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-hud="mrollq">${ic('dice', 16)} Rolar</button><button type="button" class="inv-mini-btn" data-hud="msheet">${ic('user', 16)} Ficha completa</button><button type="button" class="inv-mini-btn" data-hud="minv">${ic('bag', 16)} Inventário</button></div>`;
-    el.innerHTML = html;
+    const ae = document.activeElement;
+    if(ae && el.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)){ hubDirty = true; return; }
+    renderHubView(hubViewDefs()[1]);
+  }
+  function f23RenderFicha(fn){
+    const hl = holderList().filter(canEditHolder);   // como no mini antigo: jogador só vê os próprios; o mestre vê todos
+    if(!hl.some(h => h.id === hub.charToken)){ const w = hudWho(); if(w) hub.charToken = w; }
+    fichaDocked = true;
+    let inner = '';
+    try{ inner = fn ? fn() : ''; }catch(err){ console.error(err); inner = '<div class="inv-empty">Não foi possível desenhar a ficha.</div>'; }
+    finally{ fichaDocked = false; }
+    const tmp = document.createElement('div'); tmp.innerHTML = inner;
+    const card = tmp.querySelector('.ox-card'), tabs = tmp.querySelector('.ox-tabs'), ox = tmp.querySelector('.ox');
+    let fixed = '';
+    if(card){ fixed += card.outerHTML; card.remove(); }
+    if(tabs){ fixed += tabs.outerHTML; tabs.remove(); }
+    const hCur = holderById(hub.charToken);
+    const who = hl.length > 1 ? holderSelect('hub.charToken', hub.charToken, false, hl) : (!card && hCur ? `<b class="fp-name">${esc(hCur.name)}</b>` : '');
+    const st = fichapBody.scrollTop;
+    fpHead.innerHTML = `<div class="fp-top"><span class="fp-tag">Ficha</span><div class="fp-who">${who}</div>
+      <button type="button" class="fp-btn" data-hud="minv" aria-label="Abrir a mochila" title="Mochila">${ic('bag', 18)}</button>
+      <button type="button" class="fp-btn" data-hud="mhide" aria-label="Recolher o painel da ficha" title="Recolher">${ic('close', 18)}</button></div>${fixed ? `<div class="ox" data-optab="${esc(ox ? ox.dataset.optab || '' : '')}">${fixed}</div>` : ''}`;
+    fichapBody.innerHTML = tmp.innerHTML;
+    fichapBody.scrollTop = st;
   }
   function hudMiniChanged(){ if(hudReady) hudRenderMini(); }
   function hudWireMini(){
     const el = hudEl('mini');
-    el.addEventListener('change', e => { if(e.target.hasAttribute('data-hud-mini')) hudSetWho(e.target.value || null); });
     hudEl('mini-tab').addEventListener('click', () => { hud.miniOff = false; hudSavePrefs(); hudFeedLayout(); });
     el.addEventListener('click', e => {
       const b = e.target.closest('[data-hud]'); if(!b) return;
       const w = hudWho();
       if(b.dataset.hud === 'mhide'){ hud.miniOff = true; hudSavePrefs(); hudFeedLayout(); setTimeout(() => { const t = hudEl('mini-tab'); if(t) t.focus(); }, 0); }
-      else if(b.dataset.hud === 'mres') opAdjustRes(b.dataset.k, +b.dataset.d, w);
-      else if(b.dataset.hud === 'mrollq') hudOpenQuickRoll();
-      else if(b.dataset.hud === 'msheet'){ if(w) hub.charToken = w; openHub('ficha'); }
       else if(b.dataset.hud === 'minv'){ hudEnsureWho(); openInventory(w); }
     });
   }
@@ -9239,7 +9381,7 @@
   }
   function mapfRender(){
     if(!hudReady) return;
-    const nav = hudEl('map-chips'); if(!nav) return;
+    const nav = hudEl('filt-pop'); if(!nav) return;
     const cnt = mapfCounts();
     nav.querySelectorAll('[data-mf]').forEach(b => {
       const k = b.dataset.mf, off = hud.mapf.has(k), label = MAPF.find(x => x[0] === k)[1];
@@ -9247,7 +9389,9 @@
       b.setAttribute('aria-label', label + ' (' + cnt[k] + '): ' + (off ? 'ocultos. Toque para mostrar' : 'visíveis. Toque para ocultar'));
       const n = b.querySelector('.mc-n'); if(n) n.textContent = cnt[k] ? String(cnt[k]) : '';
     });
-    const dot = nav.querySelector('.mc-dot'); if(dot) dot.hidden = !hud.mapf.size;
+    const fb = hudEl('mchip-filters'), fn = hudEl('mchip-filters-n');
+    if(fb){ fb.classList.toggle('has-off', !!hud.mapf.size); fb.setAttribute('aria-label', hud.mapf.size ? 'Filtros do mapa: ' + hud.mapf.size + ' categoria(s) oculta(s)' : 'Filtros do mapa: tudo visível'); }
+    if(fn){ fn.textContent = hud.mapf.size ? String(hud.mapf.size) : ''; fn.hidden = !hud.mapf.size; }
     const box = hudEl('lay-hidden'); if(box){
       box.hidden = !hud.mapf.size;
       if(hud.mapf.size) hudEl('lay-hidden-txt').textContent = 'Ocultos no mapa: ' + MAPF.filter(x => hud.mapf.has(x[0])).map(x => x[1]).join(', ') + '.';
@@ -9265,10 +9409,13 @@
     return true;
   }
   function mapfWire(){
+    hudEl('filt-pop').addEventListener('click', e => { const b = e.target.closest('[data-mf]'); if(b) mapfToggle(b.dataset.mf); });
     hudEl('map-chips').addEventListener('click', e => {
       const b = e.target.closest('button'); if(!b) return;
-      if(b.dataset.mf) mapfToggle(b.dataset.mf);
-      else if(b.id === 'mchip-layers') hudToggleSheet('lay-sheet', renderNavList);
+      if(b.id === 'mchip-layers'){ f23CloseFilters(); f23CloseMstrip(); hudToggleSheet('lay-sheet', renderNavList); }
+      else if(b.id === 'mchip-filters') f23ToggleFilters();
+      else if(b.id === 'mchip-add'){ f23CloseFilters(); f23CloseMstrip(); hudToggleSheet('add-sheet', f23PrepAdd); }
+      else if(b.id === 'mchip-master') f23ToggleMstrip();
     });
     // a barra rola na horizontal: um esmaecido na ponta direita avisa que há mais chips
     const bar = hudEl('map-chips'), edge = () => bar.classList.toggle('more', bar.scrollWidth - bar.scrollLeft - bar.clientWidth > 4);
@@ -9627,14 +9774,398 @@
     openPinPopupById(pin.id);
   }
 
+  // ================= f23: PAINÉIS, PAPÉIS, CENAS E AJUSTES =================
+  // Papéis: o jogador cria só notas e tokens. Pins de tipo, áreas, rotas, a faixa do mestre e a troca de cena são do mestre.
+  // Painéis: no desktop a tela vira Ficha | Mapa | Mesa; no celular o dock abre Ficha, Mochila e Mesa como folhas.
+  // Cenas: o mestre escolhe Exploração, Combate ou Descanso; a barra de verbos e a aba da ficha acompanham a cena (todos veem).
+  const SCENES = [
+    { id:'explorar', name:'Exploração', ic:'compass', hint:'Procurar itens, marcar o mapa e testar perícias.' },
+    { id:'combate', name:'Combate', ic:'swords', hint:'Ataques, defesas, poderes e a ordem dos turnos.' },
+    { id:'descanso', name:'Descanso', ic:'heart', hint:'Recuperar, anotar no diário e fabricar.' }
+  ];
+  const sceneById = id => SCENES.find(s => s.id === id) || SCENES[0];
+  const f23Adv = () => lsGet(LS_ADV) === '1';
+  const f23InvView = () => lsGet(LS_INVV) === 'list' ? 'list' : 'grid';
+  const f23Typing = () => { const a = document.activeElement; return !!(a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)); };
+
+  // ---- sinais: papel, avançado, módulos. Só redesenha o que mudou ----
+  function f23Refresh(force){
+    if(!hudReady) return;
+    const m = isMaster(), adv = f23Adv(), sig = [m, adv, activeCampaignId, !!cfg().modules.crafting, !!cfg().modules.explore, F23.tacLive].join('|');
+    if(!force && sig === F23.sig) return;
+    F23.sig = sig;
+    document.body.classList.toggle('role-master', m); document.body.classList.toggle('role-player', !m);
+    document.body.classList.toggle('adv-on', adv);
+    if(!m && selectedPinType && selectedPinType !== 'nota') clearModes();
+    const l = hudEl('add-pins-label'); if(l) l.textContent = m ? 'Pins' : 'Nota';
+    f23RenderMstrip(); f23RenderVerbs(); f23RenderCfg(); f23RenderMesa(); hubTitleSync();
+    if(hudEl('hud-search').classList.contains('open')) f23RenderSearchFns(hudEl('search-input').value.trim());
+  }
+
+  // ---- Mesa: Feed | Grupo | Diário | Mundo | Ofício, no mesmo painel ----
+  function f23MesaVisible(){ return hudCol() ? !hud.feed.collapsed : !!hud.feed.sheet; }
+  function f23OpenMesa(tab){
+    F23.mesaTab = hubTabsFor('mesa').some(t => t[0] === tab) ? tab : 'feed';
+    lsSet(LS_MESAT, F23.mesaTab);
+    if(!f23MesaVisible()){ hudFeedOpen(true); return; }
+    hudFeedLayout();
+  }
+  function f23ToggleMesa(){
+    if(f23MesaVisible()){ hudFeedOpen(false); return; }
+    f23OpenMesa(F23.mesaTab);
+  }
+  function f23RenderMesa(){
+    const box = hudEl('mesa-tabs'); if(!box) return;
+    const tabs = hubTabsFor('mesa');
+    if(!tabs.some(t => t[0] === F23.mesaTab)) F23.mesaTab = 'feed';
+    const ae = document.activeElement, keepTab = ae && box.contains(ae) ? ae.dataset.mesa : null;
+    box.innerHTML = tabs.map(t => `<button type="button" role="tab" class="mesa-tab${F23.mesaTab === t[0] ? ' active' : ''}" id="mesa-tab-${t[0]}" data-mesa="${t[0]}" aria-selected="${F23.mesaTab === t[0]}" tabindex="${F23.mesaTab === t[0] ? 0 : -1}">${t[1]}</button>`).join('');
+    if(keepTab){ const n = box.querySelector('[data-mesa="' + keepTab + '"]'); if(n) n.focus({ preventScroll:true }); }
+    const feedOn = F23.mesaTab === 'feed';
+    hudEl('mesa-feed').hidden = !feedOn; mesaBody.hidden = feedOn;
+    if(feedOn || !f23MesaVisible()) return;
+    if(ae && mesaBody.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)){ hubDirty = true; return; }
+    const st = mesaBody.scrollTop; renderHubView(hubViewDefs()[2]); mesaBody.scrollTop = st;
+  }
+  function f23DockBadge(n){
+    const b = document.querySelector('#dock-mesa .dock-live'), btn = hudEl('dock-mesa'); if(!b || !btn) return;
+    b.hidden = !n; b.textContent = n > 9 ? '9+' : (n ? String(n) : '');
+    btn.setAttribute('aria-label', 'Mesa' + (n ? ', ' + n + ' novas' : ''));
+  }
+
+  // ---- Ficha: painel da esquerda no desktop, folha no celular ----
+  function f23ShowFicha(){
+    if(hudCol()){ hud.miniOff = false; hudSavePrefs(); hudFeedLayout(); return; }
+    hudCloseSheets(); hudEnsureWho(); const w = hudWho(); if(w) hub.charToken = w;
+    openHub('ficha');
+  }
+  function f23ToggleFicha(){
+    if(hudCol()){ hud.miniOff = !hud.miniOff; hudSavePrefs(); hudFeedLayout(); return; }
+    if(hubDrawer.classList.contains('open') && hubGroupOf(hub.tab) === 'ficha'){ closeHub(); return; }
+    f23ShowFicha();
+  }
+  function f23FichaTab(tab){
+    const w = hudWho(); if(w) hub.charToken = w;
+    if(OP_TABS.some(t => t[0] === tab)) hub.opTab = tab;
+    hudCloseSheets(); f23CloseMstrip();
+    if(hudCol()){ hud.miniOff = false; hudSavePrefs(); hudFeedLayout(); }
+    else { hudEnsureWho(); openHub('ficha'); }
+  }
+  async function f23RollDef(key){
+    const w = hudWho(), h = holderById(w);
+    if(!w || !h || !canEditHolder(h)){ toast('Escolha um personagem seu na ficha para rolar.', true); f23ShowFicha(); return; }
+    await opRollSkill(key, w, '');
+  }
+
+  // ---- filtros em painel único ("Filtros · n") ----
+  function f23FiltSync(){
+    const p = hudEl('filt-pop'), b = hudEl('mchip-filters'); if(!p || !b) return;
+    p.hidden = !F23.filt; b.setAttribute('aria-expanded', String(F23.filt)); b.classList.toggle('active', F23.filt);
+  }
+  function f23ToggleFilters(){ if(F23.filt){ f23CloseFilters(); return; } f23CloseMstrip(); F23.filt = true; f23FiltSync(); }
+  function f23CloseFilters(){ if(!F23.filt) return; F23.filt = false; f23FiltSync(); }
+
+  // ---- faixa do mestre: cena, clima, sessão, tático, saque, mestre, campanha ----
+  function f23RenderMstrip(){
+    const el = hudEl('mstrip'), chip = hudEl('mchip-master'); if(!el || !chip) return;
+    const m = isMaster(), sc = sceneById(F23.scene);
+    chip.hidden = !m;
+    if(!m){ el.hidden = true; F23.mstrip = false; return; }
+    const t = chip.querySelector('.mc-t'); if(t) t.textContent = 'Mestre · ' + sc.name;
+    const fa = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset : null;
+    el.innerHTML = `<div class="ms-label">Cena da mesa</div>
+      <div class="ms-scene" role="group" aria-label="Cena da mesa">${SCENES.map(s => `<button type="button" class="ms-seg${s.id === F23.scene ? ' on' : ''}" data-ms="scene" data-id="${s.id}" aria-pressed="${s.id === F23.scene}">${ic(s.ic, 16)}<span>${s.name}</span></button>`).join('')}</div>
+      <div class="ms-hint">${esc(sc.hint)} Todos veem a mudança.</div>
+      <div class="ms-tools">
+        <button type="button" role="menuitem" data-ms="weather">${ic('snow', 16)}<span>Clima</span></button>
+        <button type="button" role="menuitem" data-ms="tac">${ic('swords', 16)}<span>Tático${F23.tacLive ? ' · ao vivo' : ''}</span></button>
+        <button type="button" role="menuitem" data-ms="session">${ic('list', 16)}<span>Sessão</span></button>
+        <button type="button" role="menuitem" data-ms="saque">${ic('compass', 16)}<span>Saque</span></button>
+        <button type="button" role="menuitem" data-ms="mestre">${ic('lock', 16)}<span>Mestre</span></button>
+        <button type="button" role="menuitem" data-ms="camp">${ic('layers', 16)}<span>Campanha</span></button>
+      </div>`;
+    if(fa && fa.ms){ const n = el.querySelector('[data-ms="' + fa.ms + '"]' + (fa.id ? '[data-id="' + fa.id + '"]' : '')); if(n) n.focus({ preventScroll:true }); }
+    el.hidden = !F23.mstrip;
+    chip.setAttribute('aria-expanded', String(F23.mstrip)); chip.classList.toggle('active', F23.mstrip);
+    chip.classList.toggle('live', F23.tacLive);
+  }
+  function f23OpenMstrip(){
+    if(!isMaster()) return;
+    const sp = appPopovers.find(p => p.popover.id === 'hud-search'); if(sp) sp.close();
+    hudCloseSheets(); f23CloseFilters(); F23.mstrip = true; f23RenderMstrip();
+  }
+  function f23CloseMstrip(){ if(!F23.mstrip) return; F23.mstrip = false; f23RenderMstrip(); }
+  function f23ToggleMstrip(){ if(F23.mstrip){ f23CloseMstrip(); return; } hudEl('mchip-master') && f23OpenMstrip(); }
+
+  // ---- cenas ----
+  function f23SceneData(v){
+    const id = v && SCENES.some(s => s.id === v.id) ? v.id : 'explorar', prev = F23.scene, first = !F23.sceneSeen;
+    F23.scene = id; F23.sceneBy = (v && v.by) || ''; F23.sceneAt = (v && v.at) || 0; F23.sceneSeen = true;
+    if(!hudReady) return;
+    f23RenderMstrip(); f23RenderVerbs();
+    if(first){ if(id !== 'explorar') f23SceneEffects(id); return; }
+    if(prev !== id){ toast('Cena: ' + sceneById(id).name + '.'); f23SceneEffects(id); }
+  }
+  function f23SceneReset(){
+    F23.scene = 'explorar'; F23.sceneBy = ''; F23.sceneAt = 0; F23.sceneSeen = false;
+    if(hudReady){ f23RenderMstrip(); f23RenderVerbs(); }
+  }
+  // a ficha abre na aba que combina com a cena (para todos)
+  function f23SceneEffects(id){
+    const t = { explorar:'pericias', combate:'combate', descanso:'agente' }[id];
+    if(t){ hub.opTab = t; if(hudReady) hubChanged(); }
+  }
+  async function f23SetScene(id){
+    if(!isMaster()){ toast('Só o mestre muda a cena.', true); return; }
+    if(!SCENES.some(s => s.id === id) || id === F23.scene) return;
+    const v = { id, by:actorFields().actorName || 'Mestre', at:Date.now() };
+    f23SceneData(v);
+    try{ await saveKey(KEY_SCENE, v); }catch(e){ toast('Não foi possível salvar a cena.', true); }
+  }
+
+  // ---- barra de verbos: muda com a cena ----
+  function f23TurnText(){
+    const sid = tac.active, sc = sid && tac.scenes[sid] ? tacScene(sid) : null;
+    if(!sc || !sc.turn.on) return '';
+    const id = tacTurnId(sc), t = tacTokensOf(sid).find(x => x.id === id);
+    return 'Rodada ' + sc.turn.round + ' · Vez de ' + (t ? t.name : '—');
+  }
+  function f23Verbs(){
+    const sc = F23.scene, m = isMaster(), mods = cfg().modules, w = hudWho(), card = w ? characters[w] : null, ordem = !!(card && card.systemId === 'ordem');
+    const v = [];
+    if(sc === 'explorar'){
+      if(mods.explore) v.push({ id:'procurar', ic:'compass', t:'Procurar', run:hudOpenSaque });
+      v.push({ id:'marcar', ic:'plus', t:'Marcar', run:() => { f23CloseMstrip(); hudToggleSheet('add-sheet', f23PrepAdd); } });
+      v.push({ id:'pericia', ic:'list', t:'Perícia', run:() => f23FichaTab('pericias') });
+    } else if(sc === 'combate'){
+      v.push({ id:'atacar', ic:'swords', t:'Atacar', run:() => f23FichaTab('combate') });
+      if(ordem){
+        v.push({ id:'esquivar', ic:'wind', t:'Esquivar', run:() => f23RollDef('reflexos') });
+        v.push({ id:'bloquear', ic:'shield', t:'Bloquear', run:() => f23RollDef('fortitude') });
+        v.push({ id:'poder', ic:'bolt', t:'Poder', run:() => f23FichaTab('poderes') });
+      }
+      if(F23.tacLive || m) v.push({ id:'tac', ic:'target', t:'Tático', run:() => { f23CloseMstrip(); hudTactical(); } });
+    } else {
+      v.push({ id:'curar', ic:'heart', t:'Curar', run:() => f23FichaTab('agente') });
+      v.push({ id:'diario', ic:'book', t:'Diário', run:() => openHub('diario') });
+      if(mods.crafting) v.push({ id:'fazer', ic:'tool', t:'Fazer item', run:() => openHub('oficio') });
+      v.push({ id:'mochila', ic:'bag', t:'Mochila', run:() => { hudCloseSheets(); hudEnsureWho(); openInventory(null); } });
+    }
+    return v;
+  }
+  function f23RenderVerbs(){
+    const el = hudEl('verbs'); if(!el) return;
+    const list = f23Verbs(), turn = F23.scene === 'combate' ? f23TurnText() : '', sc = sceneById(F23.scene);
+    F23.verbs = list;
+    const fa = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset.verb : null;
+    el.hidden = !list.length;
+    el.dataset.scene = F23.scene;
+    el.innerHTML = `<span class="vb-scene" title="${esc(sc.hint)}">${ic(sc.ic, 14)}<b>${sc.name}</b></span>` + (turn ? `<span class="vb-turn" role="status">${esc(turn)}</span>` : '')
+      + list.map((x, i) => `<button type="button" class="vb" data-verb="${x.id}" data-i="${i}">${ic(x.ic, 18)}<span>${esc(x.t)}</span></button>`).join('');
+    if(fa){ const n = el.querySelector('[data-verb="' + fa + '"]'); if(n) n.focus({ preventScroll:true }); }
+  }
+
+  // ---- marcar no mapa: o jogador só vê Nota e Token ----
+  function f23PrepAdd(){ f23Refresh(true); }
+
+  // ---- busca única: funções do app + lugares, pins e perícias ----
+  function f23RenderSearchFns(q){
+    const box = hudEl('search-fn'); if(!box) return;
+    const words = hudNorm(q || '').trim().split(/\s+/).filter(Boolean);
+    let list = hudIndexItems();
+    if(words.length) list = list.filter(it => { const hay = hudNorm(it.t + ' ' + it.d + ' ' + it.kw); return words.every(w => hay.includes(w)); });
+    F23.fnItems = list;
+    if(!list.length){ box.innerHTML = ''; box.style.display = 'none'; return; }
+    box.innerHTML = list.map((it, i) => `<button type="button" class="search-result search-fn-item" role="option" data-fn="${i}"><span class="search-result-kicker">Função</span><span class="search-result-label">${ic(it.ic, 15)}<b>${esc(it.t)}</b><small>${esc(it.d)}</small></span></button>`).join('');
+    box.style.display = 'block';
+  }
+  function f23CloseSearch(){ const en = appPopovers.find(p => p.popover.id === 'hud-search'); if(en) en.close(); }
+
+  // ---- ajustes numa tela só ----
+  function f23RenderCfg(){
+    const el = hudEl('cfg-body'); if(!el) return;
+    const adv = f23Adv(), iv = f23InvView(), fa = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset.cfg + '|' + (document.activeElement.dataset.v || '') : null;
+    el.innerHTML = `<div class="cfg-row"><div class="cfg-t"><b>Ferramentas avançadas</b><span>Mostra os mapas Relevo e Nevado${isMaster() ? ' e o registro de itens (CSV)' : ''}. Vale só neste aparelho.</span></div>
+        <button type="button" class="sw${adv ? ' on' : ''}" role="switch" aria-checked="${adv}" data-cfg="adv" aria-label="Ferramentas avançadas"><i></i></button></div>
+      <div class="cfg-row"><div class="cfg-t"><b>Mochila</b><span>Como os itens aparecem. Vale só neste aparelho.</span></div>
+        <div class="seg" role="group" aria-label="Mochila"><button type="button" data-cfg="invv" data-v="grid" aria-pressed="${iv === 'grid'}">Grade</button><button type="button" data-cfg="invv" data-v="list" aria-pressed="${iv === 'list'}">Lista</button></div></div>
+      <div class="cfg-row cfg-btns"><button type="button" class="inv-mini-btn" data-cfg="keys">${ic('sliders', 15)} Atalhos de teclado</button><button type="button" class="inv-mini-btn" data-cfg="tour">${ic('eye', 15)} Rever a introdução</button></div>`;
+    if(fa){ const p = fa.split('|'); const n = el.querySelector('[data-cfg="' + p[0] + '"]' + (p[1] ? '[data-v="' + p[1] + '"]' : '')); if(n) n.focus({ preventScroll:true }); }
+  }
+  function f23OpenSettings(){
+    if(!hudEl('menu-popover').classList.contains('open')) hudEl('menu-toggle-btn').click();
+    f23RenderCfg();
+    setTimeout(() => { const s = hudEl('cfg-section'); if(s && s.scrollIntoView) s.scrollIntoView({ block:'nearest' }); }, 60);
+  }
+  function f23SetAdv(on){
+    lsSet(LS_ADV, on ? '1' : null);
+    f23Refresh(true);
+    if(typeof layerAdvSync === 'function') layerAdvSync();
+  }
+  function f23SetInvView(v){
+    lsSet(LS_INVV, v === 'list' ? 'list' : 'grid');
+    f23RenderCfg();
+    if(invDrawer.classList.contains('open')) renderInvDrawer();
+  }
+
+  // ---- janelinha própria (introdução e atalhos) ----
+  function f23Modal(html, onClose){
+    let m = hudEl('f23-modal');
+    if(!m){
+      m = document.createElement('div'); m.id = 'f23-modal'; m.className = 'f23-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.hidden = true;
+      document.body.appendChild(m);
+      m.addEventListener('click', e => { if(e.target === m && F23.modalClose) F23.modalClose(); });
+    }
+    F23.modalPrev = document.activeElement;
+    F23.modalClose = () => { m.hidden = true; m.innerHTML = ''; document.querySelectorAll('.tour-hl').forEach(x => x.classList.remove('tour-hl')); F23.modalClose = null; if(onClose) onClose(); if(F23.modalPrev && F23.modalPrev.focus && document.contains(F23.modalPrev)){ try{ F23.modalPrev.focus({ preventScroll:true }); }catch(e){} } };
+    m.innerHTML = html; m.hidden = false;
+    return m;
+  }
+  const F23_KEYS = [['D', 'Rolar dados'], ['F', 'Abrir ou recolher a ficha'], ['M', 'Abrir ou fechar a mochila'], ['E', 'Abrir ou recolher a mesa (feed, grupo, diário)'], ['/', 'Buscar função, lugar, pin ou perícia'], ['C', 'Campanhas'], ['Esc', 'Fechar o que estiver aberto'], ['?', 'Esta lista']];
+  function f23Help(){
+    const m = f23Modal(`<div class="f23-card" tabindex="-1"><h3 id="f23-mt">Atalhos de teclado</h3>
+      <dl class="f23-keys">${F23_KEYS.map(k => `<dt><kbd>${esc(k[0])}</kbd></dt><dd>${esc(k[1])}</dd>`).join('')}</dl>
+      <div class="f23-actions"><button type="button" class="inv-mini-btn primary" data-f23="close">Fechar</button></div></div>`);
+    m.setAttribute('aria-labelledby', 'f23-mt');
+    m.querySelector('[data-f23="close"]').addEventListener('click', () => F23.modalClose());
+    m.querySelector('[data-f23="close"]').focus();
+  }
+  function f23TourSteps(){
+    const m = isMaster(), s = [
+      { t:'Bem-vindo à mesa', x:'O mapa fica sempre à vista. Em volta dele ficam só quatro coisas: Mapa, Ficha, Mochila e Mesa.', el:'#dock' },
+      { t:'O dado está sempre à mão', x:'O d20 flutuante rola dados, perícias e ataques sem sair do mapa. No teclado: D.', el:'#dock-roll' },
+      { t:'Ficha e Mochila', x:'A Ficha mostra PV, perícias, ataques e poderes. A Mochila guarda os itens em grade.', el:'#dock-ficha' },
+      { t:'Mesa', x:'O feed de rolagens, o grupo, o diário e o mundo ficam juntos no painel Mesa.', el:'#dock-mesa' },
+      { t:'Marcar no mapa', x:m ? 'Use Marcar para pins, tokens, notas, áreas e rotas.' : 'Use Marcar para deixar notas e criar o seu token.', el:'#mchip-add' }
+    ];
+    if(m) s.push({ t:'Faixa do mestre', x:'Em Mestre você escolhe a cena (Exploração, Combate ou Descanso) e abre clima, sessão e tático.', el:'#mchip-master' });
+    s.push({ t:'Busca única', x:'A lupa acha funções, lugares, pins e perícias. Os Ajustes ficam no menu ☰.', el:'#search-toggle-btn' });
+    return s;
+  }
+  function f23Tour(start){
+    const steps = f23TourSteps(); let i = start || 0;
+    const done = () => { lsSet(LS_TOUR, '1'); };
+    const draw = () => {
+      const s = steps[i], last = i === steps.length - 1;
+      document.querySelectorAll('.tour-hl').forEach(x => x.classList.remove('tour-hl'));
+      const target = document.querySelector(s.el); if(target && !target.hidden) target.classList.add('tour-hl');
+      const m = f23Modal(`<div class="f23-card f23-tour" tabindex="-1"><div class="f23-step">Passo ${i + 1} de ${steps.length}</div><h3 id="f23-mt">${esc(s.t)}</h3><p>${esc(s.x)}</p>
+        <div class="f23-actions"><button type="button" class="inv-mini-btn" data-f23="skip">${last ? 'Fechar' : 'Pular'}</button>${i ? '<button type="button" class="inv-mini-btn" data-f23="back">Voltar</button>' : ''}<button type="button" class="inv-mini-btn primary" data-f23="next">${last ? 'Entendi' : 'Próximo'}</button></div></div>`, done);
+      m.setAttribute('aria-labelledby', 'f23-mt'); m.classList.add('tour');
+      m.querySelector('[data-f23="skip"]').addEventListener('click', () => F23.modalClose());
+      const back = m.querySelector('[data-f23="back"]'); if(back) back.addEventListener('click', () => { i--; draw(); });
+      m.querySelector('[data-f23="next"]').addEventListener('click', () => { if(last){ F23.modalClose(); return; } i++; draw(); });
+      m.querySelector('[data-f23="next"]').focus();
+    };
+    draw();
+  }
+
+  // ---- teclado ----
+  function f23Key(e){
+    if(e.key === '/'){ e.preventDefault(); const b = hudEl('search-toggle-btn'); if(!hudEl('hud-search').classList.contains('open')) b.click(); else hudEl('search-input').focus(); return true; }
+    if(e.key === '?'){ e.preventDefault(); f23Help(); return true; }
+    const k = e.key.toLowerCase();
+    if(k === 'f'){ f23ToggleFicha(); return true; }
+    if(k === 'm'){ hudEl('dock-inv').click(); return true; }
+    if(k === 'e'){ f23ToggleMesa(); return true; }
+    return false;
+  }
+
+  function f23Init(){
+    const mt = lsGet(LS_MESAT); if(mt && HUB_MESA_TABS.includes(mt)) F23.mesaTab = mt;
+    // jogador: pins de tipo, áreas e rotas são do mestre (nota e token ficam livres)
+    document.addEventListener('click', e => {
+      if(isMaster()) return;
+      const b = e.target.closest && e.target.closest('#pin-buttons .tool-btn, #tool-area-polygon, #tool-area-rect, #tool-area-circle, #tool-route');
+      if(!b || b.dataset.pinType === 'nota') return;
+      e.stopImmediatePropagation(); e.preventDefault();
+      toast('Só o mestre cria isso. Você pode marcar notas e tokens.', true);
+    }, true);
+    hudEl('mstrip').addEventListener('click', e => {
+      const b = e.target.closest('[data-ms]'); if(!b) return;
+      const k = b.dataset.ms;
+      if(k === 'scene'){ f23SetScene(b.dataset.id); return; }
+      f23CloseMstrip();
+      if(k === 'weather') openWeatherPopover();
+      else if(k === 'tac') hudTactical();
+      else if(k === 'session') openHub('sessao');
+      else if(k === 'saque') hudOpenSaque();
+      else if(k === 'mestre') openHub('mestre');
+      else if(k === 'camp') openHub('campanhas');
+    });
+    const tabs = hudEl('mesa-tabs');
+    tabs.addEventListener('click', e => { const b = e.target.closest('[data-mesa]'); if(b) f23OpenMesa(b.dataset.mesa); });
+    tabs.addEventListener('keydown', e => {
+      if(!/^(ArrowLeft|ArrowRight|Home|End)$/.test(e.key)) return;
+      const ids = hubTabsFor('mesa').map(t => t[0]); let i = ids.indexOf(F23.mesaTab);
+      i = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + ids.length) % ids.length;
+      e.preventDefault(); f23OpenMesa(ids[i]);
+      const n = hudEl('mesa-tab-' + ids[i]); if(n) n.focus();
+    });
+    hudEl('verbs').addEventListener('click', e => { const b = e.target.closest('[data-verb]'); if(!b) return; const v = (F23.verbs || [])[+b.dataset.i]; if(v) v.run(); });
+    hudEl('cfg-body').addEventListener('click', e => {
+      const b = e.target.closest('[data-cfg]'); if(!b) return;
+      const k = b.dataset.cfg;
+      if(k === 'adv') f23SetAdv(!f23Adv());
+      else if(k === 'invv') f23SetInvView(b.dataset.v);
+      else if(k === 'keys'){ const p = appPopovers.find(x => x.popover.id === 'menu-popover'); if(p) p.close(); f23Help(); }
+      else if(k === 'tour'){ const p = appPopovers.find(x => x.popover.id === 'menu-popover'); if(p) p.close(); f23Tour(0); }
+    });
+    hudEl('search-fn').addEventListener('click', e => {
+      const b = e.target.closest('[data-fn]'); if(!b) return;
+      const it = (F23.fnItems || [])[+b.dataset.fn]; if(!it) return;
+      f23CloseSearch(); it.run();
+    });
+    hudEl('search-toggle-btn').addEventListener('click', () => setTimeout(() => { if(hudEl('hud-search').classList.contains('open')) f23RenderSearchFns(hudEl('search-input').value.trim()); }, 0));
+    document.addEventListener('click', e => {
+      const t = e.target; if(!t || !t.closest) return;
+      // composedPath: o botão clicado pode ter sido recriado pelo próprio clique (cena, filtro) e já estar fora do DOM
+      const path = e.composedPath ? e.composedPath() : [];
+      const inside = ids => path.some(n => n && n.id && ids.indexOf(n.id) >= 0) || ids.some(i => t.closest('#' + i));
+      if(F23.mstrip && !inside(['mstrip', 'mchip-master'])) f23CloseMstrip();
+      if(F23.filt && !inside(['filt-pop', 'mchip-filters'])) f23CloseFilters();
+    });
+    document.addEventListener('keydown', e => {
+      if(e.key === 'Escape'){
+        if(F23.modalClose){ F23.modalClose(); return; }
+        if(F23.mstrip){ f23CloseMstrip(); const c = hudEl('mchip-master'); if(c) c.focus(); }
+        if(F23.filt){ f23CloseFilters(); const c = hudEl('mchip-filters'); if(c) c.focus(); }
+        // teclado (computador): Esc também fecha a Mochila e o Saque, se nenhum menu estiver aberto na frente
+        const op = appPopovers.filter(x => x.popover.classList.contains('open'));
+        if(op.length) op.forEach(x => x.close());   // Esc fecha primeiro o menu/busca que estiver na frente
+        else if(!e.defaultPrevented){
+          const inv = document.getElementById('inv-drawer'), sq = document.getElementById('saque-drawer');
+          if(inv && inv.classList.contains('open')) closeInventory();
+          else if(sq && sq.classList.contains('open')) closeDrawer();
+        }
+      }
+    });
+    // menus e buscas abertos: a barra de verbos e o d20 saem da frente (não cobrem as opções)
+    const popSync = () => document.body.classList.toggle('pop-open', appPopovers.some(x => x.popover.classList.contains('open')));
+    const pmo = new MutationObserver(popSync);
+    appPopovers.forEach(x => pmo.observe(x.popover, { attributes:true, attributeFilter:['class'] }));
+    popSync();
+    f23Refresh(true);
+    f23RenderSearchFns('');
+    if(lsGet(LS_TOUR) == null){
+      let tries = 0;
+      const go = () => {
+        if(lsGet(LS_TOUR) != null || F23.modalClose) return;
+        if(document.querySelector('.icon-popover.open, .app-popover.open, .hud-sheet.open') && tries++ < 4){ setTimeout(go, 3000); return; }
+        f23Tour(0);
+      };
+      setTimeout(go, 1800);
+    }
+  }
+
   function hudCampaignChanged(){
     if(!hudReady) return;
-    hud.who = null; hudLoadPrefs(); hudFeedLayout(); mapfLoad(); mapfApply();
+    hud.who = null; hudLoadPrefs(); hudFeedLayout(); mapfLoad(); mapfApply(); f23Refresh(true);
     plClear(); placesRefresh();
   }
   function hudInit(){
-    hudDockBuild(); hudWireDock(); hudWireIndex(); hudWireQR(); hudWireFeed(); hudWireMini(); mapfWire();
-    hudEl('idx-close').innerHTML = ic('close', 18); hudEl('feed-close').innerHTML = ic('close', 18); hudEl('lay-close').innerHTML = ic('close', 18);
+    hudDockBuild(); hudWireDock(); hudWireQR(); hudWireFeed(); hudWireMini(); mapfWire();
+    hudEl('add-close').innerHTML = ic('close', 18); hudEl('feed-close').innerHTML = ic('close', 18); hudEl('lay-close').innerHTML = ic('close', 18);
     document.querySelectorAll('[data-ic]').forEach(e => { e.innerHTML = ic(e.dataset.ic, +e.dataset.icSize || 16); });   // ícones das partes estáticas do HTML
     hudLoadPrefs(); mapfLoad();
     hudReady = true;
@@ -9646,7 +10177,7 @@
     const ctg = document.getElementById('cluster-toggle'); if(ctg) ctg.addEventListener('click', () => clusterSetOn(!cl.on));
     clusterUpdate();
     map.on('click', () => { hudCloseSheets(); if(!hudCol() && hud.feed.sheet) hudFeedOpen(false); });
-    hudRenderIndex(); hudFeedLayout(); hudDockSync();
+    f23Init(); hudFeedLayout(); hudDockSync();
     // o mapa recalcula o tamanho quando as colunas do desktop abrem ou fecham
     if(window.ResizeObserver) new ResizeObserver(() => { if(map) map.invalidateSize({ animate:false }); }).observe(document.getElementById('map'));
   }
@@ -10070,4 +10601,102 @@
   }
   window.tvAdjustImage = tvAdjustImage;
   window.__tvPickImage = pickImage;
+})();
+
+// ===== Escolhas à vista (f23): <select> curto vira botões segmentados ou chips =====
+// Até 4 opções curtas: segmentado. Até 9: chips que quebram linha. Com data-chips="scroll": chips numa fileira que rola.
+// Mais opções (ou grupos) continuam como lista (a do f17). O <select> original fica no lugar, escondido, e recebe a escolha
+// (value + eventos input/change), então todo o resto do app continua igual. Só entra onde há formulários do app.
+(function(){
+  'use strict';
+  const ROOTS = '#hub-drawer, #fp-head, #fichap-body, #mesa-body, #inv-drawer, #saque-drawer, #qr-sheet';
+  const valDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  const done = new WeakMap();      // select -> { box, kind }
+  let lastPick = null;             // { key, val, t }: devolve o foco ao botão certo depois que a tela se redesenha
+  const mk = (tag, cls) => { const e = document.createElement(tag); if(cls) e.className = cls; return e; };
+  const keyOf = s => (s.dataset.bind || s.id || s.getAttribute('aria-label') || '');
+  function labelOf(s){
+    const a = s.getAttribute('aria-label'); if(a) return a;
+    const l = (s.id && document.querySelector('label[for="' + s.id.replace(/"/g, '') + '"]')) || s.closest('label');
+    if(l){ const c = l.cloneNode(true); c.querySelectorAll('select,input,textarea,button').forEach(n => n.remove()); const t = c.textContent.trim(); if(t) return t.slice(0, 60); }
+    const p = s.previousElementSibling; if(p && /label/.test(p.className || '') && p.textContent.trim()) return p.textContent.trim().slice(0, 60);
+    return 'Opções';
+  }
+  function kindOf(s){
+    if(s.multiple || s.size > 1 || s.hasAttribute('data-native') || s.hasAttribute('data-nochips') || s.querySelector('optgroup') || s.closest('.fp-who')) return null;
+    const opts = Array.prototype.filter.call(s.options, o => !o.hidden);
+    if(opts.length < 2) return null;
+    if(s.dataset.chips === 'scroll') return opts.length <= 40 ? 'scroll' : null;
+    const long = opts.some(o => (o.textContent || '').trim().length > 14);
+    if(opts.length <= 4 && !long) return 'seg';
+    return opts.length <= 9 ? 'chips' : null;
+  }
+  function build(s){
+    const st = done.get(s); if(!st) return;
+    if(!s.isConnected){ st.box.remove(); return; }
+    const k = kindOf(s);
+    if(!k){ unwrap(s); return; }
+    const box = st.box, ae = document.activeElement, hadFocus = ae && box.contains(ae), want = hadFocus ? ae.dataset.v : null;
+    box.className = 'sel-' + (k === 'seg' ? 'seg' : 'chips') + (k === 'scroll' ? ' sel-scroll' : '');
+    box.setAttribute('role', 'radiogroup'); box.setAttribute('aria-label', labelOf(s));
+    const cur = s.value;
+    box.innerHTML = '';
+    Array.prototype.forEach.call(s.options, (o, i) => {
+      if(o.hidden) return;
+      const on = o.value === cur && i === s.selectedIndex, b = mk('button'); b.type = 'button'; b.dataset.v = o.value; b.dataset.i = String(i);
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; b.textContent = (o.textContent || '').trim() || ' ';
+      if(on) b.classList.add('on'); if(o.disabled){ b.disabled = true; }
+      box.appendChild(b);
+    });
+    if(!box.querySelector('[tabindex="0"]')){ const f = box.querySelector('button:not([disabled])'); if(f) f.tabIndex = 0; }
+    if(want != null){ const n = Array.prototype.find.call(box.children, c => c.dataset.v === want); if(n) n.focus({ preventScroll:true }); }
+    else if(lastPick && Date.now() - lastPick.t < 600 && lastPick.key === keyOf(s)){ const n = Array.prototype.find.call(box.children, c => c.dataset.v === lastPick.val); if(n) n.focus({ preventScroll:true }); }
+    if(k === 'scroll'){ const on = box.querySelector('.on'); if(on && box.scrollWidth > box.clientWidth) box.scrollLeft = Math.max(0, on.offsetLeft - 24); }
+  }
+  function unwrap(s){
+    const st = done.get(s); if(!st) return;
+    st.box.remove(); s.classList.remove('sel-src'); s.removeAttribute('tabindex'); s.removeAttribute('aria-hidden');
+    st.mo.disconnect(); delete s.value; done.delete(s);
+    watch(s);
+  }
+  // select que ainda não tem opções suficientes (preenchido depois) é revisto quando as opções chegam
+  const watching = new WeakSet();
+  function watch(s){
+    if(watching.has(s)) return; watching.add(s);
+    const w = new MutationObserver(() => { if(!s.isConnected){ w.disconnect(); watching.delete(s); return; } if(kindOf(s)){ w.disconnect(); watching.delete(s); enhance(s); } });
+    w.observe(s, { childList:true, subtree:true });
+  }
+  function enhance(s){
+    if(done.has(s)) return;
+    if(!kindOf(s)){ watch(s); return; }
+    const box = mk('div'), mo = new MutationObserver(() => build(s));
+    s.insertAdjacentElement('afterend', box);
+    s.classList.add('sel-src'); s.setAttribute('tabindex', '-1'); s.setAttribute('aria-hidden', 'true');
+    done.set(s, { box, mo });
+    mo.observe(s, { childList:true, subtree:true, characterData:true, attributes:true, attributeFilter:['disabled', 'hidden', 'label'] });
+    Object.defineProperty(s, 'value', { configurable:true, get(){ return valDesc.get.call(this); }, set(v){ valDesc.set.call(this, v); build(s); } });
+    s.addEventListener('change', () => build(s));
+    box.addEventListener('click', e => {
+      const b = e.target.closest('button'); if(!b || b.disabled) return;
+      const idx = +b.dataset.i; if(s.selectedIndex === idx) return;
+      lastPick = { key:keyOf(s), val:b.dataset.v, t:Date.now() };
+      s.selectedIndex = idx; build(s);
+      s.dispatchEvent(new Event('input', { bubbles:true })); s.dispatchEvent(new Event('change', { bubbles:true }));
+    });
+    box.addEventListener('keydown', e => {
+      if(!/^(ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End)$/.test(e.key)) return;
+      const bs = Array.prototype.filter.call(box.children, c => !c.disabled); const i = bs.indexOf(document.activeElement); if(i < 0) return;
+      const n = e.key === 'Home' ? 0 : e.key === 'End' ? bs.length - 1 : (i + (/Right|Down/.test(e.key) ? 1 : -1) + bs.length) % bs.length;
+      e.preventDefault(); bs[n].focus(); bs[n].click();
+    });
+    build(s);
+  }
+  function scan(root){ (root.querySelectorAll ? root.querySelectorAll('select') : []).forEach(s => { if(s.closest(ROOTS)) enhance(s); }); }
+  // síncrono (microtarefa): o <select> novo já nasce escondido, antes do próximo quadro
+  const mo = new MutationObserver(ms => {
+    for(const m of ms){ for(const n of m.addedNodes){ if(n.nodeType === 1 && (n.tagName === 'SELECT' || n.querySelector('select'))){ scan(document); return; } } }
+  });
+  mo.observe(document.body, { childList:true, subtree:true });
+  scan(document);
+  window.__tvChips = { scan: () => scan(document), enhanced: s => done.has(s) };
 })();

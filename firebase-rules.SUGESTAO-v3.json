@@ -52,6 +52,10 @@
             ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
             ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
           },
+          "tv-map:scene": {
+            ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
+            ".write": "root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid"
+          },
           "tv-map:inventories": {
             ".read": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)",
             ".write": "(root.child('tau-volantis').child('campaign-meta').child($cid).child('members').child(auth.uid).exists() || root.child('tau-volantis').child('campaign-meta').child($cid).child('masterId').val() === auth.uid)"
@@ -132,6 +136,10 @@
         ".write": "auth != null"
       },
       "tv-map:weather": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "tv-map:scene": {
         ".read": "auth != null",
         ".write": "auth != null"
       },

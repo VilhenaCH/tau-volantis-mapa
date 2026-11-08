@@ -598,3 +598,67 @@ Novo tipo de marcador, o **Lugar**: um ponto do mapa com cara de cartão ("lugar
 **Testes.** Regressão completa. Ajustados três testes que fixavam as cores antigas: `t_f17` (fundos), `t_f19routes` (rota padrão branca) e `t_pwa` (`theme-color`).
 
 **Arquivos que mudam:** `style.css`, `app.js`, `index.html`, `manifest.webmanifest`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`.
+
+## 35. Animação do clima no Opera GX e no Brave (f22)
+
+**Bug:** no Opera GX e no Brave a neve, a chuva, a névoa e os outros efeitos do clima não se mexiam.
+
+**Causa.** O app respeita o aviso "reduzir movimento" do aparelho (`prefers-reduced-motion`) e, quando ele está ligado, deixa o clima parado. Esses dois navegadores repassam o aviso do Windows: com "Efeitos de animação" desligado em Configurações ▸ Acessibilidade ▸ Efeitos visuais, o navegador diz ao app para não animar. O efeito em si estava certo; faltava um jeito de o jogador escolher.
+
+**Correção.** Em **Clima ▸ opções** há um novo seletor **Animação do clima**, por aparelho:
+- **Automática** (padrão): segue o aparelho, como antes.
+- **Ligada**: anima sempre, mesmo com "reduzir movimento".
+- **Desligada**: deixa o clima parado.
+Um texto embaixo explica quando o aparelho está pedindo menos movimento. Na primeira vez que o clima muda num aparelho assim, um aviso curto aponta para o seletor (uma vez só).
+
+**Alternativa sem mexer no app:** Windows ▸ Configurações ▸ Acessibilidade ▸ Efeitos visuais ▸ ligar "Efeitos de animação".
+
+**O que continua respeitando "reduzir movimento":** animação das áreas, rotas e molduras, a roleta de busca do Saque e as transições das gavetas. Só o clima ganhou a chave.
+
+**Testes.** `t_wxmotion` novo (21 verificações: padrão, persistência após recarregar, os 7 climas animando, ainda parado quando o aparelho reduz e a chave está em Automática, botões de 44 px, aviso único). Regressão completa: 43 suites, nenhuma falha.
+
+**Arquivos que mudam:** `app.js`, `style.css`, `index.html` (`?v=f22`).
+
+## 36. Design definitivo: ficha na tela, 4 abas e papéis (f23)
+
+Uma entrega só, com tudo do desenho "Layout definitivo" que valeu a pena, aplicado em cima do app que já existe (nada foi reescrito do zero).
+
+**Correção de uma afirmação minha.** No quadro de design eu disse que os **turnos do Tático** eram novidade. Não eram: o Tático já tinha rodada, "vez de" e iniciativa desde antes. O f23 só **mostra** "Rodada n · Vez de X" na barra de verbos durante o combate; a mecânica de turnos é a mesma de sempre.
+
+**Navegação.**
+- **Dock de 4 abas:** Mapa, Ficha, Mochila, Mesa. O d20 flutuante (rolar dados) fica por cima do mapa e some enquanto uma folha está aberta.
+- **Busca única** (tecla `/`): acha itens do mapa **e funções do app** (Ficha, Mochila, Diário, Grupo, Mundo, Ofício, Clima, Sessão, Mestre, Saque e pesca, Mapa tático, Ajustes…). O **Índice** e a faixa de 8 abas da "Mesa de jogo" saíram.
+- **Mesa** (painel à direita, ou folha no celular): Feed, Grupo, Diário, Mundo e Ofício (só com o módulo ligado). A aba escolhida fica salva no aparelho.
+- **Computador (≥ 1100 px):** 3 painéis, Ficha | Mapa | Mesa. Abaixo de 1360 px a Mesa começa recolhida para o mapa não apertar.
+
+**Ficha completa na coluna da esquerda** (substitui a mini-ficha). Cabeçalho fixo com PV/PD e abas; o jogador só vê os próprios personagens, o mestre vê todos. No celular a ficha abre como folha.
+
+**Mochila em grade** (padrão), com detalhe do item embaixo, faixa de equipamento e navegação por setas. A lista antiga continua em **Ajustes ▸ Mochila ▸ Lista**.
+
+**Papéis.**
+- **Jogador:** só cria **notas** e **tokens** no mapa. Tipos de pin, áreas e rotas são do mestre (o app avisa em vez de fazer nada). Jogador não vê a faixa do mestre nem muda a cena.
+- **Mestre:** botão **Mestre** nos chips do mapa abre a faixa com cena, clima, sessão, tático, saque e configurações.
+- **Ferramentas avançadas** (Ajustes, por aparelho): liga os mapas Relevo/Nevado e, para o mestre, o registro de itens (CSV). Desligado por padrão, para o jogador de TV ou celular não se perder.
+
+**Cenas (Exploração · Combate · Descanso).** O mestre escolhe na faixa; vale para todos em tempo real, sem recarregar. A cena muda a **barra de verbos** (Procurar/Marcar/Perícia, Atacar/Esquivar/Tático, Curar/Diário…) e leva a aba da ficha junto (Perícias, Combate, Agente). O verbo Esquivar rola Reflexos e grava no feed. Chave nova no banco: `tv-map:scene` (guarda `{ id, by, at }`; entra no backup, na sincronização e no reinício da campanha).
+
+**Seletores viram botões.** Os `select` de poucas opções viram botões segmentados ou chips (um acompanhante automático; o `select` original continua por baixo, então nada que dependia dele quebra). Listas longas e os seletores marcados continuam como lista.
+
+**Filtros · n.** Pins, Tokens, Perigos, Rotas, Notas e Lugares saíram da barra e foram para um painel **Filtros**; o número mostra quantas categorias estão ocultas.
+
+**Primeira vez e teclado.** Um tour de 5 a 6 passos aparece na primeira abertura de cada aparelho (refazer em Ajustes). Atalhos: `D` dados, `F` ficha, `M` mochila, `E` mesa, `/` busca, `?` lista de atalhos, `Esc` fecha o que estiver na frente (menu ou busca primeiro; depois Mochila e Saque). **Ajustes** ficou numa tela só dentro do menu ☰.
+
+**Correções que apareceram nos testes.**
+- Abrir **Mestre** ou **Dados completos** pela busca depois de outra aba da gaveta mostrava o conteúdo da aba anterior (a gaveta só desenhava depois de abrir).
+- Escolher uma cena fechava a faixa do mestre sem querer (o botão era recriado antes do clique "de fora" ser avaliado).
+- No celular, menu, busca e clima ficavam **atrás** da gaveta da mochila/ficha; agora abrir um deles fecha as gavetas.
+- A ficha do jogador listava os personagens do mestre no seletor.
+- Esc não fechava a Mochila.
+
+**Movimento reduzido.** O anel pulsante do tour e a transição do d20 param com "reduzir movimento". Continuam com transição curta (0,15 s, só cor e deslocamento do botão) o interruptor de Ajustes, os chips de aba da Mesa e o contador de eventos do dock. O clima segue com a chave própria (seção 35).
+
+**Regras do Firebase.** Se você usa o arquivo de regras sugerido, use o `firebase-rules.SUGESTAO-v3.json` novo: ele inclui `tv-map:scene` (leitura para a campanha, escrita só do mestre). Sem isso, o banco recusa a troca de cena (o app avisa "Não foi possível salvar a cena").
+
+**Testes.** Regressão completa: **44 suítes, 1.621 verificações, nenhuma falha**, mais uma suíte nova do f23 (`t_f23`, 85 verificações: papéis, cenas, Mesa, ficha, filtros, busca, tour, teclado, celular e computador). Cerca de 20 suítes antigas foram atualizadas para a navegação nova (dock de 4 abas, busca no lugar do Índice, chips de filtro dentro de "Filtros", ficha na coluna). O arquivo `op-atributos.png` dá aviso de CORS quando o app é aberto direto do disco (`file://`); no GitHub Pages é a mesma origem e o aviso não existe, então os testes ignoram só essa mensagem. Verificação visual em 390 e 1280 px. Não testei em aparelho físico nem no Opera GX/Brave; a animação do clima segue a seção 35.
+
+**Arquivos que mudam:** `app.js`, `style.css`, `index.html` (`?v=f23`), `AUDITORIA-E-MUDANCAS.md`, `firebase-rules.SUGESTAO-v3.json`.
