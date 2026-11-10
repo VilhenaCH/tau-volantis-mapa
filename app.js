@@ -232,6 +232,8 @@
     skull:'<path d="M12 2a8 8 0 0 0-8 8c0 3 1.6 5 3 6.1V19a1 1 0 0 0 1 1h1v-2.2h2V20h2v-2.2h2V20h1a1 1 0 0 0 1-1v-2.9c1.4-1.1 3-3.1 3-6.1a8 8 0 0 0-8-8Z"/><circle cx="9" cy="10" r="1.3"/><circle cx="15" cy="10" r="1.3"/>',
     drop:'<path d="M12 2.5s6.5 7.2 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 9.7 12 2.5 12 2.5Z"/>',
     copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+    edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+    image:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 18l5-5 4 3 3-3 4 4"/>',
     lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
     unlock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/>',
     shield:'<path d="M12 3l7 2.6v5.6c0 4.6-3 8.3-7 10-4-1.7-7-5.4-7-10V5.6z"/>'
@@ -1101,12 +1103,6 @@
   // players can reskin any pin without the toolbar being flooded with buttons ----------
   const TOOLBAR_PIN_IDS = ['lugar', 'saque', 'perigo', 'abrigo', 'npc', 'veiculo', 'nota', 'pin'];
 
-  function buildIconPickerHtml(currentType){
-    return PIN_TYPES.filter(pt => pt.id !== 'lugar').map(pt => `
-      <button type="button" class="icon-picker-btn ${pt.id===currentType?'active':''}" data-type="${pt.id}" style="--picker-color:${pt.color}" title="${pt.label}">
-        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PIN_ICONS[pt.id] || PIN_ICONS.nota}</svg>
-      </button>`).join('');
-  }
 
   const pinButtonsWrap = document.getElementById('pin-buttons');
   PIN_TYPES.filter(pt => TOOLBAR_PIN_IDS.includes(pt.id)).forEach(pt => {
@@ -1323,6 +1319,32 @@
   }
 
   // ---------- pin popup (create/edit) ----------
+  // card de token/pin (f24): avatar e nome, ações grandes, edição recolhida
+  const PC_COLORS = ['#ffffff', '#d3572a', '#e0c23c', '#7fb98a', '#4fb3d9', '#3f8fd1', '#a06be0', '#e0524a', '#9aa0a6'];
+  function pcSwatches(cur, inputCls){
+    const c = String(cur || '#ffffff').toLowerCase();
+    return `<div class="pc-sws" role="radiogroup" aria-label="Cor">${PC_COLORS.map(x => `<button type="button" class="pc-sw${x === c ? ' on' : ''}" role="radio" aria-checked="${x === c}" data-c="${x}" style="--sw:${x}" aria-label="Cor ${x}"></button>`).join('')}
+      <label class="pc-sw custom" title="Outra cor">${ic('plus', 14)}<input type="color" class="${inputCls}" value="${escapeHtml(c)}" aria-label="Outra cor"></label></div>`;
+  }
+  function pcWireSwatches(root, input){
+    const mark = () => root.querySelectorAll('.pc-sw[data-c]').forEach(b => { const on = b.dataset.c === input.value.toLowerCase(); b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    root.querySelectorAll('.pc-sw[data-c]').forEach(b => b.addEventListener('click', () => { input.value = b.dataset.c; input.dispatchEvent(new Event('input', { bubbles:true })); }));
+    input.addEventListener('input', mark);
+  }
+  function pcVitals(id){
+    const card = characters[id];
+    if(!card || !card.resources2 || !card.resources2.pv) return '';
+    return `<div class="pc-vit">${['pv', 'pd'].map(k => { const r = opRes(card, k), pct = r.max > 0 ? Math.round(Math.max(0, Math.min(1, r.cur / r.max)) * 100) : 0;
+      return `<span class="pc-bar ${k}" style="--p:${pct}%"><b>${OP_RES[k][0]}</b><em>${r.cur}/${r.max}</em></span>`; }).join('')}</div>`;
+  }
+  function pcToggleEdit(container, force){
+    const ed = container.querySelector('.pc-edit'), tg = container.querySelector('.pc-edit-toggle');
+    ed.hidden = force != null ? !force : !ed.hidden;
+    if(tg) tg.setAttribute('aria-expanded', String(!ed.hidden));
+    // update() recriaria o conteúdo (a função do popup roda de novo); só refazemos tamanho e posição
+    const pp = map._popup;
+    if(pp && container.isConnected) setTimeout(() => { try{ pp._updateLayout(); pp._updatePosition(); pp._adjustPan(); }catch(e){} }, 0);
+  }
   function buildPinPopupContent(pin){
     const container = document.createElement('div');
     const typeLabel = (PIN_TYPES.find(t => t.id === pin.type) || {label:pin.type}).label;
@@ -1334,47 +1356,44 @@
     const occupants = isContainer
       ? [...tokens.filter(t => t.containerId === pin.id), ...pins.filter(p => p.type === 'npc' && p.containerId === pin.id)]
       : [];
-    container.innerHTML = `
-      <div class="popup-kicker">${typeLabel}</div>
-      ${pin.ownerName ? `<div class="popup-owner">Criado por: ${escapeHtml(pin.ownerName)}</div>` : ''}
-      ${pin.osm ? `<div class="popup-owner">Lugar real · OpenStreetMap${pin.osmTag ? ' · ' + escapeHtml(pin.osmTag) : ''}</div>` : ''}
-      <input type="text" class="pin-title" placeholder="Título" value="${escapeHtml(pin.title || '')}">
-      <textarea class="pin-note" rows="3" placeholder="Anotação...">${escapeHtml(pin.note || '')}</textarea>
-      ${isContainer ? `
-      <div class="group-popup-title">Ocupantes${occupants.length ? ' · ' + occupants.length : ''}</div>
-      <div class="occupant-list-pin"></div>` : ''}
-      ${isNpc ? `
-      <div class="token-popup-row">
-        <div class="token-preview-wrap">
-          <div class="token-preview" style="border-color:${escapeHtml(npcColor)}">
-            ${pin.image ? `<img src="${pin.image}" alt="">` : ''}
-          </div>
-        </div>
-        <div class="token-popup-fields">
-          <label class="token-field-label">Cor</label>
-          <input type="color" class="pin-color-input" value="${npcColor}">
-          <label class="token-field-label">Foto / GIF</label>
-          <input type="file" accept="image/*" class="pin-image-input">
-          <button type="button" class="img-adjust-btn pin-image-adjust"${pin.image && !/^data:image\/gif/i.test(pin.image) ? '' : ' hidden'}>Ajustar imagem</button>
-          ${pin.image ? '<button type="button" class="pin-image-clear">Remover imagem</button>' : ''}
-        </div>
+    const cantSearch = canSearchPin(pin), isCont = isContainerPin(pin), fresh = !pin.title && !pin.note;
+    const pt = PIN_TYPES.find(t => t.id === pin.type) || { color:'var(--ice-100)' }, bcol = isNpc ? npcColor : pt.color;
+    const badge = isNpc
+      ? `<div class="token-preview-wrap"><div class="token-preview" style="border-color:${escapeHtml(npcColor)}">${pin.image ? `<img src="${pin.image}" alt="">` : ''}</div></div>`
+      : `<div class="pc-badge" style="--pc:${bcol}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PIN_ICONS[pin.type] || PIN_ICONS.nota}</svg></div>`;
+    container.innerHTML = `<div class="pc">
+      <div class="pc-head">${badge}
+        <div class="pc-id"><b class="pc-name">${escapeHtml(pin.title || typeLabel)}</b>
+          <span class="pc-sub">${escapeHtml(typeLabel)}${pin.ownerName ? ' · de ' + escapeHtml(pin.ownerName) : ''}</span>
+          ${pin.osm ? `<span class="pc-src">Lugar real · OpenStreetMap${pin.osmTag ? ' · ' + escapeHtml(pin.osmTag) : ''}</span>` : ''}
+          ${isNpc ? pcVitals(pin.id) : ''}</div></div>
+      ${pin.note ? `<p class="pc-note">${escapeHtml(pin.note)}</p>` : ''}
+      ${isContainer ? `<div class="pc-occ"><span class="pc-occ-t">Ocupantes${occupants.length ? ' · ' + occupants.length : ''}</span><div class="occupant-list-pin"></div></div>` : ''}
+      <div class="pc-actions">
+        ${isNpc ? `<button type="button" class="pc-act inv-open-btn">${ic('bag', 20)}<span>Mochila</span><i>${capTxt(pin.id)}</i></button>
+        <button type="button" class="pc-act ficha-open-btn">${ic('user', 20)}<span>Ficha</span></button>` : ''}
+        ${isCont ? `<button type="button" class="pc-act inv-open-btn">${ic('box', 20)}<span>Abrir</span><i>${escapeHtml(CONT_STATE_LABELS[containerState(pin.id)] || '')}</i></button>` : ''}
+        ${cantSearch ? `<button type="button" class="pc-act pin-search-btn">${ic('search', 20)}<span>Vasculhar</span></button>` : ''}
+        <button type="button" class="pc-act lock" aria-pressed="${!!pin.locked}">${ic(pin.locked ? 'unlock' : 'lock', 20)}<span>${pin.locked ? 'Soltar' : 'Travar'}</span></button>
+        <button type="button" class="pc-act pc-edit-toggle" aria-expanded="false">${ic('edit', 20)}<span>Editar</span></button>
       </div>
-      ${frPickerHtml(pin.fr, npcColor)}` : ''}
-      ${isNpc ? `<button type="button" class="inv-open-btn">${ic('bag', 14)} Inventário (${capTxt(pin.id)})</button>` : ''}
-      ${isContainerPin(pin) ? `<button type="button" class="inv-open-btn">${ic('box', 16)} Abrir contêiner · ${escapeHtml(CONT_STATE_LABELS[containerState(pin.id)] || '')}</button>` : ''}
-      ${canSearchPin(pin) ? `<button type="button" class="inv-open-btn pin-search-btn">${ic('search', 16)} Vasculhar</button>` : ''}
-      <div class="icon-picker-label">Alterar ícone</div>
-      <div class="icon-picker icon-picker-inline">${buildIconPickerHtml(pin.type)}</div>
-      <div class="popup-actions">
-        <button class="save">Salvar</button>
-        <button class="lock">${ic(pin.locked ? 'unlock' : 'lock', 14)} ${pin.locked ? 'Destravar' : 'Travar'}</button>
-        <button class="del">Excluir</button>
+      <div class="pc-edit" hidden>
+        <input type="text" class="pin-title" aria-label="Título" placeholder="Título" value="${escapeHtml(pin.title || '')}">
+        <textarea class="pin-note" rows="3" aria-label="Anotação" placeholder="Anotação">${escapeHtml(pin.note || '')}</textarea>
+        ${isNpc ? `${pcSwatches(npcColor, 'pin-color-input')}
+        <div class="pc-photo"><label class="pc-chip">${ic('image', 14)} Foto<input type="file" accept="image/*" class="pin-image-input" hidden></label>
+          <button type="button" class="pc-chip img-adjust-btn pin-image-adjust"${pin.image && !/^data:image\/gif/i.test(pin.image) ? '' : ' hidden'}>Ajustar</button>
+          ${pin.image ? '<button type="button" class="pc-chip pin-image-clear">Tirar foto</button>' : ''}</div>
+        ${frPickerHtml(pin.fr, npcColor)}` : ''}
+        <div class="popup-actions"><button type="button" class="save">Salvar</button><button type="button" class="del">Excluir</button></div>
       </div>
-    `;
+    </div>`;
+    container.querySelector('.pc-edit-toggle').addEventListener('click', () => pcToggleEdit(container));
+    if(fresh) pcToggleEdit(container, true);
     if(isContainer){
       const list = container.querySelector('.occupant-list-pin');
       if(occupants.length === 0){
-        list.innerHTML = '<div class="occupant-empty">Vazio — arraste um token pra cima deste pin no mapa pra colocar alguém aqui.</div>';
+        list.innerHTML = '<div class="occupant-empty">Vazio. Arraste um token até aqui.</div>';
       } else {
         occupants.forEach(t => {
           const row = document.createElement('div');
@@ -1433,6 +1452,9 @@
         });
       }
       const colorInput = container.querySelector('.pin-color-input');
+      pcWireSwatches(container, colorInput);
+      const fichaBtn = container.querySelector('.ficha-open-btn');
+      if(fichaBtn) fichaBtn.addEventListener('click', () => { map.closePopup(); hub.charToken = pin.id; rollUI.who = pin.id; openHub('ficha'); });
       const frRoot = container.querySelector('.fr-pick'), prevWrap = container.querySelector('.token-preview-wrap');
       frPickerWire(frRoot, () => colorInput.value, (fr, col) => frPreview(prevWrap, preview, fr, col));
       colorInput.addEventListener('input', () => {
@@ -1456,23 +1478,6 @@
       }
       renderPins();
       openPinPopupById(pin.id);
-    });
-    container.querySelectorAll('.icon-picker-btn').forEach(b => {
-      b.addEventListener('click', async () => {
-        const newType = b.dataset.type;
-        if(newType === pin.type) return;
-        // preserve whatever the person already typed before swapping the icon
-        const titleVal = container.querySelector('.pin-title').value.trim();
-        const noteVal = container.querySelector('.pin-note').value.trim();
-        if(titleVal) pin.title = titleVal;
-        pin.note = noteVal;
-        pin.type = newType;
-        await saveKey(KEY_PINS, pins);
-        const marker = pinMarkers[pin.id];
-        if(marker) marker.setIcon(pinIcon(pin));
-        renderPins();
-        openPinPopupById(pin.id);
-      });
     });
     container.querySelector('.save').addEventListener('click', () => {
       pin.title = container.querySelector('.pin-title').value.trim() || typeLabel;
@@ -1538,33 +1543,28 @@
     const currentColor = token.color || '#ffffff';
     const initials = escapeHtml((token.label || 'TK').slice(0,2).toUpperCase());
 
-    container.innerHTML = `
-      <div class="popup-kicker">Token</div>
-      ${token.ownerName ? `<div class="popup-owner">Criado por: ${escapeHtml(token.ownerName)}</div>` : ''}
-      <input type="text" class="token-label" placeholder="Nome" value="${escapeHtml(token.label || '')}">
-      <div class="token-popup-row">
-        <div class="token-preview-wrap">
-          <div class="token-preview" style="border-color:${escapeHtml(currentColor)}">
-            ${token.image ? `<img src="${token.image}" alt="">` : `<span>${initials}</span>`}
-          </div>
-        </div>
-        <div class="token-popup-fields">
-          <label class="token-field-label">Cor da borda</label>
-          <input type="color" class="token-color-input" value="${currentColor}">
-          <label class="token-field-label">Imagem</label>
-          <input type="file" accept="image/*" class="token-image-input">
-          <button type="button" class="img-adjust-btn token-image-adjust"${token.image && !/^data:image\/gif/i.test(token.image) ? '' : ' hidden'}>Ajustar imagem</button>
-          ${token.image ? '<button type="button" class="token-image-clear">Remover imagem</button>' : ''}
-        </div>
+    container.innerHTML = `<div class="pc">
+      <div class="pc-head"><div class="token-preview-wrap"><div class="token-preview" style="border-color:${escapeHtml(currentColor)}">${token.image ? `<img src="${token.image}" alt="">` : `<span>${initials}</span>`}</div></div>
+        <div class="pc-id"><b class="pc-name">${escapeHtml(token.label || 'Token')}</b>
+          <span class="pc-sub">Token${token.ownerName ? ' · de ' + escapeHtml(token.ownerName) : ''}</span>${pcVitals(token.id)}</div></div>
+      <div class="pc-actions">
+        <button type="button" class="pc-act inv-open-btn">${ic('bag', 20)}<span>Mochila</span><i>${capTxt(token.id)}</i></button>
+        <button type="button" class="pc-act ficha-open-btn">${ic('user', 20)}<span>Ficha</span></button>
+        <button type="button" class="pc-act pc-edit-toggle" aria-expanded="false">${ic('edit', 20)}<span>Editar</span></button>
       </div>
-      ${frPickerHtml(token.fr, currentColor)}
-      <button type="button" class="inv-open-btn">${ic('bag', 14)} Inventário (${capTxt(token.id)})</button>
-      <button type="button" class="inv-open-btn ficha-open-btn">${ic('user', 14)} Ficha e dados</button>
-      <div class="popup-actions">
-        <button class="save">Salvar</button>
-        <button class="del">Remover</button>
+      <div class="pc-edit" hidden>
+        <input type="text" class="token-label" aria-label="Nome" placeholder="Nome" value="${escapeHtml(token.label || '')}">
+        ${pcSwatches(currentColor, 'token-color-input')}
+        <div class="pc-photo"><label class="pc-chip">${ic('image', 14)} Foto<input type="file" accept="image/*" class="token-image-input" hidden></label>
+          <button type="button" class="pc-chip img-adjust-btn token-image-adjust"${token.image && !/^data:image\/gif/i.test(token.image) ? '' : ' hidden'}>Ajustar</button>
+          ${token.image ? '<button type="button" class="pc-chip token-image-clear">Tirar foto</button>' : ''}</div>
+        ${frPickerHtml(token.fr, currentColor)}
+        <div class="popup-actions"><button type="button" class="save">Salvar</button><button type="button" class="del">Remover</button></div>
       </div>
-    `;
+    </div>`;
+    container.querySelector('.pc-edit-toggle').addEventListener('click', () => pcToggleEdit(container));
+    if(!token.label || token.label === 'Token') pcToggleEdit(container, true);
+    pcWireSwatches(container, container.querySelector('.token-color-input'));
     container.querySelector('.inv-open-btn').addEventListener('click', () => { map.closePopup(); openInventory(token.id); });
     container.querySelector('.ficha-open-btn').addEventListener('click', () => { map.closePopup(); hub.charToken = token.id; rollUI.who = token.id; openHub('ficha'); });
     const preview = container.querySelector('.token-preview');
@@ -2299,6 +2299,7 @@
       if(l._tokenId === id && l.openPopup) l.openPopup();
     });
   }
+  window.__tvOpen = { token: id => openTokenPopupById(id), pin: id => openPinPopupById(id) };   // só para os testes automáticos
 
   // ---------- ÁREAS (f14): desenho no mapa ----------
   const areaEl = id => document.getElementById(id);
@@ -2778,22 +2779,9 @@
   const navDrawer = document.getElementById('lay-sheet');
   const navDrawerBackdrop = document.getElementById('lay-backdrop');
   const navSearchInput = document.getElementById('nav-search-input');
-  function openNavDrawer(){
-    closeDrawerIfOpen();
-    renderNavList();
-    hudOpenSheet('lay-sheet');
-  }
   function closeNavDrawer(){
     navDrawer.classList.remove('open');
     navDrawerBackdrop.classList.remove('open');
-  }
-  // closes the saque drawer if it's open, so only one drawer is ever open at once
-  function closeDrawerIfOpen(){
-    const sd = document.getElementById('saque-drawer');
-    const sb = document.getElementById('drawer-backdrop');
-    if(sd && sd.classList.contains('open')){ sd.classList.remove('open'); sb.classList.remove('open'); }
-    if(typeof closeInventory === 'function') closeInventory();
-    if(typeof closeHub === 'function') closeHub();
   }
   navSearchInput.addEventListener('input', renderNavList);
 
@@ -4008,22 +3996,26 @@
   }
   function itemFactsText(item){ return itemFactParts(item, {}).filter(x => x.c !== 'tag').map(x => x.t).join(' · '); }
 
+  const LOC_SHORT = { casas:'Casas', farmacias:'Farmácias', bases:'Bases militares', veiculos:'Veículos', oficinas:'Oficinas', mercados:'Mercados',
+    acampamentos:'Acampamentos', fazendas:'Fazendas', florestas:'Florestas', rios:'Rios', convergencia:'Convergência' };
+  const LOC_ICON = { casas:'key', farmacias:'medical-pack', bases:'ammo-box', veiculos:'car-wheel', oficinas:'toolbox', mercados:'canned-fish',
+    acampamentos:'camping-tent', fazendas:'cow', florestas:'mushroom', rios:'water-flask', convergencia:'crystal-ball' };
   function buildSaqueLocGrid(container, keys, extraClass){
     keys.forEach(key => {
       const card = document.createElement('button');
+      card.type = 'button';
       card.className = 'loc-card' + (extraClass ? ' ' + extraClass : '') + (key === 'convergencia' ? ' convergencia' : '');
-      card.innerHTML = `
-        <span class="tag">${key === 'convergencia' ? 'Evento raro' : 'Vasculhar'}</span>
-        <span class="go">↻</span>
-        <h3>${LOC_NAMES[key]}</h3>
-        <span class="count">${byLoc[key].length} itens possíveis</span>
-      `;
+      card.dataset.loc = key;
+      card.setAttribute('aria-label', 'Vasculhar ' + LOC_NAMES[key]);
+      card.title = LOC_NAMES[key];
+      card.innerHTML = `<span class="lc-ic">${svgIcon(LOC_ICON[key] || 'wooden-crate')}</span><span class="lc-nm">${LOC_SHORT[key] || LOC_NAMES[key]}</span><span class="lc-ct">${key === 'convergencia' ? 'Evento raro' : byLoc[key].length + ' itens'}</span>`;
       card.addEventListener('click', () => rollLoot(key));
       container.appendChild(card);
     });
   }
   buildSaqueLocGrid(document.getElementById('loc-grid'), URBAN_LOCS.concat(['convergencia']));
   buildSaqueLocGrid(document.getElementById('loc-grid-rural'), RURAL_LOCS, 'rural-card');
+  (function(){ const f = document.querySelector('[data-fish-ic]'); if(f) f.innerHTML = svgIcon('fishing'); const fb = document.getElementById('fish-btn'); if(fb) document.getElementById('loc-grid-rural').appendChild(fb); })();
 
   const resultZone = document.getElementById('result-zone');
   const webhookInput = document.getElementById('webhook-input');
@@ -4228,45 +4220,60 @@
     explorePostRoll(entry);
     logFound(entry);
     if (autoSendBox.checked) sendLootToDiscord(entry);
-    const show = () => { lootHistory.unshift(entry); renderLootResults(); };
+    const show = () => { lootHistory.unshift(entry); renderLootResults(); saqueReveal(resultZone); };
     if(!animEnabled()){ soundLootResult(items.map(x => x.item), locKey); show(); return; }
     setSearchBusy(true);
     playSearch({ stage:lootStage, title:`Vasculhando ${LOC_NAMES[locKey]}…`, pool:byLoc[locKey], found:items.map(x => x.item),
       rarity:it => rarityInfo(it, locKey), emptyText:'Nada de útil aqui' }).then(() => { setSearchBusy(false); show(); });
   }
 
+  // leva o resultado novo para a tela (no celular ele aparece abaixo dos locais)
+  function saqueReveal(el){
+    try{
+      const d = document.getElementById('saque-drawer'), c = el && el.firstElementChild;
+      if(!c || !d.classList.contains('open')) return;
+      const r = c.getBoundingClientRect(), dr = d.getBoundingClientRect();
+      if(r.top < dr.top + 56 || r.top > dr.bottom - 140) c.scrollIntoView({ block:'start', behavior:(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'auto' : 'smooth' });
+    }catch(e){}
+  }
   function renderLootResults(){
-    if(lootHistory.length === 0){
-      const c = cfg();
-      resultZone.innerHTML = `<div class="empty-hint">Nenhuma busca realizada ainda. Clique em um local acima para vasculhar. Cada busca rende de ${c.lootMin} a ${c.lootMax} item(ns) e você escolhe o que levar.</div>`;
-      return;
-    }
+    if(lootHistory.length === 0){ resultZone.innerHTML = ''; return; }
     resultZone.innerHTML = '';
     const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
     clearBtn.className = 'clear-btn';
     clearBtn.textContent = 'Limpar histórico';
     clearBtn.addEventListener('click', () => { flushPending(lootHistory); lootHistory = []; renderLootResults(); });
 
-    lootHistory.slice(0, 25).forEach((entry) => {
+    lootHistory.slice(0, 25).forEach((entry, ei) => {
       const {locKey, foundBy} = entry;
       const its = entry.items || [];
       const anomalo = its.some(x => x.item.category === 'Itens Anômalos e Paranormais');
+      const pend = pendingIdx(entry).length;
+      const old = ei > 0 && !entry.open;
       const card = document.createElement('div');
-      card.className = 'result-card' + (anomalo ? ' anomalo' : '');
+      card.className = 'result-card' + (anomalo ? ' anomalo' : '') + (ei > 0 ? ' old' : '') + (old ? '' : ' open');
       card.dataset.uid = entry.uid;
       card.innerHTML = `
-        <div class="result-top">
-          <div class="result-loc">Buscado em: ${LOC_NAMES[locKey]}</div>
-          <div class="found-by">Encontrado por: ${escapeHtml(foundBy)}</div>
+        <div class="result-top"${ei > 0 ? ' role="button" tabindex="0" aria-expanded="' + !old + '"' : ''}>
+          <span class="result-loc" title="${escapeHtml(LOC_NAMES[locKey])}">${escapeHtml(LOC_SHORT[locKey] || LOC_NAMES[locKey])}</span>
+          <span class="found-by">${escapeHtml(foundBy)}</span>
+          ${ei > 0 ? `<span class="rt-count">${its.length ? its.length + (its.length === 1 ? ' item' : ' itens') : 'nada'}${pend ? ' · ' + pend + ' sem decisão' : ''}</span>` : ''}
         </div>
-        ${its.length ? `<div class="loot-count">${its.length} item(ns) encontrado(s)</div>` : '<div class="result-name">Nada de útil aqui</div><div class="result-utility">A busca não rendeu nada desta vez.</div>'}
+        ${its.length ? '' : '<div class="result-empty">Nada de útil por aqui.</div>'}
         <div class="loot-items"></div>
         ${coordHtml(entry)}
         <div class="send-row">
-          <button class="send-btn" data-action="send">Enviar ao Discord</button>
+          <button type="button" class="send-btn" data-action="send">Enviar ao Discord</button>
           <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
         </div>
       `;
+      if(ei > 0){
+        const top = card.querySelector('.result-top');
+        const flip = () => { entry.open = !entry.open; card.classList.toggle('open', !!entry.open); card.classList.toggle('old', !entry.open); top.setAttribute('aria-expanded', String(!!entry.open)); };
+        top.addEventListener('click', flip);
+        top.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); flip(); } });
+      }
       const box = card.querySelector('.loot-items');
       const bulk = buildBulkBar(entry);
       if(bulk) box.appendChild(bulk);
@@ -4274,14 +4281,15 @@
         const item = it.item;
         const rarity = rarityInfo(item, locKey);
         const row = document.createElement('div');
-        row.className = 'loot-item' + (item.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '') + (it.decision === 'declined' ? ' declined' : '');
-        row.innerHTML = `
-          <div class="result-name">${iconHtml(item)}${item.name}<span class="rarity-tag ${rarity.cls}">${rarity.label}</span></div>
-          <span class="result-cat">${item.category}</span>
-          <div class="result-utility"><b>Utilidade:</b> ${item.utility}</div>
-          ${itemFactsHtml(item)}
-          ${compatLine(item)}`;
-        row.appendChild(buildItemDecision(entry, i, its.length === 1));
+        row.className = 'loot-item ' + rarity.cls + (item.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '') + (it.decision === 'declined' ? ' declined' : '');
+        row.innerHTML = `${iconHtml(item)}
+          <div class="li-body">
+            <div class="li-top"><b class="result-name">${item.name}</b><span class="rarity-tag ${rarity.cls}">${rarity.label}</span></div>
+            <div class="result-cat">${item.category}</div>
+            <div class="result-utility">${item.utility}</div>
+            ${itemFactsHtml(item)}
+            ${compatLine(item)}</div>`;
+        row.querySelector('.li-body').appendChild(buildItemDecision(entry, i, its.length === 1));
         box.appendChild(row);
       });
       card.querySelector('[data-action="send"]').addEventListener('click', () => sendLootToDiscord(entry));
@@ -4409,7 +4417,7 @@
     const entry = Object.assign({kind:'fish', item: caught, items: caught ? [{ item: caught, decision: 'pending' }] : [], searchId: newUid('sr'), uid: ++fishUid, sendState:'idle', foundBy: playerName(), holderId: tok ? tok.id : null}, locFields(tok));
     logFound(entry);
     if (autoSendBox.checked) sendLootToDiscord(entry);
-    const showFish = () => { fishHistory.unshift(entry); renderFishResults(); };
+    const showFish = () => { fishHistory.unshift(entry); renderFishResults(); saqueReveal(fishResultEl); };
     if(!animEnabled()){ if(caught) TVSound.found('comum'); else TVSound.play('empty'); showFish(); return; }
     setSearchBusy(true);
     TVSound.play('pesca');
@@ -4420,13 +4428,14 @@
 
   function renderFishResults(){
     if (fishHistory.length === 0){
-      fishResultEl.innerHTML = '<div class="fish-empty">Nenhuma tentativa de pesca ainda.</div>';
+      fishResultEl.innerHTML = '';
       return;
     }
     fishResultEl.innerHTML = '';
     const clearFishBtn = document.createElement('button');
+    clearFishBtn.type = 'button';
     clearFishBtn.className = 'clear-btn';
-    clearFishBtn.textContent = 'Limpar histórico de pesca';
+    clearFishBtn.textContent = 'Limpar pescaria';
     clearFishBtn.addEventListener('click', () => { flushPending(fishHistory); fishHistory = []; renderFishResults(); });
 
     fishHistory.slice(0, 10).forEach(entry => {
@@ -4436,15 +4445,15 @@
       card.dataset.uid = entry.uid;
       card.innerHTML = `
         <div class="result-top">
-          <div class="result-loc">Rios, Igarapés e Margens</div>
-          <div class="found-by">Pescado por: ${escapeHtml(entry.foundBy)}</div>
+          <span class="result-loc">Pescaria</span>
+          <span class="found-by">${escapeHtml(entry.foundBy)}</span>
         </div>
-        <div class="fish-name">${isNothing ? '<span class="item-icon" aria-hidden="true">' + svgIcon('hole') + '</span>Nada fisgou a isca desta vez' : iconHtml(entry.item) + entry.item.name}</div>
-        <div class="fish-desc">${isNothing ? 'A linha voltou vazia. Vale tentar de novo em outro ponto do rio.' : entry.item.utility}</div>
+        <div class="fish-name">${isNothing ? '<span class="item-icon" aria-hidden="true">' + svgIcon('hole') + '</span>Nada fisgou' : iconHtml(entry.item) + entry.item.name}</div>
+        <div class="fish-desc">${isNothing ? 'A linha voltou vazia.' : entry.item.utility}</div>
         ${isNothing ? '' : itemFactsHtml(entry.item)}
         ${coordHtml(entry)}
         <div class="send-row">
-          <button class="send-btn" data-action="send">Enviar ao Discord</button>
+          <button type="button" class="send-btn" data-action="send">Enviar ao Discord</button>
           <span class="send-status" data-role="status">${lootStatusText(entry)}</span>
         </div>
       `;
@@ -4458,9 +4467,11 @@
   // ---------- tabela completa (referência) ----------
   const saqueBrowseToggle = document.getElementById('saque-browse-toggle');
   const saqueBrowsePanel = document.getElementById('saque-browse-panel');
+  saqueBrowseToggle.innerHTML = `Catálogo de itens <small>${ITEMS.length}</small>`;
   saqueBrowseToggle.addEventListener('click', () => {
     saqueBrowsePanel.classList.toggle('open');
-    saqueBrowseToggle.textContent = (saqueBrowsePanel.classList.contains('open') ? '▾' : '▸') + ` Ver tabela completa de ${ITEMS.length} itens`;
+    saqueBrowseToggle.setAttribute('aria-expanded', String(saqueBrowsePanel.classList.contains('open')));
+    saqueBrowseToggle.classList.toggle('open', saqueBrowsePanel.classList.contains('open'));
     if(saqueBrowsePanel.classList.contains('open') && !saqueBrowsePanel.dataset.built){
       buildItemTable();
       saqueBrowsePanel.dataset.built = '1';
@@ -4662,7 +4673,6 @@
   }
   function invCount(hid){ return invItems(hid).length; } // pilhas ocupam 1 espaço
   function instQty(i){ const q = parseInt(i && i.qty, 10); return q > 0 ? q : 1; }
-  function invUnits(hid){ return invItems(hid).reduce((a, i) => a + instQty(i), 0); }
   function holderCap(hid){
     const p = containerPin(hid);
     if(p){ const c = parseInt(pinCC(p).cap, 10); return c > 0 ? c : Infinity; }
@@ -5036,7 +5046,7 @@
     else if(room === 0) note = 'Inventário cheio. Libere espaço ou descarte o que não quiser.';
     else if(room < pend.length) note = `Só cabem ${room} dos ${pend.length} itens restantes.`;
     el.innerHTML = `
-      <div class="loot-decision-q">${pend.length} item(ns) sem decisão${holder ? ' · inventário de ' + escapeHtml(holder.name) + ': ' + escapeHtml(capTxt(holder.id)) : ''}</div>
+      <div class="loot-decision-q">${pend.length} ${pend.length === 1 ? 'item sem decisão' : 'itens sem decisão'}${holder ? ' · mochila ' + escapeHtml(capTxt(holder.id)) : ''}</div>
       <div class="loot-decision-btns">
         <button type="button" class="inv-mini-btn primary" data-act="keep-all" ${(!holder || room === 0) ? 'disabled' : ''}>Guardar tudo${holder && room < pend.length && room > 0 ? ` (${room})` : ''}</button>
         <button type="button" class="inv-mini-btn danger" data-act="decline-all">Descartar o resto</button>
@@ -5388,14 +5398,6 @@
     invBackdrop.classList.remove('open');
   }
 
-  function slotsHtml(hid){
-    const eq = equippedItems(hid), caps = cfg().equipSlots;
-    return `<div class="eq-panel"><div class="eq-title">Equipado</div><div class="eq-grid">${EQUIP_SLOTS.map(s => {
-      const list = eq.filter(i => i.slot === s[0]), cap = caps[s[0]] != null ? caps[s[0]] : 1;
-      return `<div class="eq-slot"><span class="eq-slot-name">${escapeHtml(s[1])} <small>${list.length}/${cap}</small></span>${
-        list.length ? list.map(i => `<button type="button" class="eq-item" data-act="unequip" data-uid="${escapeHtml(i.uid)}" aria-label="Desequipar ${escapeHtml(i.name)}">${escapeHtml(i.name)}${i.cond != null ? ' · ' + COND_LEVELS[i.cond] : ''} ✕</button>`).join('') : '<span class="eq-empty">vazio</span>'}</div>`;
-    }).join('')}</div><p class="hub-hint">Equipar só organiza o personagem. Nenhum bônus é aplicado sozinho: os efeitos ficam com a mesa.</p></div>`;
-  }
   function containerHeaderHtml(h){
     const pin = containerPin(h.id), st = containerState(h.id), cc = pinCC(pin), master = isMaster(), locked = cc.access === 'bloqueado';
     const chars = holderList().filter(x => x.type === 'token' && canEditHolder(x));
@@ -5451,29 +5453,27 @@
     const cats = Array.from(new Set(invItems(hid).map(i => i.category))).sort();
     if(invUI.cat && !cats.includes(invUI.cat)) invUI.cat = '';
     catSel.innerHTML = '<option value="">Todas as categorias</option>' + cats.map(c => `<option value="${escapeHtml(c)}" ${c === invUI.cat ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
-    const gridView = f23InvView() === 'grid';
-    document.getElementById('inv-extra').innerHTML = !hid ? '' : (isCont ? containerHeaderHtml(hobj) : (gridView ? eqStripHtml(hid) : slotsHtml(hid)));
+    document.getElementById('inv-extra').innerHTML = !hid ? '' : (isCont ? containerHeaderHtml(hobj) : eqStripHtml(hid));
 
     const list = document.getElementById('inv-list');
     list.innerHTML = '';
-    list.classList.toggle('inv-grid', gridView);
+    list.classList.add('inv-grid');
     if(!hid){
-      list.innerHTML = '<div class="inv-empty">Crie um token, um NPC ou um contêiner no mapa para ter um inventário.</div>';
+      list.innerHTML = '<div class="inv-empty">Nenhum personagem no mapa ainda.</div>';
       return;
     }
     const q = (invUI.filter || '').trim().toLowerCase();
     const items = invItems(hid).filter(i => (!invUI.cat || i.category === invUI.cat) && (!q || normName(i.name).includes(normName(q))));
     if(!invItems(hid).length){
-      list.innerHTML = isCont ? '<div class="inv-empty">Vazio.</div>' : '<div class="inv-empty">Inventário vazio. Itens chegam por saque, pela tabela de itens, por troca ou de contêineres.</div>';
+      list.innerHTML = isCont ? '<div class="inv-empty">Vazio.</div>' : '<div class="inv-empty">Mochila vazia. Procure itens no Saque.</div>';
       return;
     }
     if(!items.length){ list.innerHTML = '<div class="inv-empty">Nenhum item com esse filtro.</div>'; return; }
     const mkRow = inv => invRowEl(inv, hid, isCont);
-    if(gridView) invGridFill(list, items, mkRow);
-    else items.forEach(inv => list.appendChild(mkRow(inv)));
+    invGridFill(list, items, mkRow);
   }
 
-  // uma linha de item com todas as ações (a lista usa direto; a grade mostra a linha do item aberto)
+  // detalhe do item aberto: nome, utilidade e ações
   function invRowEl(inv, hid, isCont){
       const ref = ITEMS_BY_ID[inv.itemId];
       const row = document.createElement('div');
@@ -5482,13 +5482,13 @@
         <div class="inv-item-name">${iconHtml({ id:inv.itemId, name:inv.name, category:inv.category })}${escapeHtml(inv.name)}${instQty(inv) > 1 ? ` <span class="qty-chip">×${instQty(inv)}</span>` : ''}${inv.slot ? ` <span class="eq-chip">${escapeHtml(slotLabel(inv.slot))}</span>` : ''}</div>
         <span class="inv-item-cat">${escapeHtml(inv.category)}</span>${inv.cond != null ? `<span class="inv-item-cat cond-${inv.cond}">${escapeHtml(COND_LEVELS[inv.cond])}</span>` : ''}
         ${ref ? `<div class="inv-item-util">${escapeHtml(ref.utility)}</div>${itemFactsHtml(ref)}${compatLine(ref)}` : ''}
-        ${inv.foundAt ? `<div class="inv-item-util">${ic('pin', 13)} Achado em: ${escapeHtml(inv.foundAt)}</div>` : ''}
+        ${inv.foundAt ? `<div class="inv-item-util inv-found">${ic('pin', 13)} ${escapeHtml(inv.foundAt)}</div>` : ''}
         <div class="inv-item-actions">
           ${isCont ? `<button type="button" class="inv-mini-btn primary" data-act="cont-take" ${containerOpenFor(hid) ? '' : 'disabled'}>Pegar</button>` : `
           <button type="button" class="inv-mini-btn" data-act="use">Usar</button>
           ${canEquip(inv) ? `<button type="button" class="inv-mini-btn" data-act="${inv.slot ? 'unequip' : 'equip'}">${inv.slot ? 'Desequipar' : 'Equipar'}</button>` : ''}
           <button type="button" class="inv-mini-btn" data-act="trade">Trocar</button>`}
-          <button type="button" class="inv-mini-btn" data-act="more" aria-label="Mais ações">⋯ Mais</button>
+          <button type="button" class="inv-mini-btn" data-act="more" aria-label="Mais ações" aria-expanded="${!!(invUI.panel && invUI.panel.uid === inv.uid && invUI.panel.type === 'more')}">Mais</button>
         </div>`;
       const act = (a, fn) => { const b = row.querySelector(`[data-act="${a}"]`); if(b) b.addEventListener('click', fn); };
       const setPanel = p => { invUI.panel = Object.assign({ uid:inv.uid, note:'' }, p); renderInvDrawer(); };
@@ -5508,7 +5508,7 @@
       return row;
   }
 
-  // ---- mochila em grade (f23): cada item é um quadro; tocar abre os detalhes logo abaixo da linha ----
+  // ---- mochila em grade: cada item é um quadro; tocar abre os detalhes logo abaixo da linha ----
   function eqStripHtml(hid){
     const eq = equippedItems(hid), caps = cfg().equipSlots;
     return `<div class="eq-strip" role="group" aria-label="Equipamento">${EQUIP_SLOTS.map(s => {
@@ -5586,7 +5586,7 @@
       box.querySelector('[data-role="consume"]').addEventListener('change', e => { pn.consume = e.target.checked; });
       const afx = box.querySelector('[data-role="applyfx"]'); if(afx) afx.addEventListener('change', e => { pn.applyFx = e.target.checked; });
     } else if(pn.type === 'discard'){
-      box.innerHTML = `<p>Descartar remove ${q > 1 ? 'unidades' : 'o item'} do inventário de vez. A ação fica registrada.</p>
+      box.innerHTML = `<p>Remove ${q > 1 ? 'as unidades' : 'o item'} da mochila. Fica no registro.</p>
         ${q > 1 ? `<label class="hub-label">Quantidade a descartar (1 a ${q})</label><input type="number" min="1" max="${q}" data-role="amount" value="${pn.amount || q}">` : ''}${noteField}${actions('Confirmar descarte', 'danger')}`;
       const am = box.querySelector('[data-role="amount"]'); if(am) am.addEventListener('input', e => { pn.amount = e.target.value; });
     } else if(pn.type === 'split'){
@@ -5602,7 +5602,7 @@
     } else if(pn.type === 'cond'){
       box.innerHTML = `<label class="hub-label">Condição${inv.cond != null ? ' (atual: ' + escapeHtml(COND_LEVELS[inv.cond]) + ')' : ' (ainda não definida)'}</label>
         <select data-role="level">${COND_LEVELS.map((l, i) => `<option value="${i}" ${i === Number(pn.level) ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select>${noteField}
-        <p class="hub-hint">Reparar é subir a condição; dano é descê-la. O resultado de um teste de reparo é decidido pela mesa.</p>${actions('Registrar')}`;
+        ${actions('Registrar')}`;
       box.querySelector('[data-role="level"]').addEventListener('change', e => { pn.level = e.target.value; });
     }
     const nf = box.querySelector('[data-role="note"]'); if(nf) nf.addEventListener('input', e => { pn.note = e.target.value.trim(); });
@@ -5736,7 +5736,7 @@
   function updateSaqueInvCount(){
     if(!invReady) return;
     const t = selectedToken();
-    document.getElementById('saque-inv-count').textContent = t ? `Inventário: ${capTxt(t.id)}` : 'Inventário: escolha um personagem';
+    document.getElementById('saque-inv-count').textContent = t ? capTxt(t.id) : '—';
   }
   // chamado quando tokens/NPCs mudam (renderNavList): só reage se nomes/ids mudaram
   function invHoldersChanged(){
@@ -5974,7 +5974,11 @@
   }
   function attachModuleSync(){
     const on = (key, cb, limit) => syncOff.push(DB.on(scopedKey(key), cb, limit));
-    on(KEY_CHARS, v => { characters = v || {}; hubChanged(); hudMiniChanged(); hudQRChanged(); });
+    on(KEY_CHARS, v => {
+      // eco do banco: ficha com edição ainda não salva (PV digitado há instantes, por exemplo) fica como está, senão a 2ª edição seguida se perde
+      const nv = v || {}; Object.keys(cardTimers).forEach(id => { if(cardTimers[id] && characters[id]) nv[id] = characters[id]; });
+      characters = nv; hubChanged(); hudMiniChanged(); hudQRChanged();
+    });
     on(KEY_ROLLS, v => { soundRolls(v || {}); rolls = v || {}; hubChanged(); hudFeedChanged(); }, 300);
     on(KEY_RECIPES, v => { recipes = v || {}; hubChanged(); });
     on(KEY_CLOCK, v => { clock = v; updateHud(); hubChanged(); });
@@ -6560,6 +6564,7 @@
     const id = tokenId || hub.charToken;
     clearTimeout(cardTimers[id]);
     cardTimers[id] = setTimeout(() => {
+      cardTimers[id] = 0;
       const card = characters[id];
       if(card) DB.set(`${scopedKey(KEY_CHARS)}/${id}`, JSON.parse(JSON.stringify(card)));
     }, 450);
@@ -6619,7 +6624,7 @@
   }
   function coordHtml(e){
     if(e.lat == null) return e.coord ? `<div class="result-coord">${ic('pin', 13)} ${escapeHtml(e.coord)}</div>` : `<div class="result-coord">${ic('pin', 13)} sem localização</div>`;
-    return `<div class="result-coord">${ic('pin', 13)} Local aproximado: ${escapeHtml(e.coord)}
+    return `<div class="result-coord">${ic('pin', 13)} <span class="rc-xy">${escapeHtml(e.coord)}</span>
       <button type="button" class="coord-btn" data-coord-copy="${escapeHtml(e.coord)}">Copiar</button>
       <button type="button" class="coord-btn" data-coord-go="${e.lat},${e.lng}">Ver no mapa</button></div>`;
   }
@@ -6783,10 +6788,9 @@
     }
     const t = [['campanhas', ic('layers', 14) + ' Campanhas']];
     if(m) t.push(['sessao', ic('list', 14) + ' Sessão'], ['mestre', ic('lock', 14) + ' Mestre']);
-    t.push(['dados', ic('dice', 14) + ' Dados completos']);
+    t.push(['dados', ic('dice', 14) + ' Dados']);
     return t;
   }
-  function hubTabs(){ return hubTabsFor(hubGroupOf(hub.tab)); }
   const fichapBody = document.getElementById('fichap-body'), fpHead = document.getElementById('fp-head'), mesaBody = document.getElementById('mesa-body');
   let fichaDocked = false;
   // o primeiro campo que casar entre as telas abertas (ids dos formulários são únicos entre elas)
@@ -6811,9 +6815,8 @@
     renderHub();
   }
   function hubTitleSync(){
-    const g = hubGroupOf(hub.tab), t = document.getElementById('hub-title'), e = document.getElementById('hub-eyebrow');
+    const g = hubGroupOf(hub.tab), t = document.getElementById('hub-title');
     if(t) t.textContent = g === 'ficha' ? 'Ficha' : (isMaster() ? 'Mestre e ajustes' : 'Ajustes');
-    if(e) e.textContent = g === 'ficha' ? 'Tau Volantis · Personagem' : 'Tau Volantis · Campanha';
   }
   function closeHub(){ hubDrawer.classList.remove('open'); hubBackdrop.classList.remove('open'); }
   function hubIsOpen(){ return hubDrawer.classList.contains('open'); }
@@ -6831,7 +6834,14 @@
     return `<select data-bind="${bind}" data-rerender>${withNone ? '<option value="">— sem personagem —</option>' : ''}${
       hl.map(h => opt(h.id, (h.type === 'npc' ? 'NPC · ' : '') + h.name, value)).join('')}</select>`;
   }
+  // um campo focado que sai do DOM dispara blur/change no meio da troca do innerHTML; se isso pedir outro desenho, ele espera a troca terminar
+  let hubBusy = false;
   function renderHub(){
+    if(hubBusy){ setTimeout(renderHub, 0); return; }
+    hubBusy = true;
+    try{ renderHubNow(); } finally { hubBusy = false; }
+  }
+  function renderHubNow(){
     hubViewDefs().forEach(v => { if(v.body && v.on()) renderHubView(v); });
     hubDirty = false;
   }
@@ -6848,8 +6858,8 @@
       let html = '';
       if(v.id === 'drawer'){
         const ses = activeSession();
-        html += `<div class="hub-context" role="status">${ic('book', 14)} <b>${esc(campaignMeta ? campaignMeta.name : 'Campanha')}</b> · ${esc(ses ? ses.title : 'sem sessão')}${isMaster() ? ' · mestre' : ''}</div>`;
-        if(tabs.length > 1) html += '<div class="hub-tabs" role="tablist">' + tabs.map(t => `<button type="button" role="tab" aria-selected="${cur === t[0]}" class="inv-tab${cur === t[0] ? ' active' : ''}" data-act="tab" data-tab="${t[0]}">${t[1]}</button>`).join('') + '</div>';
+        if(group !== 'ficha') html += `<div class="hub-context" role="status"><b>${esc(campaignMeta ? campaignMeta.name : 'Campanha')}</b> · ${esc(ses ? ses.title : 'sem sessão')}${isMaster() ? ' · mestre' : ''}</div>`;
+        if(tabs.length > 1) html += '<div class="hub-tabs" role="tablist">' + tabs.map(t => `<button type="button" role="tab" aria-selected="${cur === t[0]}" class="hub-tab${cur === t[0] ? ' active' : ''}" data-act="tab" data-tab="${t[0]}">${t[1]}</button>`).join('') + '</div>';
       }
       html += fn ? fn() : '';
       v.body.innerHTML = html;
@@ -6870,16 +6880,12 @@
     if(t.ex) chips.push(['ex', (t.ex.op === '=' && t.ex.val === t.sides) ? 'explode no máximo' : `explode ${t.ex.op} ${t.ex.val}`]);
     if(t.rr) chips.push(['rr', `rerrola 1× ${t.rr.op} ${t.rr.val}`]);
     if(t.sc) chips.push(['sc', `conta sucessos ${t.sc.op} ${t.sc.val}`]);
-    return chips.map(c => `<button type="button" class="mod-chip" data-act="mod-del" data-i="${i}" data-k="${c[0]}" aria-label="Remover: ${esc(c[1])}">${esc(c[1])} ✕</button>`).join('');
+    return chips.map(c => `<button type="button" class="mod-chip" data-act="mod-del" data-i="${i}" data-k="${c[0]}" aria-label="Remover: ${esc(c[1])}">${esc(c[1])}</button>`).join('');
   }
   function trayHtml(){
-    if(!rollUI.terms.length) return '<div class="inv-empty">Toque nos dados acima (ou escreva uma expressão) para montar a rolagem.</div>';
-    return rollUI.terms.map((t, i) => {
-      const max = 12, shown = Math.min(t.n, max), name = t.sides === 'F' ? 'dF' : 'd' + t.sides;
-      return `<div class="tray-term"><div class="tray-dice">${Array.from({ length:shown }, () => dieSvg(t.sides, name, '', name)).join('')}${t.n > max ? `<span class="tray-more">+${t.n - max}</span>` : ''}</div>
-        <div class="tray-meta"><b>${esc(termDefLabel(t))}</b>${modChips(t, i)}
-        <button type="button" class="mod-chip" data-act="term-del" data-i="${i}" aria-label="Remover ${esc(termDefLabel(t))}">remover ✕</button></div></div>`;
-    }).join('');
+    if(!rollUI.terms.length) return '<div class="inv-empty tray-empty">Toque nos dados para montar a rolagem.</div>';
+    return rollUI.terms.map((t, i) => `<div class="tray-term"><b class="tray-lb">${esc(termDefLabel(t))}</b><span class="tray-mods">${modChips(t, i)}</span>
+        <button type="button" class="mod-chip tray-x" data-act="term-del" data-i="${i}" aria-label="Remover ${esc(termDefLabel(t))}">${ic('close', 16)}</button></div>`).join('');
   }
   function resultHtml(r){
     if(!r) return '';
@@ -6896,14 +6902,14 @@
         <div class="res-terms">${body}</div>
         ${r.bonuses.length ? '<div class="res-sub">Bônus: ' + esc(fmtBonuses(r.bonuses)) + ' = ' + (r.bonusSum >= 0 ? '+' : '−') + Math.abs(r.bonusSum) + '</div>' : ''}
         ${r.note ? '<div class="res-sub"><i>' + esc(r.note) + '</i></div>' : ''}${r.physical ? '<div class="res-sub"><small>dados físicos informados</small></div>' : ''}</div>
-      <button type="button" class="inv-mini-btn" data-act="roll-copy">Copiar</button></div>`;
+      <button type="button" class="inv-mini-btn" data-act="roll-copy" aria-label="Copiar resultado">${ic('copy', 16)}</button></div>`;
   }
   function scRow(sc){
     return `<div class="sc-row"><span class="sc-name" dir="ltr">${esc(sc.name)}</span>
       <button type="button" class="inv-mini-btn" data-act="sc-use" data-id="${esc(sc.id)}" data-scope="${sc.scope}">Usar</button>
       <button type="button" class="inv-mini-btn primary" data-act="sc-roll" data-id="${esc(sc.id)}" data-scope="${sc.scope}">Rolar</button>
-      ${sc.scope === 'personal' && rollUI.who ? `<button type="button" class="inv-mini-btn" data-act="sc-move" data-id="${esc(sc.id)}" data-scope="personal">Mover p/ personagem</button>` : ''}
-      <button type="button" class="inv-mini-btn danger" data-act="sc-del" data-id="${esc(sc.id)}" data-scope="${sc.scope}" aria-label="Excluir atalho ${esc(sc.name)}">✕</button></div>`;
+      ${sc.scope === 'personal' && rollUI.who ? `<button type="button" class="inv-mini-btn" data-act="sc-move" data-id="${esc(sc.id)}" data-scope="personal">Mover</button>` : ''}
+      <button type="button" class="inv-mini-btn danger" data-act="sc-del" data-id="${esc(sc.id)}" data-scope="${sc.scope}" aria-label="Excluir atalho ${esc(sc.name)}">${ic('close', 16)}</button></div>`;
   }
   function renderDados(){
     const who = holderById(rollUI.who) ? rollUI.who : '';
@@ -6913,55 +6919,54 @@
     const pad = PAD_DICE.map(s => {
       const n = padCount(s), name = s === 'F' ? 'dF' : 'd' + s;
       return `<div class="pad-cell"><button type="button" class="pad-die${n ? ' has-count' : ''}" data-act="die+" data-s="${s}" aria-label="Adicionar um ${name} (agora ${n})">${dieSvg(s, name, '', name)}${n ? `<span class="pad-count">${n}</span>` : ''}</button>
-        <button type="button" class="die-btn" data-act="die-" data-s="${s}" aria-label="Remover um ${name}" ${n ? '' : 'disabled'}>−</button></div>`;
+        ${n ? `<button type="button" class="die-btn pad-minus" data-act="die-" data-s="${s}" aria-label="Remover um ${name}">−</button>` : ''}</div>`;
     }).join('');
     const bon = rollUI.bonuses.map((b, i) => `<div class="bonus-row">
-      <input type="text" data-bind="rollUI.bonuses.${i}.label" value="${esc(b.label)}" placeholder="Rótulo (item, condição, efeito...)" aria-label="Rótulo do bônus">
+      <input type="text" data-bind="rollUI.bonuses.${i}.label" value="${esc(b.label)}" placeholder="Bônus de…" aria-label="Rótulo do bônus">
       <input type="number" data-bind="rollUI.bonuses.${i}.value" data-num value="${esc(b.value)}" aria-label="Valor do bônus">
-      <button type="button" class="inv-mini-btn danger" data-act="bonus-del" data-i="${i}" aria-label="Remover bônus">✕</button></div>`).join('');
+      <button type="button" class="inv-mini-btn danger" data-act="bonus-del" data-i="${i}" aria-label="Remover bônus">${ic('close', 16)}</button></div>`).join('');
     const mine = allShortcuts();
     const grp = (title, arr) => arr.length ? `<div class="hub-label">${title}</div>${arr.map(scRow).join('')}` : '';
-    const scs = grp(whoName ? 'De ' + esc(whoName) : '', mine.filter(s => s.scope === 'character'))
-      + grp('Da campanha', mine.filter(s => s.scope === 'campaign'))
-      + grp('Antigos (sem personagem)', mine.filter(s => s.scope === 'personal'));
-    const hist = Object.keys(rolls).map(k => rolls[k]).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 30).map(r =>
-      `<div class="log-row"><div class="log-meta"><span>${esc(fmtTs(r.ts))}</span><span>por ${esc(r.actorName || '?')}</span></div><div>${esc(rollText(r))}</div></div>`).join('');
-    const modOpts = [['kh', 'Manter os maiores (kh)'], ['kl', 'Manter os menores (kl)'], ['dh', 'Descartar os maiores (dh)'], ['dl', 'Descartar os menores (dl)'], ['ex', 'Explodir (!)'], ['rr', 'Rerrolar 1× até N (r)'], ['sc', 'Contar sucessos ≥ N']];
-    return `<div class="hub-sec">
-      <label class="hub-label">Personagem</label>${holderSelect('rollUI.who', who, true)}
-      <div class="hub-label">Dados (toque para adicionar)</div><div class="dice-pad">${pad}</div>
-      <div class="hub-label">Na mesa</div><div class="tray">${trayHtml()}</div>
-      ${rollUI.terms.length ? `<div class="mod-row">
-        <select data-bind="rollUI.modTerm" data-num aria-label="Grupo de dados">${rollUI.terms.map((t, i) => opt(i, termDefLabel(t), rollUI.modTerm)).join('')}</select>
-        <select data-bind="rollUI.modType" aria-label="Modificador">${modOpts.map(m => opt(m[0], m[1], rollUI.modType)).join('')}</select>
-        <input type="number" min="1" data-bind="rollUI.modVal" data-num value="${esc(rollUI.modVal)}" placeholder="N" aria-label="Valor N do modificador">
-        <button type="button" class="inv-mini-btn" data-act="mod-add">Aplicar</button></div>` : ''}
-      <div class="expr-row"><input type="text" data-bind="rollUI.expr" dir="ltr" autocomplete="off" spellcheck="false" value="${esc(rollUI.expr)}" placeholder="Ou escreva: 4d6kh3+2" aria-label="Expressão de dados">
-        <button type="button" class="inv-mini-btn" data-act="expr-apply">Aplicar</button></div>
-      <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="preset-adv">Vantagem</button><button type="button" class="inv-mini-btn" data-act="preset-dis">Desvantagem</button><button type="button" class="inv-mini-btn" data-act="roll-clear">Limpar</button></div>
-      <p class="hub-hint">Aceito: <b>kh</b>/<b>kl</b> manter maiores/menores · <b>dh</b>/<b>dl</b> descartar · <b>!</b> explode (<b>!&gt;=5</b>) · <b>r1</b> rerrola 1× · <b>&gt;=8</b> conta sucessos · <b>adv</b>/<b>dis</b> · <b>dF</b> · <b>d%</b>. Ex.: 4d6dl1, 5d10!&gt;=9, 10d10&gt;=8.</p>
-      <label class="hub-label">Perícia / ação (texto livre)</label>
-      <input type="text" data-bind="rollUI.skill" value="${esc(rollUI.skill)}" placeholder="Qualquer perícia, atributo ou ação" maxlength="60">
-      <div class="hub-label">Bônus</div>${bon}
-      <button type="button" class="inv-mini-btn" data-act="bonus-add">＋ Bônus</button>
-      <label class="check-row"><input type="checkbox" data-bind="rollUI.physical" data-rerender ${rollUI.physical ? 'checked' : ''}> Usei dados físicos (digitar resultados)</label>
-      ${rollUI.physical ? `<input type="text" data-bind="rollUI.phys" value="${esc(rollUI.phys)}" placeholder="Resultados na ordem, ex.: 14 3 5 (explosões vêm logo depois do dado)" aria-label="Resultados dos dados físicos">` : ''}
-      <input type="text" data-bind="rollUI.note" value="${esc(rollUI.note)}" placeholder="Observação (opcional)" maxlength="140">
-      <label class="check-row"><input type="checkbox" data-bind="rollUI.record" ${rollUI.record ? 'checked' : ''}> Registrar no histórico da campanha</label>
-      <label class="check-row"><input type="checkbox" data-bind="rollUI.important" ${rollUI.important ? 'checked' : ''}> Marcar como relevante (aparece na linha do tempo do diário)</label>
-      <label class="check-row"><input type="checkbox" data-bind="rollUI.discord" ${rollUI.discord ? 'checked' : ''}> Enviar esta rolagem ao Discord (webhook do painel de Saque)</label>
-      <button type="button" class="inv-mini-btn primary roll-go" data-act="roll">${rollUI.physical ? 'Registrar resultado' : 'Rolar'}</button>
-      <p class="hub-hint">O site só mostra dados, bônus e total. Sucesso, dificuldade e consequência ficam com a mesa.</p>
+    const scs = grp(whoName ? 'Atalhos de ' + esc(whoName) : '', mine.filter(s => s.scope === 'character'))
+      + grp('Atalhos da campanha', mine.filter(s => s.scope === 'campaign'))
+      + grp('Atalhos antigos', mine.filter(s => s.scope === 'personal'));
+    const modOpts = [['kh', 'Manter os maiores'], ['kl', 'Manter os menores'], ['dh', 'Descartar os maiores'], ['dl', 'Descartar os menores'], ['ex', 'Explodir'], ['rr', 'Rerrolar até N'], ['sc', 'Contar sucessos ≥ N']];
+    const sw = (path, on, label, extra) => `<label class="check-row"><input type="checkbox" data-bind="${path}" ${extra || ''} ${on ? 'checked' : ''}> ${label}</label>`;
+    const more = !!hub.diceMore;
+    return `<div class="hub-sec dx">
+      ${holderSelect('rollUI.who', who, true)}
+      <div class="dice-pad">${pad}</div>
+      <div class="tray">${trayHtml()}</div>
+      <div class="dx-go"><button type="button" class="inv-mini-btn primary roll-go" data-act="roll">${ic('dice', 18)} ${rollUI.physical ? 'Registrar resultado' : 'Rolar'}</button>
+        <button type="button" class="inv-mini-btn" data-act="roll-clear" ${rollUI.terms.length ? '' : 'disabled'}>Limpar</button></div>
       ${resultHtml(rollUI.last)}
-    </div>
-    <div class="hub-sec"><div class="hub-label">Atalhos</div>${scs || '<div class="inv-empty">Nenhum atalho' + (whoName ? ' de ' + esc(whoName) : '') + ' ainda.</div>'}
-      <div class="sc-save">
-        <input type="text" class="sc-name-input" dir="ltr" autocomplete="off" autocapitalize="sentences" spellcheck="false" maxlength="40" data-bind="rollUI.scName" value="${esc(rollUI.scName)}" placeholder="Nome do atalho (ex.: Furtividade +3)" aria-label="Nome do atalho">
-        ${isMaster() ? `<select data-bind="rollUI.scScope" aria-label="Onde salvar">${opt('character', 'Salvar neste personagem', rollUI.scScope)}${opt('campaign', 'Salvar para a campanha toda', rollUI.scScope)}</select>` : ''}
-        <button type="button" class="inv-mini-btn primary" data-act="sc-save">Salvar atual</button>
-      </div>
-      <p class="hub-hint">${who && rollUI.scScope !== 'campaign' ? `O atalho fica salvo só em <b>${esc(whoName)}</b> e só aparece quando ele está selecionado.` : (rollUI.scScope === 'campaign' && isMaster() ? 'Atalhos da campanha aparecem para todos.' : 'Escolha um personagem acima: o atalho fica salvo só nele.')}</p></div>
-    <div class="hub-sec"><div class="hub-label">Histórico da campanha</div>${hist || '<div class="inv-empty">Nenhuma rolagem registrada.</div>'}</div>`;
+      ${scs ? `<div class="dx-sc">${scs}</div>` : ''}
+      <div class="ox-more"><button type="button" class="ox-more-btn" data-act="flag" data-f="diceMore" aria-expanded="${more}">${ic(more ? 'minus' : 'plus', 16)} ${more ? 'Menos opções' : 'Mais opções'}</button>
+      ${more ? `<div class="dx-adv">
+        <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="preset-adv" title="2d20, fica o maior">Vantagem</button><button type="button" class="inv-mini-btn" data-act="preset-dis" title="2d20, fica o menor">Desvantagem</button></div>
+        <div class="expr-row"><input type="text" data-bind="rollUI.expr" dir="ltr" autocomplete="off" spellcheck="false" value="${esc(rollUI.expr)}" placeholder="Fórmula: 4d6kh3+2" aria-label="Fórmula de dados">
+          <button type="button" class="inv-mini-btn" data-act="expr-apply">Aplicar</button></div>
+        ${rollUI.terms.length ? `<div class="mod-row">
+          <select data-bind="rollUI.modTerm" data-num aria-label="Grupo de dados">${rollUI.terms.map((t, i) => opt(i, termDefLabel(t), rollUI.modTerm)).join('')}</select>
+          <select data-bind="rollUI.modType" aria-label="Modificador">${modOpts.map(m => opt(m[0], m[1], rollUI.modType)).join('')}</select>
+          <input type="number" min="1" data-bind="rollUI.modVal" data-num value="${esc(rollUI.modVal)}" placeholder="N" aria-label="Valor N do modificador">
+          <button type="button" class="inv-mini-btn" data-act="mod-add">Aplicar</button></div>` : ''}
+        <input type="text" data-bind="rollUI.skill" value="${esc(rollUI.skill)}" placeholder="Nome da rolagem (perícia, ação)" aria-label="Nome da rolagem" maxlength="60">
+        ${bon}
+        <button type="button" class="inv-mini-btn" data-act="bonus-add">${ic('plus', 16)} Bônus</button>
+        ${sw('rollUI.physical', rollUI.physical, 'Dados físicos (digitar resultados)', 'data-rerender')}
+        ${rollUI.physical ? `<input type="text" data-bind="rollUI.phys" value="${esc(rollUI.phys)}" placeholder="Resultados em ordem: 14 3 5" aria-label="Resultados dos dados físicos">` : ''}
+        <input type="text" data-bind="rollUI.note" value="${esc(rollUI.note)}" placeholder="Observação" aria-label="Observação" maxlength="140">
+        ${sw('rollUI.record', rollUI.record, 'Registrar na campanha')}
+        ${sw('rollUI.important', rollUI.important, 'Marcar como relevante')}
+        ${sw('rollUI.discord', rollUI.discord, 'Enviar ao Discord')}
+        <div class="hub-label">Salvar como atalho</div>
+        <div class="sc-save">
+          <input type="text" class="sc-name-input" dir="ltr" autocomplete="off" autocapitalize="sentences" spellcheck="false" maxlength="40" data-bind="rollUI.scName" value="${esc(rollUI.scName)}" placeholder="Nome do atalho" aria-label="Nome do atalho">
+          ${isMaster() ? `<select data-bind="rollUI.scScope" aria-label="Onde salvar">${opt('character', 'Neste personagem', rollUI.scScope)}${opt('campaign', 'Na campanha toda', rollUI.scScope)}</select>` : ''}
+          <button type="button" class="inv-mini-btn primary" data-act="sc-save">Salvar atalho</button></div>
+      </div>` : ''}</div>
+    </div>`;
   }
 
   // --- ficha ---
@@ -6973,7 +6978,7 @@
     const h = holderById(hub.charToken), card = ensureCard(hub.charToken);
     const edit = canEditHolder(h), dis = edit ? '' : 'disabled';
     const cm = cfg().cardModules, mods = cfg().modules;
-    let html = `<div class="hub-sec">${fichaDocked ? '' : `<label class="hub-label">Ficha de</label>${holderSelect('hub.charToken', hub.charToken, false)}`}
+    let html = `<div class="hub-sec">${fichaDocked ? '' : holderSelect('hub.charToken', hub.charToken, false)}
       ${edit ? '' : '<p class="hub-hint">Somente leitura: esta ficha pertence a outra pessoa.</p>'}`;
     const ordem = card.systemId === 'ordem';
     if(ordem){
@@ -7017,35 +7022,56 @@
   }
 
   // --- sessão ---
+  // ---- painéis do mestre (f24): blocos recolhíveis, rótulos curtos, nada de tutorial ----
+  function mxOpen(k, def){ return hub.mx && k in hub.mx ? !!hub.mx[k] : !!def; }
+  function mxSec(k, title, meta, body, def){
+    const on = mxOpen(k, def);
+    return `<section class="mx-sec${on ? ' open' : ''}"><button type="button" class="mx-head" data-act="mx" data-k="${esc(k)}" data-d="${def ? 1 : 0}" aria-expanded="${on}"><span class="mx-t">${title}</span>${meta !== '' && meta != null ? `<span class="mx-meta">${meta}</span>` : ''}<span class="mx-chev">${ic('chev', 16)}</span></button>${on ? `<div class="mx-body">${body}</div>` : ''}</section>`;
+  }
+  function mxF(label, inner, cls, tag){ const t = tag || 'label'; return `<${t} class="mx-f${cls ? ' ' + cls : ''}"><span class="mx-fl">${label}</span>${inner}</${t}>`; }
+  function mxTog(label, sub, attrs, on){ return `<label class="mx-tog"><span class="mx-tog-t"><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</span><input type="checkbox" class="mx-sw" role="switch" ${attrs} ${on ? 'checked' : ''}></label>`; }
+  function mxPick(label, attrs, on){ return `<label class="mx-pick"><input type="checkbox" ${attrs} ${on ? 'checked' : ''}><span>${label}</span></label>`; }
+
   function renderSessao(){
     const s = activeSession(), master = isMaster(), f = hub.sessionForm;
     if(!f.date) f.date = todayStr();
     const names = candidateNames();
-    const past = Object.keys(sessions).map(k => sessions[k]).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    return `<div class="hub-sec"><div class="hub-label">Sessão ativa</div>${s ? `
-      <div class="inv-item"><div class="inv-item-name">${esc(s.title)}</div><div class="inv-item-util">${esc(s.date || '')} · ${s.closed ? 'encerrada' : 'em andamento'}<br>Presentes: ${esc((s.present || []).join(', ') || '—')}</div>
-      <textarea data-bind="hub.summary" rows="4" placeholder="Resumo e acontecimentos da noite" ${master ? '' : 'disabled'}>${esc(s.summary || '')}</textarea>
-      ${master ? `<div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="sess-summary">Salvar resumo</button>${s.closed ? '' : '<button type="button" class="inv-mini-btn" data-act="sess-close">Encerrar sessão</button>'}</div>` : ''}</div>`
-      : '<div class="inv-empty">Sem sessão ativa.</div>'}</div>
-    ${master ? `<div class="hub-sec"><div class="hub-label">Nova sessão (continua o mesmo mundo)</div>
-      <input type="text" data-bind="sf.title" value="${esc(f.title)}" placeholder="Título (opcional)" maxlength="60">
-      <input type="date" data-bind="sf.date" value="${esc(f.date)}">
-      <div class="hub-label">Quem está presente</div>
-      ${names.map(n => `<label class="check-row"><input type="checkbox" data-act="present" data-name="${esc(n)}" ${f.present.includes(n) ? 'checked' : ''}> ${esc(n)}</label>`).join('') || '<p class="hub-hint">Sem jogadores conhecidos ainda.</p>'}
-      <input type="text" data-bind="sf.extra" value="${esc(f.extra)}" placeholder="Outros (separe por vírgula)">
-      <button type="button" class="inv-mini-btn primary" data-act="sess-new">Abrir sessão</button></div>` : ''}
-    <div class="hub-sec"><div class="hub-label">Sessões anteriores</div>${past.map(p => `<div class="log-row"><div class="log-meta"><span>${esc(p.date || '')}</span><span>${p.id === (campaignMeta && campaignMeta.activeSessionId) ? 'ativa' : (p.closed ? 'encerrada' : '')}</span></div><b>${esc(p.title)}</b>${p.summary ? '<div class="log-note">' + esc(p.summary) + '</div>' : ''}</div>`).join('') || '<div class="inv-empty">Nenhuma.</div>'}</div>`;
+    const past = Object.keys(sessions).map(k => sessions[k]).filter(p => !s || p.id !== s.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const live = s ? `<div class="mx-card mx-live">
+        <div class="mx-top"><h3 class="mx-h">${esc(s.title)}</h3><span class="mx-pill${s.closed ? '' : ' on'}">${s.closed ? 'Encerrada' : 'Em andamento'}</span></div>
+        <div class="mx-sub">${esc(s.date || '')}</div>
+        ${(s.present || []).length ? `<div class="mx-chips" aria-label="Presentes">${s.present.map(n => `<span class="mx-chip">${esc(n)}</span>`).join('')}</div>` : ''}
+        ${master ? `<textarea data-bind="hub.summary" rows="4" placeholder="O que aconteceu hoje" aria-label="Resumo da sessão">${esc(s.summary || '')}</textarea>
+        <div class="mx-acts"><button type="button" class="mx-go" data-act="sess-summary">Salvar resumo</button>${s.closed ? '' : '<button type="button" class="mx-ghost" data-act="sess-close">Encerrar</button>'}</div>`
+        : (s.summary ? `<p class="mx-note">${esc(s.summary).replace(/\n/g, '<br>')}</p>` : '')}</div>`
+      : `<div class="mx-empty">${ic('list', 22)}<b>Nenhuma sessão aberta</b><span>${master ? 'Abra uma para registrar quem veio e o que aconteceu.' : 'O mestre ainda não abriu a sessão.'}</span></div>`;
+    const novaBody = `<div class="mx-grid">${mxF('Título', `<input type="text" data-bind="sf.title" value="${esc(f.title)}" placeholder="Sessão ${Object.keys(sessions).length + 1}" maxlength="60">`)}${mxF('Data', `<input type="date" data-bind="sf.date" value="${esc(f.date)}">`)}</div>
+      <div class="mx-fl">Quem veio</div>
+      <div class="mx-picks">${names.map(n => mxPick(esc(n), `data-act="present" data-name="${esc(n)}"`, f.present.includes(n))).join('') || '<span class="mx-sub">Ninguém na mesa ainda.</span>'}</div>
+      <input type="text" data-bind="sf.extra" value="${esc(f.extra)}" placeholder="Outros nomes, separados por vírgula" aria-label="Outros presentes" maxlength="120">
+      <button type="button" class="mx-go" data-act="sess-new">Abrir sessão</button>`;
+    const pastBody = past.slice(0, 20).map(p => `<div class="mx-log"><div class="mx-top"><b>${esc(p.title)}</b><span class="mx-sub">${esc(p.date || '')}</span></div>${p.summary ? `<p class="mx-note">${esc(p.summary)}</p>` : ''}</div>`).join('');
+    return `<div class="mx">${live}
+      ${master ? mxSec('sess-new', 'Nova sessão', '', novaBody, !s) : ''}
+      ${past.length ? mxSec('sess-past', 'Anteriores', past.length, pastBody, false) : ''}</div>`;
   }
 
   // --- campanhas ---
   function renderCampanhas(){
     const list = visibleCampaigns(), master = isMaster();
     const act = list.filter(m => !m.archived), arch = list.filter(m => m.archived);
-    const row = m => `<div class="inv-item"><div class="inv-item-name">${esc(m.name)}${m.id === activeCampaignId ? ' <span class="log-badge guardar">ativa</span>' : ''}</div>
-      <div class="inv-item-util">${esc(m.system || 'sem sistema definido')}${m.masterName ? ' · mestre: ' + esc(m.masterName) : ''}${isMasterOf(m) ? (m.joinCode ? '<br>Código de convite: <b>' + esc(m.joinCode) + '</b>' : '<br>Sem código de convite ainda.') : ''}</div>
-      <div class="inv-item-actions">${isMasterOf(m) ? (m.joinCode ? `<button type="button" class="inv-mini-btn" data-act="camp-code-copy" data-id="${esc(m.id)}">Copiar código</button><button type="button" class="inv-mini-btn" data-act="camp-code-new" data-id="${esc(m.id)}">Trocar código</button>` : `<button type="button" class="inv-mini-btn primary" data-act="camp-code-gen" data-id="${esc(m.id)}">Gerar código</button>`) : ''}${m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn primary" data-act="camp-open" data-id="${esc(m.id)}">Abrir</button>` : ''}
-      ${isMasterOf(m) && m.id !== 'legacy' ? (m.archived ? `<button type="button" class="inv-mini-btn" data-act="camp-reopen" data-id="${esc(m.id)}">Reabrir</button>` : (m.id !== activeCampaignId ? `<button type="button" class="inv-mini-btn" data-act="camp-archive" data-id="${esc(m.id)}">Arquivar</button>` : '')) : ''}
-      ${isMasterOf(m) && m.id !== 'legacy' ? `<button type="button" class="inv-mini-btn danger" data-act="camp-delete" data-id="${esc(m.id)}">Excluir</button>` : ''}</div></div>`;
+    const row = m => {
+      const mine = isMasterOf(m), cur = m.id === activeCampaignId, more = mxOpen('c:' + m.id, false), id = esc(m.id);
+      const canArch = mine && m.id !== 'legacy' && (m.archived || !cur), canDel = mine && m.id !== 'legacy';
+      const extra = (mine && m.joinCode ? `<button type="button" class="mx-ghost" data-act="camp-code-new" data-id="${id}">Trocar código</button>` : '')
+        + (canArch ? (m.archived ? `<button type="button" class="mx-ghost" data-act="camp-reopen" data-id="${id}">Reabrir</button>` : `<button type="button" class="mx-ghost" data-act="camp-archive" data-id="${id}">Arquivar</button>`) : '')
+        + (canDel ? `<button type="button" class="mx-ghost danger" data-act="camp-delete" data-id="${id}">Excluir</button>` : '');
+      return `<div class="mx-card mx-camp${cur ? ' cur' : ''}">
+        <div class="mx-top"><div class="mx-grow"><h3 class="mx-h">${esc(m.name)}</h3><div class="mx-sub">${esc(m.system || 'Sistema livre')}${m.masterName ? ' · mestre ' + esc(m.masterName) : ''}</div></div>
+          ${cur ? '<span class="mx-pill on">Ativa</span>' : `<button type="button" class="mx-go sm" data-act="camp-open" data-id="${id}">Abrir</button>`}</div>
+        ${mine ? (m.joinCode ? `<button type="button" class="mx-code" data-act="camp-code-copy" data-id="${id}" aria-label="Copiar o código de convite ${esc(m.joinCode)}"><span>Convite</span><b>${esc(m.joinCode)}</b>${ic('copy', 16)}</button>` : `<button type="button" class="mx-ghost" data-act="camp-code-gen" data-id="${id}">Gerar código de convite</button>`) : ''}
+        ${extra ? `<button type="button" class="mx-more" data-act="mx" data-k="c:${id}" data-d="0" aria-expanded="${more}">${ic('more', 16)} ${more ? 'Menos' : 'Mais'}</button>${more ? `<div class="mx-acts">${extra}</div>` : ''}` : ''}</div>`;
+    };
     const nc = hub.newCampaign;
     if(!hub.cfgDraft){
       const c = cfg();
@@ -7055,45 +7081,37 @@
     }
     const d = hub.cfgDraft;
     const cats = Array.from(new Set(ITEMS.map(i => i.category))).sort();
-    const modLabels = { card:'Ficha leve', clock:'Relógio da campanha', needs:'Necessidades (registro)', explore:'Exploração dos locais', crafting:'Ofício (crafting)', places:'Lugares reais no mapa (OpenStreetMap)' };
+    const modLabels = { card:['Ficha leve', 'Ficha de cada personagem'], clock:['Relógio da campanha', 'Hora e data do mundo'], needs:['Necessidades', 'Fome, sede, frio, sono'], explore:['Exploração dos locais', 'Reserva de saque por pin'], crafting:['Ofício', 'Receitas e produção'], places:['Lugares reais', 'Pontos do OpenStreetMap'] };
     if(!PLACES_ON) delete modLabels.places;   // interruptor geral desligado: a opção nem aparece (o valor salvo na campanha não é mexido)
-    return `<div class="hub-sec"><div class="hub-label">Suas campanhas</div>${act.map(row).join('') || '<div class="inv-empty">Nenhuma.</div>'}
-      ${arch.length ? '<div class="hub-label">Arquivadas</div>' + arch.map(row).join('') : ''}
-      ${isUnclaimed() && firebaseReady ? '<button type="button" class="inv-mini-btn primary" data-act="claim">Assumir como mestre desta campanha</button>' : ''}
-      <div class="expr-row"><input type="text" data-bind="hub.joinCode" value="${esc(hub.joinCode)}" placeholder="Código de convite" maxlength="6"><button type="button" class="inv-mini-btn" data-act="camp-join">Entrar</button></div></div>
-    ${master ? `<div class="hub-sec"><div class="hub-label">Nova campanha (história independente)</div>
-      <input type="text" data-bind="nc.name" value="${esc(nc.name)}" placeholder="Nome da campanha" maxlength="60">
-      <input type="text" data-bind="nc.system" value="${esc(nc.system)}" placeholder="Sistema / perfil da mesa (opcional)" maxlength="80">
-      <select data-bind="nc.mode" data-rerender>${opt('vazia', 'Começar vazia', nc.mode)}${opt('modelo', 'Copiar mapa-modelo (pins, áreas e rotas)', nc.mode)}${opt('duplicar', 'Duplicar uma campanha como nova história', nc.mode)}</select>
-      ${nc.mode !== 'vazia' ? `<select data-bind="nc.source">${list.map(m => opt(m.id, m.name, nc.source)).join('')}</select>` : ''}
-      ${nc.mode === 'duplicar' ? ['copyTokens:Tokens','copyInv:Inventários','copyChars:Fichas','copyRecipes:Receitas','copyWeather:Clima'].map(x => { const [k, l] = x.split(':'); return `<label class="check-row"><input type="checkbox" data-bind="nc.${k}" ${nc[k] ? 'checked' : ''}> ${l}</label>`; }).join('') : ''}
-      <button type="button" class="inv-mini-btn primary" data-act="camp-create">Criar campanha</button>
-      <p class="hub-hint">Nada é copiado sem você escolher. A campanha atual não é alterada.</p></div>
-    <div class="hub-sec"><div class="hub-label" id="cfg-anchor">Configuração desta campanha</div>
-      <input type="text" data-bind="cd.name" value="${esc(d.name)}" placeholder="Nome" maxlength="60">
-      <input type="text" data-bind="cd.system" value="${esc(d.system)}" placeholder="Sistema / perfil" maxlength="80">
-      <div class="hub-label">Sistema: Ordem Paranormal (fixo)</div>
-      <select data-bind="cd.progressionMode" aria-label="Progressão do personagem">${opt('nex_level', 'Progressão: NEX + Nível', d.progressionMode)}${opt('nex_only', 'Progressão: só NEX', d.progressionMode)}</select>
-      <p class="hub-hint">NEX vai de 5% a 99%, de 5 em 5. O segundo recurso é o PD (Pontos de Determinação). Escolha uma vez; trocar depois não apaga nada.</p>
-      <div class="hub-label">Módulos</div>
-      ${Object.keys(modLabels).map(k => `<label class="check-row"><input type="checkbox" data-bind="cd.modules.${k}"${k === 'places' ? ' data-rerender' : ''} ${d.modules[k] ? 'checked' : ''}> ${modLabels[k]}</label>`).join('')}
-      ${PLACES_ON && d.modules.places ? `<div class="hub-label">Lugares reais: categorias</div>
-        ${PLACE_CATS.map(pc => `<label class="check-row"><input type="checkbox" data-bind="cd.placeCats.${pc.id}" ${d.placeCats[pc.id] === false ? '' : 'checked'}> ${esc(pc.label)}</label>`).join('')}
-        <label class="hub-label" for="cd-place-reveal">Quando aparecem</label>
-        <select id="cd-place-reveal" data-bind="cd.placeReveal">${opt('all', 'Sempre (a partir do zoom de cidade)', d.placeReveal)}${opt('near', 'Só perto de um token (' + PLACE_NEAR_M + ' m)', d.placeReveal)}</select>
-        <p class="hub-hint">Hotéis, farmácias, postos e outros lugares reais viram pontos de saque. O primeiro Vasculhar cria o pin, e o resultado vale para toda a mesa.</p>
-        <button type="button" class="inv-mini-btn" data-act="pl-test">Testar conexão com o OpenStreetMap</button>
-        <div id="pl-test-out" class="hub-hint pl-test-out" role="status" aria-live="polite"></div>` : ''}
-      <div class="hub-label">Partes da ficha</div>
-      ${[['identity','Identidade'],['skills','Perícias e atalhos'],['notes','Anotações'],['equip','Equipamento']].map(x => `<label class="check-row"><input type="checkbox" data-bind="cd.cardModules.${x[0]}" ${d.cardModules[x[0]] ? 'checked' : ''}> ${x[1]}</label>`).join('')}
-      <div class="hub-label">Inventário</div>
-      <select data-bind="cd.invMode" data-rerender>${opt('slots', 'Limite de itens', d.invMode)}${opt('carga', 'Carga por peso (faixas)', d.invMode)}${opt('livre', 'Lista livre, sem limite', d.invMode)}</select>
-      ${d.invMode !== 'livre' ? `<label class="hub-label">${d.invMode === 'slots' ? 'Máximo de itens' : 'Capacidade de carga'}</label><input type="number" min="1" data-bind="cd.invLimit" value="${esc(d.invLimit)}">` : ''}
-      ${d.invMode === 'carga' ? `<label class="check-row"><input type="checkbox" data-bind="cd.espMode" data-rerender ${d.espMode ? 'checked' : ''}> Usar o volume de cada item (0 a 4, da ficha do catálogo) em vez do peso por categoria</label>` + (d.espMode ? '<p class="hub-hint">Volume 0 conta 0,25; 1 conta 1; 2 conta 2; 3 conta 3; 4 conta 4. Ajuste a capacidade de carga acima (padrão 20).</p>' : '<div class="hub-label">Peso por categoria (padrão 1)</div>' + cats.map(c => `<div class="bonus-row"><span class="w-cat">${esc(c)}</span><input type="number" step="0.1" min="0" data-bind="cd.weights.${esc(catKey(c))}" value="${esc(d.weights[catKey(c)] != null ? d.weights[catKey(c)] : 1)}"></div>`).join('')) : ''}
-      <div class="hub-label">Itens por busca de saque (mínimo e máximo, 0 a 8)</div>
-      <div class="expr-row"><input type="number" min="0" max="8" data-bind="cd.lootMin" value="${esc(d.lootMin)}" aria-label="Mínimo de itens por saque"><input type="number" min="1" max="8" data-bind="cd.lootMax" value="${esc(d.lootMax)}" aria-label="Máximo de itens por saque"></div>
-      <label class="hub-label">Casas decimais das coordenadas do saque (0 a 6)</label><input type="number" min="0" max="6" data-bind="cd.decimals" value="${esc(d.decimals)}">
-      <button type="button" class="inv-mini-btn primary" data-act="cfg-save">Salvar configuração</button></div>` : '<p class="hub-hint">Só o mestre cria campanhas e altera a configuração.</p>'}`;
+    const joinRow = `<div class="mx-join"><input type="text" data-bind="hub.joinCode" value="${esc(hub.joinCode)}" placeholder="Código de convite" aria-label="Código de convite" maxlength="6" autocapitalize="characters"><button type="button" class="mx-go" data-act="camp-join">Entrar</button></div>`;
+    const novaBody = `<div class="mx-grid">${mxF('Nome', `<input type="text" data-bind="nc.name" value="${esc(nc.name)}" placeholder="Nome" maxlength="60">`)}${mxF('Sistema', `<input type="text" data-bind="nc.system" value="${esc(nc.system)}" placeholder="Opcional" maxlength="80">`)}</div>
+      ${mxF('Começar com', `<select data-bind="nc.mode" data-rerender>${opt('vazia', 'Vazia', nc.mode)}${opt('modelo', 'Modelo', nc.mode)}${opt('duplicar', 'Duplicar', nc.mode)}</select>`, '', 'div')}
+      ${nc.mode !== 'vazia' ? mxF('Copiar de', `<select data-bind="nc.source" data-nochips>${list.map(m => opt(m.id, m.name, nc.source)).join('')}</select>`, '', 'div') : ''}
+      ${nc.mode === 'duplicar' ? `<div class="mx-picks">${['copyTokens:Tokens', 'copyInv:Inventários', 'copyChars:Fichas', 'copyRecipes:Receitas', 'copyWeather:Clima'].map(x => { const [k, l] = x.split(':'); return mxPick(l, `data-bind="nc.${k}"`, nc[k]); }).join('')}</div>` : ''}
+      <button type="button" class="mx-go" data-act="camp-create">Criar campanha</button>`;
+    const cfgBody = `<div class="mx-grid">${mxF('Nome', `<input type="text" data-bind="cd.name" value="${esc(d.name)}" placeholder="Nome" maxlength="60">`)}${mxF('Sistema', `<input type="text" data-bind="cd.system" value="${esc(d.system)}" placeholder="Opcional" maxlength="80">`)}</div>
+      ${mxF('Progressão', `<select data-bind="cd.progressionMode" aria-label="Progressão do personagem">${opt('nex_level', 'NEX + Nível', d.progressionMode)}${opt('nex_only', 'Só NEX', d.progressionMode)}</select>`, '', 'div')}
+      <div class="mx-gt">Módulos</div>
+      <div class="mx-list">${Object.keys(modLabels).map(k => mxTog(modLabels[k][0], modLabels[k][1], `data-bind="cd.modules.${k}"${k === 'places' ? ' data-rerender' : ''}`, d.modules[k])).join('')}</div>
+      ${PLACES_ON && d.modules.places ? `<div class="mx-gt">Lugares reais</div>
+        <div class="mx-picks">${PLACE_CATS.map(pc => mxPick(esc(pc.label), `data-bind="cd.placeCats.${pc.id}"`, d.placeCats[pc.id] !== false)).join('')}</div>
+        ${mxF('Quando aparecem', `<select id="cd-place-reveal" data-bind="cd.placeReveal">${opt('all', 'Sempre', d.placeReveal)}${opt('near', 'Perto de um token', d.placeReveal)}</select>`, '', 'div')}
+        <button type="button" class="mx-ghost" data-act="pl-test">Testar conexão com o OpenStreetMap</button>
+        <div id="pl-test-out" class="mx-note pl-test-out" role="status" aria-live="polite"></div>` : ''}
+      <div class="mx-gt">Partes da ficha</div>
+      <div class="mx-picks">${[['identity', 'Identidade'], ['skills', 'Perícias'], ['notes', 'Anotações'], ['equip', 'Equipamento']].map(x => mxPick(x[1], `data-bind="cd.cardModules.${x[0]}"`, d.cardModules[x[0]])).join('')}</div>
+      <div class="mx-gt">Inventário</div>
+      ${mxF('Limite', `<select data-bind="cd.invMode" data-rerender>${opt('slots', 'Por itens', d.invMode)}${opt('carga', 'Por peso', d.invMode)}${opt('livre', 'Sem limite', d.invMode)}</select>`, '', 'div')}
+      ${d.invMode !== 'livre' ? mxF(d.invMode === 'slots' ? 'Máximo de itens' : 'Capacidade de carga', `<input type="number" min="1" data-bind="cd.invLimit" value="${esc(d.invLimit)}">`) : ''}
+      ${d.invMode === 'carga' ? mxTog('Usar o volume de cada item', d.espMode ? 'Volume 0 conta 0,25; os demais contam o próprio número.' : '', 'data-bind="cd.espMode" data-rerender', d.espMode) + (d.espMode ? '' : `<div class="mx-fl">Peso por categoria</div><div class="mx-grid">${cats.map(c => mxF(esc(c), `<input type="number" step="0.1" min="0" data-bind="cd.weights.${esc(catKey(c))}" value="${esc(d.weights[catKey(c)] != null ? d.weights[catKey(c)] : 1)}">`)).join('')}</div>`) : ''}
+      <div class="mx-gt">Saque</div>
+      <div class="mx-grid">${mxF('Mín. por busca', `<input type="number" min="0" max="8" data-bind="cd.lootMin" value="${esc(d.lootMin)}">`)}${mxF('Máx. por busca', `<input type="number" min="1" max="8" data-bind="cd.lootMax" value="${esc(d.lootMax)}">`)}${mxF('Casas decimais', `<input type="number" min="0" max="6" data-bind="cd.decimals" value="${esc(d.decimals)}">`)}</div>
+      <div class="mx-save"><button type="button" class="mx-go" data-act="cfg-save">Salvar configuração</button></div>`;
+    return `<div class="mx">${act.map(row).join('') || '<div class="mx-empty"><b>Nenhuma campanha</b></div>'}
+      ${isUnclaimed() && firebaseReady ? '<button type="button" class="mx-go" data-act="claim">Assumir como mestre</button>' : ''}
+      ${joinRow}
+      ${arch.length ? mxSec('c-arch', 'Arquivadas', arch.length, arch.map(row).join(''), false) : ''}
+      ${master ? mxSec('c-new', 'Nova campanha', '', novaBody, false) + mxSec('c-cfg', 'Configurar esta campanha', '', cfgBody, false).replace('<section ', '<section id="cfg-anchor" ') : '<p class="mx-note">Só o mestre cria campanhas e altera a configuração.</p>'}</div>`;
   }
 
   // --- mundo ---
@@ -7269,45 +7287,44 @@
     if(!g.to || !holderById(g.to)) g.to = (allHolders()[0] || {}).id || '';
     if(!hub.resDraft) hub.resDraft = c.resources.map(r => Object.assign({}, r));
     if(!hub.slotDraft) hub.slotDraft = Object.assign({}, c.equipSlots);
-    const locOpts = cc => opt('', '— abastecer à mão —', cc.locKey || '') + LOC_ORDER.map(k => opt(k, LOC_NAMES[k], cc.locKey || '')).join('');
+    const locOpts = cc => opt('', 'Abastecer à mão', cc.locKey || '') + LOC_ORDER.map(k => opt(k, LOC_NAMES[k], cc.locKey || '')).join('');
+    let nCont = 0;
     const cont = pins2.map(p => {
-      const eff = pinCC(p), cc = eff || p.container || {}, on = !!eff;
-      return `<div class="inv-item"><div class="inv-item-name">${esc(p.title || 'Pin')}</div>
-        <label class="check-row"><input type="checkbox" data-ctn="${esc(p.id)}" data-f="enabled" ${on ? 'checked' : ''}> É um contêiner (tem conteúdo persistente)${eff && eff.auto ? ' · automático pelo tipo do pin' : ''}</label>
-        ${on ? `<label class="hub-label">Tabela de saque (sorteada uma única vez)</label><select data-ctn="${esc(p.id)}" data-f="locKey">${locOpts(cc)}</select>
-        <div class="expr-row"><input type="number" min="0" max="8" data-ctn="${esc(p.id)}" data-f="min" value="${cc.min != null ? esc(cc.min) : 1}" aria-label="Mínimo de itens"><input type="number" min="1" max="8" data-ctn="${esc(p.id)}" data-f="max" value="${cc.max != null ? esc(cc.max) : 3}" aria-label="Máximo de itens"></div>
-        <input type="number" min="1" data-ctn="${esc(p.id)}" data-f="cap" value="${cc.cap || ''}" placeholder="Capacidade em espaços (vazio = sem limite)">
-        <select data-ctn="${esc(p.id)}" data-f="access">${opt('aberto', 'Aberto', cc.access || 'aberto')}${opt('bloqueado', 'Bloqueado (só o mestre abre)', cc.access || 'aberto')}</select>
-        <div class="inv-item-util">Estado: ${esc(CONT_STATE_LABELS[containerState(p.id)] || '—')} · ${invCount(p.id)} item(ns)</div>
-        <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="open-inv" data-id="${esc(p.id)}">Abrir</button><button type="button" class="inv-mini-btn" data-act="pin-go" data-id="${esc(p.id)}">Ver no mapa</button></div>` : ''}</div>`;
+      const eff = pinCC(p), cc = eff || p.container || {}, on = !!eff; if(on) nCont++;
+      const ttl = esc(p.title || 'Pin');
+      return `<div class="mx-ct${on ? ' on' : ''}">
+        ${mxTog(ttl, on ? esc(CONT_STATE_LABELS[containerState(p.id)] || '—') + ' · ' + invCount(p.id) + ' item(ns)' + (eff && eff.auto ? ' · pelo tipo do pin' : '') : 'Não é contêiner', `data-ctn="${esc(p.id)}" data-f="enabled" aria-label="Contêiner: ${ttl}"`, on)}
+        ${on ? `<div class="mx-grid">${mxF('Tabela de saque', `<select data-ctn="${esc(p.id)}" data-f="locKey" data-nochips>${locOpts(cc)}</select>`, 'full', 'div')}
+          ${mxF('Mín. de itens', `<input type="number" min="0" max="8" data-ctn="${esc(p.id)}" data-f="min" value="${cc.min != null ? esc(cc.min) : 1}">`)}${mxF('Máx. de itens', `<input type="number" min="1" max="8" data-ctn="${esc(p.id)}" data-f="max" value="${cc.max != null ? esc(cc.max) : 3}">`)}
+          ${mxF('Capacidade', `<input type="number" min="1" data-ctn="${esc(p.id)}" data-f="cap" value="${cc.cap || ''}" placeholder="Sem limite">`)}${mxF('Acesso', `<select data-ctn="${esc(p.id)}" data-f="access">${opt('aberto', 'Aberto', cc.access || 'aberto')}${opt('bloqueado', 'Só o mestre', cc.access || 'aberto')}</select>`, '', 'div')}</div>
+          <div class="mx-acts"><button type="button" class="mx-ghost" data-act="open-inv" data-id="${esc(p.id)}">Abrir</button><button type="button" class="mx-ghost" data-act="pin-go" data-id="${esc(p.id)}">Ver no mapa</button></div>` : ''}</div>`;
     }).join('');
     const toks = holderList().filter(h => h.type === 'token');
-    return `<div class="hub-sec"><div class="hub-label">Contêineres e saque persistente</div>
-      <p class="hub-hint">Um contêiner guarda o que foi sorteado: abrir de novo mostra o que sobrou. Não há reposição automática; use "Reabastecer" quando quiser.</p>${cont || '<div class="inv-empty">Nenhum pin no mapa.</div>'}</div>
-    <div class="hub-sec"><div class="hub-label">Dar item (ajuste do mestre)</div>
+    const giveCard = `<div class="mx-card mx-give"><h3 class="mx-h">Entregar item</h3>
       <datalist id="item-names">${ITEMS.map(i => `<option value="${esc(i.name)}">`).join('')}</datalist>
-      <input type="text" list="item-names" data-bind="gv.name" value="${esc(g.name)}" placeholder="Nome do item do catálogo">
-      <div class="expr-row"><input type="number" min="1" class="qty-in" data-bind="gv.qty" data-num value="${esc(g.qty)}" aria-label="Quantidade"><select data-bind="gv.to">${allHolders().map(h => opt(h.id, (h.type === 'container' ? 'Contêiner · ' : h.type === 'npc' ? 'NPC · ' : '') + h.name, g.to)).join('')}</select></div>
-      <button type="button" class="inv-mini-btn primary" data-act="give">Entregar</button></div>
-    <div class="hub-sec"><div class="hub-label">Recursos do formato antigo da ficha (PV, PD...)</div>
-      <p class="hub-hint">Vale só para fichas no formato antigo. As fichas de Ordem Paranormal já têm PV e PD próprios. O app guarda e mostra os valores; nenhuma regra é aplicada sozinha.</p>
-      ${hub.resDraft.map((r, i) => `<div class="bonus-row"><input type="text" data-bind="rs.${i}.label" value="${esc(r.label)}" placeholder="Nome (ex.: PV)" maxlength="20"><input type="number" min="0" data-bind="rs.${i}.max" data-num value="${esc(r.max || '')}" placeholder="Máx."><button type="button" class="inv-mini-btn danger" data-act="res-del" data-i="${i}" aria-label="Remover recurso">✕</button></div>`).join('')}
-      <div class="inv-item-actions"><button type="button" class="inv-mini-btn" data-act="res-add">＋ Recurso</button><button type="button" class="inv-mini-btn" data-act="res-seed">Sugerir PV / PD</button><button type="button" class="inv-mini-btn primary" data-act="res-save">Salvar recursos</button></div></div>
-    <div class="hub-sec"><div class="hub-label">Espaços de equipamento (quantos itens cabem em cada)</div>
-      ${EQUIP_SLOTS.map(s => `<div class="bonus-row"><span class="w-cat">${esc(s[1])}</span><input type="number" min="0" max="9" data-bind="sl.${s[0]}" data-num value="${esc(hub.slotDraft[s[0]])}"></div>`).join('')}
-      <button type="button" class="inv-mini-btn primary" data-act="slots-save">Salvar espaços</button></div>
-    ${c.modules.needs ? `<div class="hub-sec"><div class="hub-label">Ajuste de necessidades em grupo</div>
-      <p class="hub-hint">Você decide quando aplicar: escolha a necessidade, o ajuste e quem é afetado. Fica registrado na linha do tempo.</p>
-      <select data-bind="hub.bulkNeed">${NEED_LIST.map(n => opt(n[0], n[1], hub.bulkNeed)).join('')}</select>
-      <select data-bind="hub.bulkDelta" data-num>${opt(1, '+1 nível (piora)', hub.bulkDelta)}${opt(-1, '−1 nível (melhora)', hub.bulkDelta)}</select>
-      ${toks.map(h => `<label class="check-row"><input type="checkbox" data-act="bulk-pick" data-id="${esc(h.id)}" ${hub.bulkPick.includes(h.id) ? 'checked' : ''}> ${esc(h.name)}</label>`).join('') || '<div class="inv-item-util">Sem tokens.</div>'}
-      <button type="button" class="inv-mini-btn primary" data-act="bulk-apply">Aplicar</button></div>` : ''}
-    <div class="hub-sec"><div class="hub-label">Backup e restauração desta campanha</div>
-      <button type="button" class="inv-mini-btn primary" data-act="backup-export">${ic('download', 14)} Exportar backup (arquivo .json)</button>
-      <label class="hub-label">Restaurar de um backup</label>
-      <input type="file" accept="application/json,.json" id="backup-file">
-      <p class="hub-hint">Restaurar sobrescreve mapa, inventários, fichas, diário e registros desta campanha com o conteúdo do arquivo. Um backup do estado atual é baixado automaticamente antes.</p>
-      <button type="button" class="inv-mini-btn danger" data-act="backup-import">Restaurar do arquivo escolhido</button>${hub.backupMsg ? `<p class="hub-hint" role="status">${esc(hub.backupMsg)}</p>` : ''}</div>`;
+      <input type="text" list="item-names" data-bind="gv.name" value="${esc(g.name)}" placeholder="Nome do item" aria-label="Item do catálogo" autocomplete="off">
+      <div class="mx-row"><input type="number" min="1" class="qty-in" data-bind="gv.qty" data-num value="${esc(g.qty)}" aria-label="Quantidade"><select data-bind="gv.to" data-nochips aria-label="Destino">${allHolders().map(h => opt(h.id, (h.type === 'container' ? 'Contêiner · ' : h.type === 'npc' ? 'NPC · ' : '') + h.name, g.to)).join('')}</select></div>
+      <button type="button" class="mx-go" data-act="give">Entregar</button></div>`;
+    const resBody = hub.resDraft.map((r, i) => `<div class="mx-row"><input type="text" data-bind="rs.${i}.label" value="${esc(r.label)}" placeholder="Nome" aria-label="Nome do recurso" maxlength="20"><input type="number" min="0" class="qty-in" data-bind="rs.${i}.max" data-num value="${esc(r.max || '')}" placeholder="Máx." aria-label="Máximo"><button type="button" class="mx-ico" data-act="res-del" data-i="${i}" aria-label="Remover recurso">${ic('close', 16)}</button></div>`).join('')
+      + `<div class="mx-acts"><button type="button" class="mx-ghost" data-act="res-add">${ic('plus', 16)} Recurso</button><button type="button" class="mx-go" data-act="res-save">Salvar</button></div>`;
+    const slotsBody = `<div class="mx-grid">${EQUIP_SLOTS.map(s => mxF(esc(s[1]), `<input type="number" min="0" max="9" data-bind="sl.${s[0]}" data-num value="${esc(hub.slotDraft[s[0]])}">`)).join('')}</div>
+      <button type="button" class="mx-go" data-act="slots-save">Salvar espaços</button>`;
+    const needsBody = `${mxF('Necessidade', `<select data-bind="hub.bulkNeed">${NEED_LIST.map(n => opt(n[0], n[1], hub.bulkNeed)).join('')}</select>`, '', 'div')}
+      ${mxF('Ajuste', `<select data-bind="hub.bulkDelta" data-num>${opt(1, '+1 · piora', hub.bulkDelta)}${opt(-1, '−1 · melhora', hub.bulkDelta)}</select>`, '', 'div')}
+      <div class="mx-fl">Quem é afetado</div>
+      <div class="mx-picks">${toks.map(h => mxPick(esc(h.name), `data-act="bulk-pick" data-id="${esc(h.id)}"`, hub.bulkPick.includes(h.id))).join('') || '<span class="mx-sub">Sem tokens.</span>'}</div>
+      <button type="button" class="mx-go" data-act="bulk-apply">Aplicar</button>`;
+    const backupBody = `<button type="button" class="mx-go" data-act="backup-export">${ic('download', 16)} Exportar backup</button>
+      <div class="mx-fl">Restaurar de um arquivo</div>
+      <input type="file" accept="application/json,.json" id="backup-file" aria-label="Arquivo de backup">
+      <button type="button" class="mx-ghost danger" data-act="backup-import">Restaurar</button>
+      <p class="mx-note">Restaurar substitui mapa, inventários, fichas e diário desta campanha. Um backup do estado atual é baixado antes.</p>${hub.backupMsg ? `<p class="mx-note" role="status">${esc(hub.backupMsg)}</p>` : ''}`;
+    return `<div class="mx">${giveCard}
+      ${mxSec('cont', 'Contêineres', pins2.length ? nCont + ' de ' + pins2.length : '', cont || '<div class="mx-sub">Nenhum pin no mapa.</div>', false)}
+      ${mxSec('slots', 'Espaços de equipamento', '', slotsBody, false)}
+      ${c.modules.needs ? mxSec('needs', 'Necessidades em grupo', '', needsBody, false) : ''}
+      ${c.resources.length ? mxSec('res', 'Recursos extras', c.resources.length, resBody, false) : ''}
+      ${mxSec('backup', 'Backup', '', backupBody, false)}</div>`;
   }
   function slugKey(s){ return normName(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) || 'r' + Date.now().toString(36); }
   async function saveResources(){
@@ -7653,19 +7670,25 @@
     if(hub.opEdit === atkId) hub.opEdit = null;
     scheduleSaveCard(); renderHub();
   }
-  function opAddCondition(){
+  function opAddCond(key, note){
     const id = hub.charToken; if(!opCanEdit(id)) return;
-    const key = (hubQ('#op-cond-key') || {}).value, note = ((hubQ('#op-cond-note') || {}).value || '').trim();
-    if(!key) return;
+    note = String(note || '').trim();
+    if(!OP_COND[key]) return;
     if(key === 'outra' && !note){ toast('Escreva o nome da condição.', true); return; }
     const card = ensureCard(id), h = holderById(id);
-    if(key !== 'outra' && (card.conditions || []).some(c => c.key === key)){ toast('Essa condição já está ativa.', true); return; }
+    if(key !== 'outra' && (card.conditions || []).some(c => c.key === key)) return;
     const c = { id:newUid('cd_'), key, note };
     hub.opCondNote = '';
     card.conditions = (card.conditions || []).concat([c]);
     scheduleSaveCard(); renderHub();
     // aparece no feed e na linha do tempo da mesa
     addJournal({ type:'evento', evKind:'condicao', text:`${h ? h.name : card.name} recebeu [${opCondName(c)}]`, auto:true, vis:'grupo' });
+  }
+  const opAddCondition = () => opAddCond('outra', (hubQ('#op-cond-note') || {}).value);       // campo "outra condição"
+  function opToggleCond(key){
+    const id = hub.charToken; if(!opCanEdit(id)) return;
+    const cur = (ensureCard(id).conditions || []).find(c => c.key === key);
+    if(cur) opDelCondition(cur.id); else opAddCond(key, '');
   }
   function opDelCondition(cid){
     const id = hub.charToken; if(!opCanEdit(id)) return;
@@ -7720,22 +7743,20 @@
     await opRecord(id, title, results, pe.bonus ? [{ label:'Fixo', value:pe.bonus }] : [], extra);
     return true;
   }
-  function opStep(f, d){
-    const id = hub.charToken; if(!opCanEdit(id)) return;
-    const card = ensureCard(id);
-    if(f === 'nex'){
-      let i = OP_NEX.indexOf(card.nex == null ? 5 : card.nex);
-      if(i < 0){ i = 0; OP_NEX.forEach((n, k) => { if(n <= card.nex) i = k; }); }
-      card.nex = OP_NEX[Math.max(0, Math.min(OP_NEX.length - 1, i + d))];
-    } else if(f === 'level'){
-      card.level = Math.max(1, Math.min(20, (card.level == null ? 1 : opNum(card.level)) + d));
-    } else return;
+  function opSetField(f, raw){
+    const id = hub.charToken; if(!opCanEdit(id)){ renderHub(); return; }
+    const card = ensureCard(id), n = Math.round(opNum(raw));
+    if(f === 'nex'){ let best = OP_NEX[0]; OP_NEX.forEach(x => { if(Math.abs(x - n) < Math.abs(best - n)) best = x; }); card.nex = best; }
+    else if(f === 'level') card.level = Math.max(1, Math.min(20, n || 1));
+    else return;
     scheduleSaveCard(); renderHub(); hudMiniChanged();
   }
-  function opCycleTrain(key){
+  // toca na bolinha n: define o nível n; tocar de novo na última acesa tira um nível
+  function opSetTrain(key, lvl){
     const id = hub.charToken; if(!opCanEdit(id)) return;
     const card = ensureCard(id), s = (card.skillsV2 || {})[key]; if(!s) return;
-    const ks = Object.keys(OP_TRAIN); s.training = ks[(Math.max(0, ks.indexOf(s.training || 'none')) + 1) % ks.length];
+    const ks = Object.keys(OP_TRAIN), cur = Math.max(0, ks.indexOf(s.training || 'none')), n = Math.max(0, Math.min(ks.length - 1, Math.round(opNum(lvl))));
+    s.training = ks[n === cur ? n - 1 : n];
     scheduleSaveCard(); renderHub();
   }
   // ---- rituais e habilidades ----
@@ -7790,9 +7811,8 @@
     const id = hub.charToken;
     if(!edit || opSkipped(id)) return '';
     const empty = !(card.skills || []).length && !Object.keys(card.res || {}).length;
-    return `<div class="op-banner" role="region" aria-label="Formato da ficha"><p>${empty ? 'Esta ficha ainda está vazia. Quer começar já no formato de Ordem Paranormal?' : 'Este personagem está no formato antigo. Quer migrar para Ordem Paranormal?'}</p>
-      <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="op-migrate">Migrar</button><button type="button" class="inv-mini-btn" data-act="op-keep">Continuar no formato antigo</button></div>
-      ${empty ? '' : '<p class="hub-hint">Nada é apagado: as perícias e os recursos antigos ficam guardados e dá para voltar ao formato antigo.</p>'}</div>`;
+    return `<div class="op-banner" role="region" aria-label="Formato da ficha"><p>${empty ? 'Ficha vazia. Começar no formato de Ordem Paranormal?' : 'Formato antigo. Migrar para Ordem Paranormal?'}</p>
+      <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="op-migrate">Migrar</button><button type="button" class="inv-mini-btn" data-act="op-keep">Manter antigo</button></div></div>`;
   }
   function renderReminders(card, dis){
     return `<div class="hub-label">Lembretes da mesa (patente, o que o grupo quiser)</div>
@@ -7808,16 +7828,34 @@
   }
   function opMeter(card, k, dis){
     const r = opRes(card, k), pct = r.max > 0 ? Math.max(0, Math.min(100, Math.round(r.cur / r.max * 100))) : 0, low = r.max > 0 && r.cur / r.max < 0.3, nm = OP_RES[k];
-    return `<div class="ox-res"><button type="button" class="die-btn" data-act="op-res" data-k="${k}" data-d="-1" aria-label="Reduzir ${esc(nm[1])}" ${dis}>${ic('minus', 16)}</button>
-      <div class="ox-meter${low ? ' low' : ''}" style="--c:${nm[2]}" role="meter" aria-valuemin="0" aria-valuemax="${r.max}" aria-valuenow="${r.cur}" aria-label="${esc(nm[1])}: ${r.cur} de ${r.max}"><i style="width:${pct}%"></i>
-        <span class="ox-meter-lb">${low ? ic('alert', 14) : ''}${nm[0]} <b>${r.cur} / ${r.max}</b></span></div>
-      <button type="button" class="die-btn" data-act="op-res" data-k="${k}" data-d="1" aria-label="Aumentar ${esc(nm[1])}" ${dis}>${ic('plus', 16)}</button></div>`;
+    const inp = (f, v, lab) => `<input class="ox-vit-in ox-vit-${f}" type="number" inputmode="numeric" min="0" data-res="${k}" data-f="${f}" value="${v}" aria-label="${esc(nm[1])}: ${lab}" ${dis}>`;
+    return `<div class="ox-vit ox-vit-${k}${low ? ' low' : ''}" style="--c:${nm[2]};--p:${pct}%" role="group" aria-label="${esc(nm[1])}"><i class="ox-vit-fill" aria-hidden="true"></i>
+      <span class="ox-vit-k">${low ? ic('alert', 14) : ''}${nm[0]}</span>${inp('cur', r.cur, 'atual')}<span class="ox-vit-sep" aria-hidden="true">/</span>${inp('max', r.max, 'máximo')}</div>`;
+  }
+  // PV/PD digitados direto: atualiza a barra no lugar, sem refazer a ficha (o foco continua no campo seguinte)
+  function opSetRes(k, f, raw, root){
+    const id = hub.charToken;
+    if(!OP_RES[k] || (f !== 'cur' && f !== 'max')) return;
+    if(!opCanEdit(id)){ renderHub(); return; }
+    const card = ensureCard(id); card.resources2 = card.resources2 || {};
+    const r = card.resources2[k] = card.resources2[k] || { cur:0, max:0 };
+    const v = Math.max(0, Math.round(opNum(raw)));
+    if(f === 'max'){ r.max = v; if(v > 0 && opNum(r.cur) > v) r.cur = v; }
+    else r.cur = opNum(r.max) > 0 ? Math.min(opNum(r.max), v) : v;
+    scheduleSaveCard(id); hudMiniChanged();
+    const box = root && root.closest ? root.closest('.ox-vit') : null;
+    if(box && hub.opTab !== 'poderes'){
+      const mx = opNum(r.max), cu = opNum(r.cur);
+      box.style.setProperty('--p', (mx > 0 ? Math.max(0, Math.min(100, Math.round(cu / mx * 100))) : 0) + '%');
+      box.classList.toggle('low', mx > 0 && cu / mx < 0.3);
+      box.querySelector('.ox-vit-cur').value = r.cur; box.querySelector('.ox-vit-max').value = r.max;
+    } else setTimeout(hubChanged, 0);
   }
   function opCardHead(h, card, dis){
     const meta = card.meta || {}, nex = card.nex == null ? 5 : card.nex, lvl = card.level == null ? 1 : card.level, nexLevel = cfg().progressionMode !== 'nex_only';
     const el = opElemOk(meta.element), d = opDefense(card), pt = opPortraitData(h), nm = card.name || h.name || '';
     const sub = [meta.class, meta.origin].filter(Boolean).join(' · ');
-    const sh = (k, lab, icn, val, how, main) => `<button type="button" class="ox-sh${main ? ' main' : ''}" data-act="op-tab" data-t="combate" aria-label="${lab}: ${val}. ${esc(how)}. Toque para ajustar"><small>${ic(icn, 12)}${k}</small><b>${val}</b><span>${esc(how)}</span></button>`;
+    const sh = (k, lab, icn, val, how, main) => `<button type="button" class="ox-sh${main ? ' main' : ''}" data-act="op-tab" data-t="combate" title="${esc(how)}" aria-label="${lab}: ${val}. ${esc(how)}. Abrir defesas"><small>${ic(icn, 12)}${k}</small><b>${val}</b></button>`;
     return `<div class="ox-card${el ? ' ox-e-' + el : ''}">
       <div class="ox-top"><div class="ox-portrait"><div class="ox-ph">${pt.img ? `<img src="${esc(pt.img)}" alt="Foto de ${esc(nm)}">` : esc(nm.trim().slice(0, 2).toUpperCase() || '?')}</div><span class="ox-nex">NEX ${nex}%</span></div>
         <div class="ox-id"><b class="ox-name">${esc(nm || 'Sem nome')}</b>${sub ? `<span class="ox-sub">${esc(sub)}</span>` : ''}
@@ -7837,47 +7875,42 @@
     }).join('');
     return `<div class="ox-pent" role="group" aria-label="Atributos: ${OP_ATTRS.map(a => a[2] + ' ' + opNum(A[a[0]])).join(', ')}"><div class="ox-pent-art" aria-hidden="true"></div>${nodes}</div>`;
   }
-  const opStepper = (lab, val, f, ariaLab, dis) => `<div class="ox-step"><button type="button" class="die-btn" data-act="op-step" data-f="${f}" data-d="-1" aria-label="Reduzir ${ariaLab}" ${dis}>${ic('minus', 16)}</button><div><small>${lab}</small><b>${val}</b></div><button type="button" class="die-btn" data-act="op-step" data-f="${f}" data-d="1" aria-label="Aumentar ${ariaLab}" ${dis}>${ic('plus', 16)}</button></div>`;
-  const opNumFld = (lab, path, val, dis) => `<label class="ox-lb">${lab}<input type="number" data-bind="${path}" data-num data-sheet value="${esc(String(val))}" ${dis}></label>`;
+  const opNumFld = (lab, path, val, dis) => `<label class="ox-lb">${lab}<input type="number" inputmode="numeric" data-bind="${path}" data-num data-sheet value="${esc(String(val))}" ${dis}></label>`;
+  const opTopFld = (lab, f, val, suf, dis) => `<label class="ox-lb">${lab}<span class="ox-sfx"><input type="number" inputmode="numeric" data-opf="${f}" value="${esc(String(val))}" ${dis}>${suf ? `<em>${suf}</em>` : ''}</span></label>`;
   function renderOpAgente(card, dis){
     const nexLevel = cfg().progressionMode !== 'nex_only', meta = card.meta || {}, nex = card.nex == null ? 5 : card.nex, lvl = card.level == null ? 1 : card.level;
     const edit = !!hub.opAttrEdit && !dis;
-    let html = `<div class="ox-pwrap"><div class="ox-ptop"><span>Valor = quantidade de d20.<br>Fica o maior (com 0, o menor).</span>
+    return `<div class="ox-pwrap"><div class="ox-ptop"><b>Atributos</b>
       <div class="ox-seg" role="group" aria-label="Modo dos atributos"><button type="button" data-act="op-attr-mode" data-m="roll" aria-pressed="${!edit}">Rolar</button><button type="button" data-act="op-attr-mode" data-m="edit" aria-pressed="${edit}" ${dis}>Editar</button></div></div>
-      ${opPentagon(card, edit, dis)}<p class="ox-pnote">${edit ? 'Digite o valor de cada atributo.' : 'Toque num círculo para rolar o atributo.'}</p></div>
-      <div class="ox-two">${opStepper('NEX', nex + '%', 'nex', 'o NEX', dis)}${nexLevel ? opStepper('NÍVEL', lvl, 'level', 'o nível', dis) : '<div></div>'}</div>
+      ${opPentagon(card, edit, dis)}</div>
+      <div class="ox-two">${opTopFld('NEX', 'nex', nex, '%', dis)}${nexLevel ? opTopFld('Nível', 'level', lvl, '', dis) : ''}</div>
       <div class="hub-label">Personagem</div>
-      <input type="text" data-bind="card.name" data-sheet value="${esc(card.name)}" placeholder="Nome do personagem" ${dis}>
-      <div class="bonus-row"><input type="text" data-bind="card.meta.class" data-sheet value="${esc(meta.class || '')}" placeholder="Classe" ${dis}><input type="text" data-bind="card.meta.origin" data-sheet value="${esc(meta.origin || '')}" placeholder="Origem" ${dis}></div>
-      <input type="text" data-bind="card.player" data-sheet value="${esc(card.player)}" placeholder="Jogador" ${dis}>
-      <label class="ox-lb">Afinidade (cor e símbolo do cartão)<select data-bind="card.meta.element" data-rerender ${dis}><option value="">— nenhuma —</option>${OP_ELEM_KEYS.map(k => opt(k, OP_ELEM[k].n, meta.element || '')).join('')}</select></label>
-      <div class="hub-label">Vida e determinação</div>
-      <div class="ox-two">${opNumFld('PV atual', 'card.resources2.pv.cur', opRes(card, 'pv').cur, dis)}${opNumFld('PV máximo', 'card.resources2.pv.max', opRes(card, 'pv').max, dis)}${opNumFld('PD atual', 'card.resources2.pd.cur', opRes(card, 'pd').cur, dis)}${opNumFld('PD máximo', 'card.resources2.pd.max', opRes(card, 'pd').max, dis)}</div>
-      <p class="hub-hint">PD (pontos de determinação) é o recurso principal desta mesa.</p>`;
-    return html;
+      <input type="text" data-bind="card.name" data-sheet value="${esc(card.name)}" placeholder="Nome" aria-label="Nome" ${dis}>
+      <div class="ox-two"><input type="text" data-bind="card.meta.class" data-sheet value="${esc(meta.class || '')}" placeholder="Classe" aria-label="Classe" ${dis}><input type="text" data-bind="card.meta.origin" data-sheet value="${esc(meta.origin || '')}" placeholder="Origem" aria-label="Origem" ${dis}></div>
+      <input type="text" data-bind="card.player" data-sheet value="${esc(card.player)}" placeholder="Jogador" aria-label="Jogador" ${dis}>
+      <label class="ox-lb">Afinidade<select data-bind="card.meta.element" data-rerender ${dis}><option value="">Nenhuma</option>${OP_ELEM_KEYS.map(k => opt(k, OP_ELEM[k].n, meta.element || '')).join('')}</select></label>`;
   }
   function opSkillRow(card, sd, dis){
     const A = card.attributes || {}, p = opParts(card, sd.key, null, 'skill'), tot = opSum(p), pen = p.conds.reduce((a, x) => a + x.value, 0), custom = !!sd.defAttr && sd.attr !== sd.defAttr;
     const tk = Object.keys(OP_TRAIN), ti = Math.max(0, tk.indexOf(sd.s.training || 'none')), tr = OP_TRAIN[tk[ti]], open = hub.opSkOpen === sd.key, k = esc(sd.key);
-    return `<div class="ox-sk"><div class="ox-sk-row">
+    const pips = [1, 2, 3].map(n => `<button type="button" class="ox-pip${ti >= n ? ' on' : ''}" data-act="op-train-set" data-k="${k}" data-l="${n}" aria-pressed="${ti >= n}" aria-label="${esc(OP_TRAIN[tk[n]][0])}, +${OP_TRAIN[tk[n]][1]}, em ${esc(sd.name)}" ${dis}></button>`).join('');
+    return `<div class="ox-sk${ti ? ' tr' : ''}"><div class="ox-sk-row">
       <button type="button" class="ox-sk-main" data-act="op-sk-open" data-k="${k}" aria-expanded="${open}"><b>${esc(sd.name)}</b><small>${sd.attr ? opAttrLabel(sd.attr) + ' ' + opNum(A[sd.attr]) : 'livre'}${custom ? ' · padrão ' + opAttrLabel(sd.defAttr) : ''}</small></button>
-      <button type="button" class="ox-train t${ti}" data-act="op-train" data-k="${k}" aria-label="Treinamento de ${esc(sd.name)}: ${esc(tr[0])}. Toque para mudar" ${dis}>${ti ? '+' + tr[1] : '—'}</button>
-      <span class="ox-sk-tot" title="${esc(opPoolHelp(p.pool))} + treinamento + bônus${pen ? ' + condições/clima' : ''}"><span class="op-pool${p.pool.low ? ' low' : ''}">${p.pool.label}</span>${opSgn(tot)}${pen ? '<small>' + opSgn(pen) + (p.conds.some(x => x.weather) ? (p.conds.some(x => !x.weather) ? ' cond.+clima' : ' clima') : ' cond.') + '</small>' : ''}</span>
-      <button type="button" class="inv-mini-btn primary op-roll" data-act="op-skill-roll" data-k="${k}" aria-label="Rolar ${esc(sd.name)} (${esc(p.pool.label)})" ${dis}>${ic('dice', 18)}</button></div>
-      ${open ? `<div class="ox-sk-edit"><select data-bind="card.skillsV2.${k}.training" data-rerender aria-label="Treinamento de ${esc(sd.name)}" ${dis}>${tk.map(t => opt(t, OP_TRAIN[t][0], sd.s.training || 'none')).join('')}</select>
-        <select data-bind="card.skillsV2.${k}.attr" data-rerender aria-label="Atributo usado em ${esc(sd.name)}" title="Atributo usado nesta perícia" ${dis}>${sd.attr ? '' : '<option value="" selected>—</option>'}${OP_ATTRS.map(x => opt(x[0], x[1], sd.attr)).join('')}</select>
-        <input type="number" data-bind="card.skillsV2.${k}.bonus" data-num data-sheet value="${esc(String(opNum(sd.s.bonus)))}" aria-label="Bônus avulso de ${esc(sd.name)}" placeholder="Outros" ${dis}>
-        <button type="button" class="inv-mini-btn danger op-del" data-act="op-skill-del" data-k="${k}" aria-label="Remover ${esc(sd.name)}" ${dis}>${ic('close', 16)}</button></div>` : ''}</div>`;
+      <span class="ox-pips t${ti}" role="group" aria-label="Treinamento de ${esc(sd.name)}: ${esc(tr[0])}">${pips}</span>
+      <button type="button" class="ox-roll op-roll${p.pool.low ? ' low' : ''}" data-act="op-skill-roll" data-k="${k}" aria-label="Rolar ${esc(sd.name)}: ${esc(p.pool.label)} ${opSgn(tot)}" title="${esc(opPoolHelp(p.pool))}${pen ? ' · condições ' + opSgn(pen) : ''}" ${dis}><small>${p.pool.label}</small><b>${opSgn(tot)}</b></button></div>
+      ${open ? `<div class="ox-sk-edit"><select data-bind="card.skillsV2.${k}.attr" data-rerender aria-label="Atributo usado em ${esc(sd.name)}" ${dis}>${sd.attr ? '' : '<option value="" selected>—</option>'}${OP_ATTRS.map(x => opt(x[0], x[1], sd.attr)).join('')}</select>
+        <input type="number" inputmode="numeric" data-bind="card.skillsV2.${k}.bonus" data-num data-sheet value="${esc(String(opNum(sd.s.bonus)))}" aria-label="Bônus avulso de ${esc(sd.name)}" placeholder="Bônus" ${dis}>
+        <button type="button" class="ox-del" data-act="op-skill-del" data-k="${k}" aria-label="Remover ${esc(sd.name)}" ${dis}>${ic('close', 16)}</button></div>` : ''}</div>`;
   }
   function renderOpPericias(card, dis){
     const all = Object.keys(card.skillsV2 || {}).map(k => opSkillDef(card, k)).sort((x, y) => x.name.localeCompare(y.name, 'pt-BR'));
     const f = hub.opSkF || 'all', q = opSlug(hub.opSkQ || '');
     const rows = all.filter(sd => (f === 'all' || (f === 'trained' ? (sd.s.training && sd.s.training !== 'none') : sd.attr === f)) && (!q || opSlug(sd.name).indexOf(q) >= 0));
     const chip = (v, lab) => `<button type="button" class="ox-chip" data-act="op-sk-filter" data-f="${v}" aria-pressed="${f === v}">${lab}</button>`;
-    let html = `<input type="text" inputmode="search" data-bind="hub.opSkQ" data-rerender value="${esc(hub.opSkQ || '')}" placeholder="Buscar perícia" aria-label="Buscar perícia">
+    let html = `<input type="text" inputmode="search" data-bind="hub.opSkQ" data-rerender value="${esc(hub.opSkQ || '')}" placeholder="Buscar perícia" aria-label="Buscar perícia" enterkeyhint="search">
       <div class="ox-filters" role="group" aria-label="Filtrar perícias">${chip('all', 'Todas')}${chip('trained', 'Treinadas')}${OP_ATTRS.map(a => chip(a[0], a[1])).join('')}</div>`;
     if(!all.length) html += `<p class="hub-hint">Nenhuma perícia ainda.</p><button type="button" class="inv-mini-btn primary" data-act="op-skill-all" ${dis}>${ic('plus', 16)} Adicionar as 28 perícias</button>`;
-    else html += `<p class="hub-hint">${rows.length} de ${all.length} perícias. Toque no nome para editar, no selo para mudar o treinamento e no dado para rolar.</p>${rows.map(sd => opSkillRow(card, sd, dis)).join('') || '<p class="hub-hint">Nenhuma perícia com esse filtro.</p>'}`;
+    else html += rows.map(sd => opSkillRow(card, sd, dis)).join('') || '<p class="hub-hint">Nenhuma perícia com esse filtro.</p>';
     html += `<div class="ox-more"><button type="button" class="ox-more-btn" data-act="op-sk-more" aria-expanded="${!!hub.opSkMore}">${ic(hub.opSkMore ? 'minus' : 'plus', 16)} Adicionar perícia</button>${hub.opSkMore ? `<datalist id="op-skill-list">${OP_SKILLS.map(s => `<option value="${esc(s[1])}">`).join('')}</datalist>
       <div class="op-add"><input type="text" id="op-skill-new" data-bind="hub.opSkNew" value="${esc(hub.opSkNew || '')}" list="op-skill-list" placeholder="Nova perícia (ex.: Furtividade)" ${dis}><select id="op-skill-attr" data-bind="hub.opSkNewAttr" aria-label="Atributo da perícia livre" ${dis}><option value="">atributo (se livre)</option>${OP_ATTRS.map(a => `<option value="${a[0]}"${hub.opSkNewAttr === a[0] ? ' selected' : ''}>${a[1]}</option>`).join('')}</select>
       <button type="button" class="inv-mini-btn" data-act="op-skill-add" ${dis}>${ic('plus', 16)} Nova</button><button type="button" class="inv-mini-btn" data-act="op-skill-all" ${dis}>Adicionar todas as 28</button></div>` : ''}</div>`;
@@ -7885,10 +7918,13 @@
   }
   function renderOpCombate(card, dis){
     const d = opDefense(card);
-    let html = `<div class="ox-hd"><h3>Defesas</h3><small>valores calculados</small></div>
-      <div class="ox-def">${[['DEF', 'Defesa', 'shield', d.def, true], ['ESQ', 'Esquiva', 'wind', d.dodge], ['BLO', 'Bloqueio', 'layers', d.block]].map(x => `<div class="ox-sh${x[4] ? ' main' : ''}"><small>${ic(x[2], 12)}${x[0]}</small><b>${x[3]}</b></div>`).join('')}</div>
-      <p class="ox-bd"><b>Defesa</b> = 10 + AGI ${d.agi}${d.equip ? ' + equipamento ' + d.equip : ''}${d.other ? ' + outros ' + d.other : ''}${d.vul ? ' − 2 (Vulnerável)' : ''}.<br><b>Esquiva</b> = Defesa + Reflexos ${opSgn(d.refl)}${d.xd ? ' + outros ' + d.xd : ''}.<br><b>Bloqueio</b> = Fortitude ${opSgn(d.fort)}${d.xb ? ' + outros ' + d.xb : ''}.</p>
-      <div class="ox-defed">${opNumFld('Defesa · equipamento', 'card.defense.equip', d.equip, dis)}${opNumFld('Defesa · outros', 'card.defense.other', d.other, dis)}${opNumFld('Esquiva · outros', 'card.defense.dodge', d.xd, dis)}${opNumFld('Bloqueio · outros', 'card.defense.block', d.xb, dis)}</div>`;
+    const sgn = n => (n < 0 ? '−' : '+') + ' ' + Math.abs(n);
+    const how = [
+      'Defesa = 10 ' + sgn(d.agi) + ' (AGI) ' + sgn(d.equip) + ' (equipamento) ' + sgn(d.other) + ' (outros)' + (d.vul ? ' ' + sgn(d.vul) + ' (Vulnerável)' : ''),
+      'Esquiva = Defesa ' + sgn(d.refl) + ' (Reflexos) ' + sgn(d.xd) + ' (extra)',
+      'Bloqueio = Fortitude ' + sgn(d.fort) + ' ' + sgn(d.xb) + ' (extra)'];
+    let html = `<div class="ox-def">${[['DEF', 'Defesa', 'shield', d.def, true], ['ESQ', 'Esquiva', 'wind', d.dodge], ['BLO', 'Bloqueio', 'layers', d.block]].map((x, i) => `<div class="ox-sh${x[4] ? ' main' : ''}" title="${esc(how[i])}"><small>${ic(x[2], 12)}${x[0]}</small><b>${x[3]}</b></div>`).join('')}</div>${d.vul ? '<p class="hub-hint ox-bd">Vulnerável: −2 na Defesa (e na Esquiva).</p>' : ''}
+      <div class="ox-more"><button type="button" class="ox-more-btn" data-act="flag" data-f="opDefMore" aria-expanded="${!!hub.opDefMore}">${ic(hub.opDefMore ? 'minus' : 'plus', 16)} Ajustar defesas</button>${hub.opDefMore ? `<div class="ox-defed">${opNumFld('Equipamento', 'card.defense.equip', d.equip, dis)}${opNumFld('Outros (DEF)', 'card.defense.other', d.other, dis)}${opNumFld('Esquiva extra', 'card.defense.dodge', d.xd, dis)}${opNumFld('Bloqueio extra', 'card.defense.block', d.xb, dis)}</div>` : ''}</div>`;
     // ataques
     const A = card.attributes || {};
     const skillOpts = a => OP_SKILLS.map(x => opt(x[0], x[1], a.skill)).join('') + Object.keys(card.skillsV2 || {}).filter(k => k.indexOf('x_') === 0).map(k => opt(k, opSkillDef(card, k).name, a.skill)).join('');
@@ -7911,15 +7947,17 @@
           <button type="button" class="inv-mini-btn danger" data-act="op-atk-del" data-id="${esc(a.id)}" ${dis}>${ic('close', 16)} Remover ataque</button></div>` : ''}</div>`;
     }).join('') || '<p class="hub-hint">Nenhum ataque ainda.</p>'}
       <button type="button" class="inv-mini-btn" data-act="op-atk-new" ${dis}>${ic('plus', 16)} Novo ataque</button>`;
-    // condições
-    html += `<div class="ox-hd"><h3>Condições</h3></div><div class="op-conds">${(card.conditions || []).map(cd => {
-      const dd = OP_COND[cd.key] || {};
-      return `<span class="op-cond">${ic(dd.i || 'alert', 14)}<span>${esc(opCondName(cd))}${cd.note && cd.key !== 'outra' ? ' · ' + esc(cd.note) : ''}</span><button type="button" data-act="op-cond-del" data-id="${esc(cd.id)}" aria-label="Remover ${esc(opCondName(cd))}" ${dis}>${ic('close', 14)}</button></span>`;
-    }).join('') || '<span class="hub-hint">Nenhuma.</span>'}</div>
-      ${(card.conditions || []).filter(cd => OP_COND[cd.key] && OP_COND[cd.key].t).map(cd => `<div class="hub-hint"><b>${esc(OP_COND[cd.key].n)}:</b> ${esc(OP_COND[cd.key].t)}</div>`).join('')}
-      <div class="op-add"><select id="op-cond-key" data-bind="hub.opCondSel" aria-label="Condição" ${dis}>${OP_COND_ORDER.concat(Object.keys(OP_COND).filter(k => !OP_COND_ORDER.includes(k))).map(k => `<option value="${k}"${(hub.opCondSel || 'abalado') === k ? ' selected' : ''}>${esc(OP_COND[k].n)}</option>`).join('')}</select>
-      <input type="text" id="op-cond-note" data-bind="hub.opCondNote" value="${esc(hub.opCondNote || '')}" placeholder="Observação ou nome" ${dis}><button type="button" class="inv-mini-btn" data-act="op-cond-add" ${dis}>${ic('plus', 16)} Adicionar</button></div>
-      <p class="hub-hint">Os modificadores das condições entram sozinhos nas rolagens desta ficha. Condições com o mesmo efeito não se somam: vale a pior. As demais ficam só como marcação.</p>`;
+    // condições: cada uma é um botão liga/desliga com bolinha
+    const have = card.conditions || [], on = k => have.some(c => c.key === k);
+    const chip = k => `<button type="button" class="ox-cond${on(k) ? ' on' : ''}" data-act="op-cond-toggle" data-k="${k}" aria-pressed="${on(k)}" ${dis}><i class="ox-dot" aria-hidden="true"></i>${esc(OP_COND[k].n)}</button>`;
+    const extraOn = have.filter(c => !OP_COND_ORDER.includes(c.key) && (hub.opCondMore ? c.key === 'outra' : true));
+    const rest = Object.keys(OP_COND).filter(k => k !== 'outra' && !OP_COND_ORDER.includes(k));
+    html += `<div class="ox-hd"><h3>Condições</h3></div><div class="ox-conds">${OP_COND_ORDER.map(chip).join('')}${extraOn.map(c => c.key === 'outra'
+        ? `<button type="button" class="ox-cond on" data-act="op-cond-del" data-id="${esc(c.id)}" aria-label="Remover ${esc(opCondName(c))}" ${dis}><i class="ox-dot" aria-hidden="true"></i>${esc(opCondName(c))}</button>` : chip(c.key)).join('')}</div>
+      ${hub.opCondMore ? `<div class="ox-conds">${rest.map(chip).join('')}</div>
+        <div class="ox-add"><input type="text" id="op-cond-note" data-bind="hub.opCondNote" value="${esc(hub.opCondNote || '')}" placeholder="Outra condição" aria-label="Nome de outra condição" ${dis}><button type="button" class="inv-mini-btn" data-act="op-cond-add" ${dis}>${ic('plus', 16)} Adicionar</button></div>` : ''}
+      <div class="ox-more"><button type="button" class="ox-more-btn" data-act="flag" data-f="opCondMore" aria-expanded="${!!hub.opCondMore}">${ic(hub.opCondMore ? 'minus' : 'plus', 16)} ${hub.opCondMore ? 'Menos condições' : 'Mais condições'}</button></div>
+      ${have.filter(cd => OP_COND[cd.key] && OP_COND[cd.key].t).map(cd => `<p class="ox-fx"><b>${esc(OP_COND[cd.key].n)}</b> ${esc(OP_COND[cd.key].t)}</p>`).join('')}`;
     return html;
   }
   // ---- poderes ----
@@ -7940,8 +7978,7 @@
           <label class="ox-lb">Círculo<select data-bind="card.rituals.${i}.circle" data-num data-rerender ${dis}>${[1, 2, 3, 4].map(n => opt(n, n + 'º círculo', r.circle || 1)).join('')}</select></label></div>
         <label class="ox-lb">DT (em branco = 10 + PRE)<input type="number" data-bind="card.rituals.${i}.dt" data-num data-sheet value="${esc(r.dt == null ? '' : String(r.dt))}" placeholder="${10 + opAttrOf(card, 'pre')}" ${dis}></label>
         ${OP_FORMS.map(x => `<div class="ox-frm"><span>${x[1]}</span><input type="number" min="0" data-bind="card.rituals.${i}.forms.${x[0]}.cost" data-num data-sheet value="${esc(String(((r.forms || {})[x[0]] || {}).cost == null ? '' : r.forms[x[0]].cost))}" placeholder="${x[0] === 'n' ? (OP_CIRCLE_COST[r.circle] || 0) + ' PD' : 'custo'}" aria-label="Custo em PD, forma ${nmF(x[0])}" ${dis}><input type="text" data-bind="card.rituals.${i}.forms.${x[0]}.dice" data-sheet value="${esc(String(((r.forms || {})[x[0]] || {}).dice || ''))}" placeholder="dados (3d6)" aria-label="Dados, forma ${nmF(x[0])}" ${dis}></div>`).join('')}
-        <textarea data-bind="card.rituals.${i}.note" data-sheet rows="3" placeholder="Efeito, alcance, duração (escreva com as suas palavras)" ${dis}>${esc(r.note || '')}</textarea>
-        <p class="hub-hint">Custo em branco: usa o do círculo (I = 1, II = 3, III = 6, IV = 10 PD). Discente e Verdadeiro só aparecem se tiverem custo ou dados. Custos e DT padrão não foram conferidos no livro: ajuste à regra da sua mesa.</p>
+        <textarea data-bind="card.rituals.${i}.note" data-sheet rows="3" placeholder="Efeito, alcance, duração" ${dis}>${esc(r.note || '')}</textarea>
         <button type="button" class="inv-mini-btn danger" data-act="op-p-del" data-k="rit" data-id="${id}" ${dis}>${ic('close', 16)} Remover ritual</button></div>` : ''}</div>`;
   }
   function opAbilityCard(card, a, i, dis){
@@ -7955,7 +7992,7 @@
         <div class="ox-two"><input type="text" data-bind="card.abilities.${i}.tag" data-sheet value="${esc(a.tag || '')}" placeholder="Tipo (classe, trilha, poder…)" ${dis}>
           <select data-bind="card.abilities.${i}.element" data-rerender aria-label="Elemento" ${dis}><option value="">— sem elemento —</option>${OP_ELEM_KEYS.map(k => opt(k, OP_ELEM[k].n, a.element || '')).join('')}</select></div>
         <div class="ox-two">${opNumFld('Custo em PD', 'card.abilities.' + i + '.cost', a.cost == null ? '' : a.cost, dis)}<label class="ox-lb">Dados (opcional)<input type="text" data-bind="card.abilities.${i}.dice" data-sheet value="${esc(a.dice || '')}" placeholder="3d6" ${dis}></label></div>
-        <textarea data-bind="card.abilities.${i}.note" data-sheet rows="3" placeholder="O que a habilidade faz (escreva com as suas palavras)" ${dis}>${esc(a.note || '')}</textarea>
+        <textarea data-bind="card.abilities.${i}.note" data-sheet rows="3" placeholder="O que a habilidade faz" ${dis}>${esc(a.note || '')}</textarea>
         <button type="button" class="inv-mini-btn danger" data-act="op-p-del" data-k="hab" data-id="${id}" ${dis}>${ic('close', 16)} Remover habilidade</button></div>` : ''}</div>`;
   }
   function renderOpPoderes(card, dis){
@@ -8021,6 +8058,8 @@
       setContainerCfg(t.dataset.ctn, { [t.dataset.f]: v });
       return;
     }
+    if(t.dataset && t.dataset.res){ opSetRes(t.dataset.res, t.dataset.f, t.value, t); return; }
+    if(t.dataset && t.dataset.opf){ opSetField(t.dataset.opf, t.value); return; }
     if(t.dataset && t.dataset.act === 'bulk-pick'){ hubAction('bulk-pick', t); return; }
     if(t.dataset && t.dataset.act === 'present'){
       const arr = hub.sessionForm.present, n = t.dataset.name, i = arr.indexOf(n);
@@ -8080,15 +8119,16 @@
       case 'op-dmg-roll': opRollDamage(D.id); break;
       case 'op-cond-add': opAddCondition(); break;
       case 'op-cond-del': opDelCondition(D.id); break;
-      case 'op-res': opAdjustRes(D.k, +D.d); break;
       case 'op-tab': hub.opTab = D.t; renderHub(); break;
       case 'op-attr-mode': hub.opAttrEdit = D.m === 'edit'; renderHub(); break;
       case 'op-attr-roll': opRollAttr(D.a); break;
-      case 'op-step': opStep(D.f, +D.d); break;
+      case 'mx': { hub.mx = hub.mx || {}; hub.mx[D.k] = !mxOpen(D.k, D.d === '1'); renderHub(); break; }
+      case 'flag': if(['opDefMore', 'opCondMore', 'diceMore'].includes(D.f)){ hub[D.f] = !hub[D.f]; renderHub(); } break;
+      case 'op-cond-toggle': opToggleCond(D.k); break;
       case 'op-sk-filter': hub.opSkF = D.f; renderHub(); break;
       case 'op-sk-more': hub.opSkMore = !hub.opSkMore; renderHub(); break;
       case 'op-sk-open': hub.opSkOpen = hub.opSkOpen === D.k ? null : D.k; renderHub(); break;
-      case 'op-train': opCycleTrain(D.k); break;
+      case 'op-train-set': opSetTrain(D.k, D.l); break;
       case 'op-p-el': hub.opPEl = D.e; renderHub(); break;
       case 'op-p-circ': hub.opPC = +D.c; renderHub(); break;
       case 'op-p-new': opNewPower(D.k); break;
@@ -8142,7 +8182,6 @@
         let v = resVal(c, r) + (+D.d); v = Math.max(0, r.max ? Math.min(r.max, v) : v); c.res[r.key] = v; scheduleSaveCard(); renderHub(); break; }
       case 'res-add': hub.resDraft.push({ key:'', label:'', max:0 }); renderHub(); break;
       case 'res-del': hub.resDraft.splice(+D.i, 1); renderHub(); break;
-      case 'res-seed': [['pv', 'PV'], ['pd', 'PD']].forEach(x => { if(!hub.resDraft.some(r => r.key === x[0])) hub.resDraft.push({ key:x[0], label:x[1], max:0 }); }); renderHub(); break;
       case 'res-save': saveResources(); break;
       case 'slots-save': saveSlots(); break;
       case 'give': giveItem(); break;
@@ -8913,7 +8952,6 @@
     if(bx) bx.addEventListener('click', () => { tacUI.bannerOff = tac.active; tacRenderArea(); });
   })();
 
-  function closeAllPanels(){ closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); if(typeof hudCloseSheets === 'function') hudCloseSheets(); }
   document.getElementById('hub-drawer-close-btn').addEventListener('click', closeHub);
   hubBackdrop.addEventListener('click', closeHub);
   document.getElementById('campaign-chip').addEventListener('click', () => openHub('campanhas'));
@@ -8934,8 +8972,8 @@
   const hudPlain = html => { const d = document.createElement('div'); d.innerHTML = html; return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
   const hudCol = () => !!(window.matchMedia && window.matchMedia('(min-width:1100px)').matches);
   const hud = { who:null, idxAdd:false, idxQ:'', mapf:new Set(), feed:{ f:'all', m:'all', seen:0, collapsed:false, sheet:false, tall:false, open:null, more:false } };
-  // f23: estado dos painéis, da cena e dos ajustes (por aparelho: tv-map:adv, tv-map:inv-view, tv-map:tour, tv-map:mesa-tab)
-  const LS_ADV = 'tv-map:adv', LS_INVV = 'tv-map:inv-view', LS_TOUR = 'tv-map:tour', LS_MESAT = 'tv-map:mesa-tab';
+  // f23: estado dos painéis, da cena e dos ajustes (por aparelho: tv-map:adv, tv-map:tour, tv-map:mesa-tab)
+  const LS_ADV = 'tv-map:adv', LS_TOUR = 'tv-map:tour', LS_MESAT = 'tv-map:mesa-tab';
   const F23 = { mesaTab:'feed', tacLive:false, scene:'explorar', sceneBy:'', sceneAt:0, sceneSeen:false, mstrip:false, filt:false, sig:'', verbs:[], fnItems:[], modalClose:null, modalPrev:null };
   const lsGet = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
   const lsSet = (k, v) => { try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){} };
@@ -9085,7 +9123,7 @@
       { id:'weather', ic:'snow', t:'Clima', d:m ? 'Ver e mudar o clima da mesa' : 'Ver o clima da mesa', kw:'clima tempo neblina vento tempestade nevasca animacao', run:() => { hudCloseSheets(); openWeatherPopover(); } },
       m ? { id:'scene', ic:'swords', t:'Cena da mesa', d:'Exploração, Combate ou Descanso', kw:'cena exploracao combate descanso verbos', run:() => { f23OpenMstrip(); } } : null,
       { id:'camp', ic:'layers', t:'Campanhas', d:'Trocar, criar e convidar com código', kw:'campanha convite codigo trocar nova arquivar excluir entrar', run:tab('campanhas') },
-      m ? { id:'cfg', ic:'sliders', t:'Configuração da campanha', d:'Nome, sistema, módulos e progressão', kw:'configuracao config nome sistema modulos nex nivel inventario', run:tab('campanhas', () => setTimeout(() => { const a = hudEl('cfg-anchor'); if(a) a.scrollIntoView({ block:'start' }); }, 60)) } : null,
+      m ? { id:'cfg', ic:'sliders', t:'Configuração da campanha', d:'Nome, sistema, módulos e progressão', kw:'configuracao config nome sistema modulos nex nivel inventario', run:tab('campanhas', () => { hub.mx = hub.mx || {}; hub.mx['c-cfg'] = true; renderHub(); setTimeout(() => { const a = hudEl('cfg-anchor'); if(a) a.scrollIntoView({ block:'start' }); }, 60); }) } : null,
       m ? { id:'master', ic:'lock', t:'Mestre', d:'Contêineres, recursos e backup', kw:'mestre conteiner backup restaurar recursos espacos necessidades', run:tab('mestre') } : null,
       m && adv ? { id:'csv', ic:'copy', t:'Registro de itens (CSV)', d:'Baixar o histórico de transações do inventário', kw:'registro csv exportar historico log baixar', run:() => { hudCloseSheets(); exportLogCsv(); } } : null,
       { id:'cfgapp', ic:'sliders', t:'Ajustes do app', d:'Ferramentas avançadas, mochila, atalhos e introdução', kw:'ajustes configuracoes avancadas ferramentas som instalar atalhos introducao tour lista grade', run:() => { hudCloseSheets(); f23OpenSettings(); } }
@@ -9109,26 +9147,23 @@
     const last = rollUI.last;
     let html = `<div class="sheet-grab" aria-hidden="true"></div><div class="sheet-head"><b>Rolar</b><button type="button" class="sheet-x" data-hud="close" aria-label="Fechar">${ic('close', 18)}</button></div>
       ${last ? `<div class="qr-last${last.sheet && last.sheet.crit ? ' crit' : ''}" role="status"><div class="qr-last-total">${last.total}</div><div><b>${esc(last.whoName || '')} · ${esc(last.skill || 'Rolagem')}</b><span>${esc(hudRollLine(last))}</span></div></div>` : ''}
-      <label class="hub-label" for="qr-who">Rolando como</label>
-      <select id="qr-who" data-hud-who><option value="">Sem personagem (só o seu nome)</option>${editable.map(x => opt(x.id, (x.type === 'npc' ? 'NPC · ' : '') + x.name, w)).join('')}</select>
-      <div class="hub-label">Dado único</div><div class="qr-dice">${DIE_SIDES.map(s => `<button type="button" class="qr-die" data-hud="die" data-s="${s}">d${s}</button>`).join('')}</div>
-      <div class="bonus-row"><button type="button" class="inv-mini-btn" data-hud="adv">Vantagem (2d20, maior)</button><button type="button" class="inv-mini-btn" data-hud="dis">Desvantagem (2d20, menor)</button></div>
-      <div class="expr-row"><input type="text" id="qr-expr" placeholder="Expressão (ex.: 2d6+3, 4d6kh3)" autocomplete="off" value="${esc(hud.qrExpr || '')}"><button type="button" class="inv-mini-btn primary" data-hud="expr">${ic('dice', 16)} Rolar</button></div>`;
+      <select id="qr-who" class="qr-who" data-hud-who data-native aria-label="Rolando como"><option value="">Sem personagem</option>${editable.map(x => opt(x.id, (x.type === 'npc' ? 'NPC · ' : '') + x.name, w)).join('')}</select>
+      <div class="qr-dice">${DIE_SIDES.map(s => `<button type="button" class="qr-die" data-hud="die" data-s="${s}" aria-label="Rolar d${s}">${dieSvg(s, 'd' + s, '', 'd' + s)}</button>`).join('')}<button type="button" class="qr-die qr-more" data-hud="full" aria-label="Mais dados">${ic('more', 22)}<span>Mais</span></button></div>
+      <div class="qr-advs"><button type="button" class="inv-mini-btn" data-hud="adv" title="2d20, fica o maior">Vantagem</button><button type="button" class="inv-mini-btn" data-hud="dis" title="2d20, fica o menor">Desvantagem</button></div>
+      <div class="expr-row"><input type="text" id="qr-expr" placeholder="Fórmula: 2d6+3" aria-label="Fórmula de dados" autocomplete="off" value="${esc(hud.qrExpr || '')}"><button type="button" class="inv-mini-btn primary" data-hud="expr">${ic('dice', 16)} Rolar</button></div>`;
     if(ordem && can){
       const rows = Object.keys(card.skillsV2 || {}).map(k => opSkillDef(card, k)).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
       const ov = opAttrOk(hud.qrAttr), pp = k => opParts(card, k, ov, 'skill');
-      html += `<label class="hub-label" for="qr-attr">Atributo desta rolagem</label>
-        <select id="qr-attr" data-hud-attr aria-label="Atributo desta rolagem"><option value="">Padrão de cada perícia / ataque</option>${OP_ATTRS.map(x => opt(x[0], x[1] + ' · ' + x[2] + ' (' + opAttrOf(card, x[0]) + ')', ov || '')).join('')}</select>
-        <p class="hub-hint">${ov ? 'Perícias e ataques abaixo rolam com ' + esc(opAttrLabel(ov)) + ' só enquanto esta folha estiver aberta.' : 'O valor do atributo é a quantidade de d20 (fica o maior; atributo 0 = 2d20, fica o menor).'}</p>
-        <div class="hub-label">Perícias de ${esc(h.name)}</div><div class="qr-chips">${rows.map(sd => { const q = pp(sd.key); return `<button type="button" class="qr-chip" data-hud="skill" data-k="${esc(sd.key)}" title="${esc(opPoolHelp(q.pool))}"><span>${esc(sd.name)}</span><b>${q.pool.label}${opSgn(opSum(q))}</b></button>`; }).join('') || '<span class="hub-hint">Adicione perícias na ficha.</span>'}</div>`;
+      html += `<div class="hub-label">Atributo</div>
+        <select id="qr-attr" data-hud-attr aria-label="Atributo desta rolagem"><option value="">Automático</option>${OP_ATTRS.map(x => opt(x[0], x[1] + ' ' + opAttrOf(card, x[0]), ov || '')).join('')}</select>
+        <div class="hub-label">Perícias</div><div class="qr-chips">${rows.map(sd => { const q = pp(sd.key); return `<button type="button" class="qr-chip" data-hud="skill" data-k="${esc(sd.key)}" title="${esc(opPoolHelp(q.pool))}"><span>${esc(sd.name)}</span><b>${q.pool.label}${opSgn(opSum(q))}</b></button>`; }).join('') || '<span class="hub-hint">Adicione perícias na ficha.</span>'}</div>`;
       if((card.attacks || []).length) html += `<div class="hub-label">Ataques</div>${card.attacks.map(a => { const crit = !!(hub.opCrit && hub.opCrit[a.id]); return `<div class="qr-atk"><span><b>${esc(a.name || 'Ataque')}</b><small>${esc(a.damage || '—')}</small></span>
         <button type="button" class="inv-mini-btn primary" data-hud="atk" data-id="${esc(a.id)}">${ic('dice', 16)} Ataque ${(() => { const q = opParts(card, a.skill || '', ov || a.attribute || '', 'attack'); return q.pool.label + opSgn(opSum(q)); })()}</button>
         <button type="button" class="inv-mini-btn ${crit ? 'op-crit-btn' : ''}" data-hud="dmg" data-id="${esc(a.id)}">Dano${crit ? ' crítico' : ''}</button></div>`; }).join('')}`;
     } else if(card && can && (card.skills || []).length){
-      html += `<div class="hub-label">Perícias salvas de ${esc(h.name)} (1d20 + bônus)</div><div class="qr-chips">${card.skills.map((s, i) => `<button type="button" class="qr-chip" data-hud="lskill" data-i="${i}"><span>${esc(s.name || 'Perícia')}</span><b>${opSgn(opNum(s.bonus))}</b></button>`).join('')}</div>`;
+      html += `<div class="hub-label">Perícias salvas</div><div class="qr-chips">${card.skills.map((s, i) => `<button type="button" class="qr-chip" data-hud="lskill" data-i="${i}"><span>${esc(s.name || 'Perícia')}</span><b>${opSgn(opNum(s.bonus))}</b></button>`).join('')}</div>`;
     }
-    html += `<button type="button" class="inv-mini-btn qr-full" data-hud="full">Abrir dados completos (atalhos, dados físicos, histórico)</button>`;
-    sh.innerHTML = html;
+        sh.innerHTML = html;
   }
   function hudWireQR(){
     const sh = hudEl('qr-sheet');
@@ -9144,8 +9179,8 @@
       switch(D.hud){
         case 'close': hudCloseSheets(); break;
         case 'die': await hudRoll([{ sign:1, n:1, sides:+D.s }], [], 'd' + D.s); break;
-        case 'adv': await hudRoll([{ sign:1, n:2, sides:20, kh:1 }], [], 'Vantagem (2d20, maior)'); break;
-        case 'dis': await hudRoll([{ sign:1, n:2, sides:20, kl:1 }], [], 'Desvantagem (2d20, menor)'); break;
+        case 'adv': await hudRoll([{ sign:1, n:2, sides:20, kh:1 }], [], 'Vantagem'); break;
+        case 'dis': await hudRoll([{ sign:1, n:2, sides:20, kl:1 }], [], 'Desvantagem'); break;
         case 'expr': { const pe = parseExpr(hud.qrExpr || ''); if(pe.error){ toast(pe.error, true); break; } await hudRoll(pe.terms, pe.bonus ? [{ label:'Fixo', value:pe.bonus }] : [], String(hud.qrExpr).trim()); break; }
         case 'skill': await opRollSkill(D.k, w, hud.qrAttr); break;
         case 'atk': await opRollAttack(D.id, w, hud.qrAttr); break;
@@ -9244,9 +9279,8 @@
     hudEl('feed-filters').innerHTML = HUD_FEED_FILTERS.map(x => `<button type="button" class="fd-chip${f.f === x[0] ? ' on' : ''}" data-fd="filter" data-v="${x[0]}" aria-pressed="${f.f === x[0]}">${x[1]}</button>`).join('');
     const mf = hudEl('feed-mfilters'); mf.hidden = !master;
     if(master) mf.innerHTML = HUD_FEED_M.map(x => `<button type="button" class="fd-chip${f.m === x[0] ? ' on' : ''}" data-fd="mfilter" data-v="${x[0]}" aria-pressed="${f.m === x[0]}">${x[1]}</button>`).join('');
-    const cap = hudCol() && !f.more ? 20 : 100;
-    hudEl('feed-list').innerHTML = items.length ? items.slice(0, cap).map(hudRow).join('') + (items.length > cap ? '<button type="button" class="inv-mini-btn fd-more" data-fd="more">Ver mais</button>' : '')
-      : '<div class="inv-empty">Nada por aqui ainda. Rolagens, itens e o diário da mesa aparecem neste feed.</div>';
+    hudEl('feed-list').innerHTML = items.length ? items.slice(0, HUD_FEED_MAX).map(hudRow).join('')
+      : '<div class="inv-empty">Nada por aqui ainda.</div>';
     hudFeedChip();
   }
   function hudFeedChip(){
@@ -9278,8 +9312,16 @@
     else { if(v){ closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets('feed'); } f.sheet = !!v; if(!v) f.tall = false; }
     hudFeedLayout();
   }
+  // o feed mostra só os 40 mais recentes; o histórico de rolagens guardado no banco é podado acima de 60 (o registro de itens e o diário não são tocados)
+  const HUD_FEED_MAX = 40, HUD_ROLLS_KEEP = 60;
+  function hudPruneRolls(){
+    if(!(isMaster() || !(campaignMeta && campaignMeta.masterId))) return;
+    const ks = Object.keys(rolls).filter(k => rolls[k]).sort((a, b) => (rolls[b].ts || 0) - (rolls[a].ts || 0));
+    ks.slice(HUD_ROLLS_KEEP).forEach(k => { delete rolls[k]; DB.set(scopedKey(KEY_ROLLS) + '/' + k, null); });
+  }
   function hudFeedChanged(){
     if(!hudReady) return;
+    hudPruneRolls();
     const f = hud.feed;
     if(hudCol() ? !f.collapsed : f.sheet) hudMarkSeen();
     hudRenderFeed();
@@ -9339,7 +9381,9 @@
     fichapBody.innerHTML = tmp.innerHTML;
     fichapBody.scrollTop = st;
   }
-  function hudMiniChanged(){ if(hudReady) hudRenderMini(); }
+  // adiado para o próximo ciclo: um campo que perde o foco dispara "change" ANTES de o foco chegar ao campo seguinte, e redesenhar nesse instante derrubava o toque no PD logo depois do PV
+  let miniT = 0;
+  function hudMiniChanged(){ if(!hudReady || miniT) return; miniT = setTimeout(() => { miniT = 0; hudRenderMini(); }, 0); }
   function hudWireMini(){
     const el = hudEl('mini');
     hudEl('mini-tab').addEventListener('click', () => { hud.miniOff = false; hudSavePrefs(); hudFeedLayout(); });
@@ -9785,7 +9829,6 @@
   ];
   const sceneById = id => SCENES.find(s => s.id === id) || SCENES[0];
   const f23Adv = () => lsGet(LS_ADV) === '1';
-  const f23InvView = () => lsGet(LS_INVV) === 'list' ? 'list' : 'grid';
   const f23Typing = () => { const a = document.activeElement; return !!(a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)); };
 
   // ---- sinais: papel, avançado, módulos. Só redesenha o que mudou ----
@@ -9873,9 +9916,9 @@
     if(!m){ el.hidden = true; F23.mstrip = false; return; }
     const t = chip.querySelector('.mc-t'); if(t) t.textContent = 'Mestre · ' + sc.name;
     const fa = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset : null;
-    el.innerHTML = `<div class="ms-label">Cena da mesa</div>
+    el.innerHTML = `<div class="ms-label">Cena da mesa <span>todos veem</span></div>
       <div class="ms-scene" role="group" aria-label="Cena da mesa">${SCENES.map(s => `<button type="button" class="ms-seg${s.id === F23.scene ? ' on' : ''}" data-ms="scene" data-id="${s.id}" aria-pressed="${s.id === F23.scene}">${ic(s.ic, 16)}<span>${s.name}</span></button>`).join('')}</div>
-      <div class="ms-hint">${esc(sc.hint)} Todos veem a mudança.</div>
+      <div class="ms-hint">${esc(sc.hint)}</div>
       <div class="ms-tools">
         <button type="button" role="menuitem" data-ms="weather">${ic('snow', 16)}<span>Clima</span></button>
         <button type="button" role="menuitem" data-ms="tac">${ic('swords', 16)}<span>Tático${F23.tacLive ? ' · ao vivo' : ''}</span></button>
@@ -9984,11 +10027,9 @@
   // ---- ajustes numa tela só ----
   function f23RenderCfg(){
     const el = hudEl('cfg-body'); if(!el) return;
-    const adv = f23Adv(), iv = f23InvView(), fa = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset.cfg + '|' + (document.activeElement.dataset.v || '') : null;
-    el.innerHTML = `<div class="cfg-row"><div class="cfg-t"><b>Ferramentas avançadas</b><span>Mostra os mapas Relevo e Nevado${isMaster() ? ' e o registro de itens (CSV)' : ''}. Vale só neste aparelho.</span></div>
+    const adv = f23Adv(), fa = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset.cfg + '|' + (document.activeElement.dataset.v || '') : null;
+    el.innerHTML = `<div class="cfg-row"><div class="cfg-t"><b>Ferramentas avançadas</b><span>Mapas Relevo e Nevado${isMaster() ? ' e registro de itens' : ''}</span></div>
         <button type="button" class="sw${adv ? ' on' : ''}" role="switch" aria-checked="${adv}" data-cfg="adv" aria-label="Ferramentas avançadas"><i></i></button></div>
-      <div class="cfg-row"><div class="cfg-t"><b>Mochila</b><span>Como os itens aparecem. Vale só neste aparelho.</span></div>
-        <div class="seg" role="group" aria-label="Mochila"><button type="button" data-cfg="invv" data-v="grid" aria-pressed="${iv === 'grid'}">Grade</button><button type="button" data-cfg="invv" data-v="list" aria-pressed="${iv === 'list'}">Lista</button></div></div>
       <div class="cfg-row cfg-btns"><button type="button" class="inv-mini-btn" data-cfg="keys">${ic('sliders', 15)} Atalhos de teclado</button><button type="button" class="inv-mini-btn" data-cfg="tour">${ic('eye', 15)} Rever a introdução</button></div>`;
     if(fa){ const p = fa.split('|'); const n = el.querySelector('[data-cfg="' + p[0] + '"]' + (p[1] ? '[data-v="' + p[1] + '"]' : '')); if(n) n.focus({ preventScroll:true }); }
   }
@@ -10002,12 +10043,6 @@
     f23Refresh(true);
     if(typeof layerAdvSync === 'function') layerAdvSync();
   }
-  function f23SetInvView(v){
-    lsSet(LS_INVV, v === 'list' ? 'list' : 'grid');
-    f23RenderCfg();
-    if(invDrawer.classList.contains('open')) renderInvDrawer();
-  }
-
   // ---- janelinha própria (introdução e atalhos) ----
   function f23Modal(html, onClose){
     let m = hudEl('f23-modal');
@@ -10107,7 +10142,6 @@
       const b = e.target.closest('[data-cfg]'); if(!b) return;
       const k = b.dataset.cfg;
       if(k === 'adv') f23SetAdv(!f23Adv());
-      else if(k === 'invv') f23SetInvView(b.dataset.v);
       else if(k === 'keys'){ const p = appPopovers.find(x => x.popover.id === 'menu-popover'); if(p) p.close(); f23Help(); }
       else if(k === 'tour'){ const p = appPopovers.find(x => x.popover.id === 'menu-popover'); if(p) p.close(); f23Tour(0); }
     });

@@ -662,3 +662,44 @@ Uma entrega só, com tudo do desenho "Layout definitivo" que valeu a pena, aplic
 **Testes.** Regressão completa: **44 suítes, 1.621 verificações, nenhuma falha**, mais uma suíte nova do f23 (`t_f23`, 85 verificações: papéis, cenas, Mesa, ficha, filtros, busca, tour, teclado, celular e computador). Cerca de 20 suítes antigas foram atualizadas para a navegação nova (dock de 4 abas, busca no lugar do Índice, chips de filtro dentro de "Filtros", ficha na coluna). O arquivo `op-atributos.png` dá aviso de CORS quando o app é aberto direto do disco (`file://`); no GitHub Pages é a mesma origem e o aviso não existe, então os testes ignoram só essa mensagem. Verificação visual em 390 e 1280 px. Não testei em aparelho físico nem no Opera GX/Brave; a animação do clima segue a seção 35.
 
 **Arquivos que mudam:** `app.js`, `style.css`, `index.html` (`?v=f23`), `AUDITORIA-E-MUDANCAS.md`, `firebase-rules.SUGESTAO-v3.json`.
+
+## 37. Todos os painéis redesenhados: mais direto, mais jogo, melhor no celular (f24)
+
+Uma entrega só. Os painéis foram refeitos por dentro (mesmo app, mesmos dados do Firebase), com menos texto e menos botões soltos. **As versões antigas foram apagadas**, não ficam como opção.
+
+**Ficha.**
+- **PV e PD** são campos que se editam direto (atual / máximo), sem as setas dos lados. Mexer em um campo e passar para o outro não perde mais a digitação.
+- **Condições** viram bolinhas-chip: toque liga e desliga. "+ condição" abre as demais e o campo para condição própria.
+- **Perícias:** o treino é feito por **pontinhos** (1 Treinado, 2 Veterano, 3 Expert). Tocar no último pontinho aceso tira um grau. O total fica no botão de rolar. Tocar no nome abre atributo e bônus.
+- **Defesas** (DEF, ESQ, BLO) em três blocos; "Ajustar defesas" abre os campos de equipamento/extras. Vulnerável aparece como uma linha curta.
+- NEX anda de 5 em 5 (5% a 95%, depois 99%).
+
+**Token (clique no mapa).** Sem "trocar o ícone do token". O cartão mostra só o que importa. Lugares vindos do OpenStreetMap mostram a origem numa linha pequena.
+
+**Saque.** Peças em blocos (nome em destaque); o catálogo fica recolhido até pedir ("Procurar no catálogo").
+
+**Mochila.** Só a grade (o modo lista foi removido). Tocar numa peça abre o detalhe embaixo; faixa de equipamento fixa.
+
+**Dados.** Teclado de dados com os 7 dados e "Dados completos". O histórico repetido saiu: as rolagens aparecem no **feed**.
+
+**Feed.** Mostra as últimas **40** entradas. A campanha guarda no máximo **60** rolagens (as mais antigas são apagadas sozinhas).
+
+**Mestre (agora usável no celular).** Seções que abrem e fecham (Contêineres, Espaços de equipamento, Necessidades em grupo, Recursos extras, Backup). "Entregar item" fica sempre visível. Faixa "Cena da mesa" mais limpa.
+- **Sessão:** cartão da sessão ao vivo com resumo; "Nova sessão" com chips de presença; "Anteriores" recolhido.
+- **Campanhas:** cartão por campanha ("Ativa", Abrir), código de convite copiável, menu "Mais" (trocar código, arquivar, reabrir, excluir), "Entrar com código", e "Configurar esta campanha" com botão Salvar fixo embaixo.
+
+**Removido:** troca de ícone do token, modo lista da Mochila, setas ± do PV/PD, histórico de dados, textos de tutorial repetidos, botão e recursos legados do "res-seed", ~50 regras de CSS sem uso e funções mortas do JavaScript.
+
+**Correções que apareceram nos testes.**
+- Editar PV e logo depois o máximo de PD perdia o segundo valor (a ficha era redesenhada antes do foco trocar). Redesenhos agora esperam o campo terminar.
+- Um eco do banco podia apagar uma edição de ficha ainda não salva (espera de ~0,65 s). Agora a edição local vence até salvar.
+- Um redesenho do painel durante o `blur` de um campo causava erro "node to be removed is no longer a child" no console; o desenho agora é protegido contra reentrada.
+- Balão do pin muito alto sobre a dock: ganhou altura máxima com rolagem.
+
+**Regras do Firebase:** nenhuma mudança (use o mesmo `firebase-rules.SUGESTAO-v3.json` do f23).
+
+**Observação.** As fontes (Chakra Petch e Barlow) vêm do Google Fonts; sem internet o app usa a fonte do aparelho.
+
+**Testes.** Regressão completa: 41 suítes de verificação, nenhuma falha, incluindo a suíte nova `t_f24` (59 verificações: ficha, condições, pontinhos, Saque, Mochila, Dados, Mestre, Sessão, Campanhas, celular e computador). As suítes antigas foram atualizadas para os painéis novos.
+
+**Arquivos que mudam:** `app.js`, `style.css`, `index.html` (`?v=f24`), `AUDITORIA-E-MUDANCAS.md`.

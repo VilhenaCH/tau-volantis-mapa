@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Tau Volantis">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="style.css?v=f23">
+<link rel="stylesheet" href="style.css?v=f24">
 </head>
 <body>
 
@@ -307,86 +307,73 @@
   <div class="drawer-backdrop" id="drawer-backdrop"></div>
   <div id="saque-drawer">
     <div class="drawer-header">
-      <div class="eyebrow">Tau Volantis · Protocolo de Saque</div>
-      <h2>Registro de Saque
-        <button type="button" class="drawer-close" id="drawer-close-btn" title="Fechar">&times;</button>
+      <h2>Saque
+        <button type="button" class="drawer-close" id="drawer-close-btn" title="Fechar" aria-label="Fechar">&times;</button>
       </h2>
     </div>
     <div class="drawer-body">
 
-      <p class="section-label">Personagem &amp; Discord</p>
-      <div class="discord-panel">
-        <div class="dp-title">Personagem (do mapa)</div>
-        <select id="char-select">
+      <div class="sq-who">
+        <select id="char-select" data-native aria-label="Personagem que vasculha">
           <option value="">Sobrevivente desconhecido</option>
         </select>
-        <div class="char-hint">Espelha os tokens marcados no mapa. Crie um token com o nome do personagem para ele aparecer aqui — o saque/pesca usa a posição do token pra registrar a coordenada aproximada.</div>
-        <div class="inv-link-row">
-          <span id="saque-inv-count">Inventário: —</span>
-          <button type="button" class="inv-mini-btn" id="saque-open-inv"><span data-ic="bag" data-ic-size="14"></span> Abrir inventário</button>
-        </div>
-        <div class="inv-dest-row" id="loot-pin-row" style="display:none;">
-          <label for="loot-pin-select">Local (pin) do saque</label>
-          <select id="loot-pin-select"></select>
-        </div>
-        <div class="dp-title" style="margin-top:0.3rem;">Webhook do Discord</div>
-        <select id="webhook-mode" aria-label="Qual webhook usar">
-          <option value="fixed">Webhook fixo da mesa</option>
-          <option value="custom">Outro webhook (colar o link)</option>
-          <option value="none">Não enviar ao Discord</option>
-        </select>
-        <input type="text" id="webhook-input" placeholder="https://discord.com/api/webhooks/..." value="" style="display:none;" autocomplete="off">
-        <label class="dp-toggle"><input type="checkbox" id="auto-send" checked> Enviar automaticamente a cada busca</label>
-        <label class="dp-toggle"><input type="checkbox" id="search-anim" checked> Animação de busca (roleta)</label>
-        <div class="dp-note credits">Ícones dos itens: <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> (CC BY 3.0) — Lorc, Delapouite e colaboradores.</div>
-        <div class="dp-note">A escolha e o link próprio ficam salvos só neste dispositivo. O webhook fixo é o da mesa. Vale para saque, clima e rolagens.</div>
+        <button type="button" class="sq-inv" id="saque-open-inv" aria-label="Abrir inventário"><span data-ic="bag" data-ic-size="18"></span><b id="saque-inv-count">—</b></button>
+      </div>
+      <div class="sq-pin" id="loot-pin-row" style="display:none;">
+        <label for="loot-pin-select">Guardar no pin</label>
+        <select id="loot-pin-select"></select>
       </div>
 
-      <p class="section-label">Locais urbanos e industriais</p>
+      <p class="sq-h">Cidade</p>
       <div class="loc-grid" id="loc-grid"></div>
 
-      <p class="section-label">Áreas rurais e selvagens</p>
+      <p class="sq-h">Campo e mata</p>
       <div class="loc-grid rural" id="loc-grid-rural"></div>
+      <button type="button" class="loc-card fish" id="fish-btn" aria-label="Pescar em rios, igarapés e margens"><span class="lc-ic" data-fish-ic></span><span class="lc-nm">Pescar</span><span class="lc-ct">Rios, igarapés e margens</span></button>
+      <div class="search-stage" id="fish-stage" hidden role="status" aria-live="polite"></div>
+      <div id="fish-result"></div>
 
-      <p class="section-label">Pescaria</p>
-      <div class="fish-panel">
-        <h3><span data-ic="fish" data-ic-size="18"></span> Rios, Igarapés e Margens</h3>
-        <p>O personagem selecionado lança a linha e tenta a sorte — pode não fisgar nada, ou trazer desde um peixe comum até uma captura rara.</p>
-        <button class="fish-btn" id="fish-btn">Lançar a linha</button>
-        <div class="search-stage" id="fish-stage" hidden role="status" aria-live="polite"></div>
-        <div id="fish-result"><div class="fish-empty">Nenhuma tentativa de pesca ainda.</div></div>
-      </div>
-
-      <p class="section-label">Resultado da busca</p>
       <div class="search-stage" id="loot-stage" hidden role="status" aria-live="polite"></div>
-      <div id="result-zone">
-        <div class="empty-hint">Nenhuma busca realizada ainda. Clique em um local acima para vasculhar.</div>
-      </div>
+      <div id="result-zone"></div>
 
-      <div style="margin-top:1.6rem;">
-        <button class="browse-toggle" id="saque-browse-toggle">▸ Ver tabela completa de itens</button>
-        <div id="saque-browse-panel">
-          <div class="inv-dest-row">
-            <label for="item-add-dest">Adicionar ao inventário de:</label>
-            <select id="item-add-dest"></select>
-          </div>
-          <div class="filter-row">
-            <input type="text" id="item-search-input" placeholder="Buscar por nome, capacidade ou texto...">
-            <select id="item-filter-cat" aria-label="Filtrar por tipo de item">
-              <option value="">Todos os tipos</option>
-            </select>
-            <select id="item-filter-tag" aria-label="Filtrar por capacidade ou material">
-              <option value="">Qualquer capacidade</option>
-            </select>
-          </div>
-          <div style="max-height:420px; overflow:auto; border:1px solid var(--line);">
-            <table>
-              <thead>
-                <tr><th style="width:34%">Item</th><th>Utilidade</th><th style="width:16%"></th></tr>
-              </thead>
-              <tbody id="item-table-body"></tbody>
-            </table>
-          </div>
+      <details class="sq-set">
+        <summary><span data-ic="sliders" data-ic-size="18"></span> Ajustes do saque</summary>
+        <div class="sq-set-body">
+          <div class="sq-lb">Enviar para o Discord</div>
+          <select id="webhook-mode" aria-label="Qual webhook usar">
+            <option value="fixed">Webhook da mesa</option>
+            <option value="custom">Outro webhook</option>
+            <option value="none">Não enviar</option>
+          </select>
+          <input type="text" id="webhook-input" placeholder="https://discord.com/api/webhooks/..." aria-label="Link do webhook" value="" style="display:none;" autocomplete="off">
+          <label class="dp-toggle"><input type="checkbox" id="auto-send" checked> Enviar a cada busca</label>
+          <label class="dp-toggle"><input type="checkbox" id="search-anim" checked> Animação de busca</label>
+          <div class="sq-credit">Ícones: <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> (CC BY 3.0), Lorc, Delapouite e colaboradores.</div>
+        </div>
+      </details>
+
+      <button type="button" class="browse-toggle" id="saque-browse-toggle" aria-expanded="false">Catálogo de itens</button>
+      <div id="saque-browse-panel">
+        <div class="sq-pin">
+          <label for="item-add-dest">Adicionar ao inventário de</label>
+          <select id="item-add-dest"></select>
+        </div>
+        <div class="filter-row">
+          <input type="text" id="item-search-input" placeholder="Buscar item" aria-label="Buscar item" enterkeyhint="search">
+          <select id="item-filter-cat" aria-label="Filtrar por tipo de item">
+            <option value="">Todos os tipos</option>
+          </select>
+          <select id="item-filter-tag" aria-label="Filtrar por capacidade ou material">
+            <option value="">Qualquer capacidade</option>
+          </select>
+        </div>
+        <div class="sq-cat-list">
+          <table>
+            <thead>
+              <tr><th>Item</th><th>Utilidade</th><th></th></tr>
+            </thead>
+            <tbody id="item-table-body"></tbody>
+          </table>
         </div>
       </div>
 
@@ -396,7 +383,6 @@
   <div class="drawer-backdrop" id="hub-drawer-backdrop"></div>
   <div id="hub-drawer" role="dialog" aria-label="Mesa de jogo">
     <div class="drawer-header">
-      <div class="eyebrow" id="hub-eyebrow">Tau Volantis · Mesa</div>
       <h2><span id="hub-title">Mesa de jogo</span>
         <button type="button" class="drawer-close" id="hub-drawer-close-btn" title="Fechar" aria-label="Fechar">&times;</button>
       </h2>
@@ -429,28 +415,27 @@
   <div class="drawer-backdrop" id="inv-drawer-backdrop"></div>
   <div id="inv-drawer">
     <div class="drawer-header">
-      <div class="eyebrow">Tau Volantis · Mochila</div>
-      <h2>Inventário
-        <button type="button" class="drawer-close" id="inv-drawer-close-btn" title="Fechar">&times;</button>
+      <h2>Mochila
+        <button type="button" class="drawer-close" id="inv-drawer-close-btn" title="Fechar" aria-label="Fechar">&times;</button>
       </h2>
     </div>
     <div class="drawer-body">
-      <select id="inv-holder-select" data-nochips></select>
+      <select id="inv-holder-select" data-nochips aria-label="Mochila de"></select>
 
       <div id="inv-pane-inv">
         <div class="inv-cap">
           <div class="inv-cap-bar"><i id="inv-cap-fill"></i></div>
-          <span id="inv-cap-text">0 / 20</span>
+          <span id="inv-cap-text">0/20</span>
         </div>
         <div id="inv-extra"></div>
         <div class="inv-toolbar">
-          <input type="text" id="inv-filter" placeholder="Filtrar por nome…" autocomplete="off" aria-label="Filtrar itens por nome">
+          <input type="text" id="inv-filter" placeholder="Buscar na mochila" autocomplete="off" aria-label="Buscar itens por nome" enterkeyhint="search">
           <select id="inv-cat" aria-label="Filtrar por categoria" data-chips="scroll"><option value="">Todas as categorias</option></select>
         </div>
-        <div class="inv-item-actions">
-          <button type="button" class="inv-mini-btn" id="inv-trade-open">⇄ Trocar com outro…</button>
-          <button type="button" class="inv-mini-btn" id="inv-merge" title="Junta pilhas iguais">▣ Agrupar iguais</button>
-          <button type="button" class="inv-mini-btn" id="inv-find" title="Abrir saque e pesca">Procurar itens</button>
+        <div class="inv-acts">
+          <button type="button" class="inv-mini-btn" id="inv-trade-open"><span data-ic="users" data-ic-size="16"></span>Trocar</button>
+          <button type="button" class="inv-mini-btn" id="inv-merge" title="Junta pilhas iguais"><span data-ic="layers" data-ic-size="16"></span>Agrupar</button>
+          <button type="button" class="inv-mini-btn" id="inv-find" title="Abrir o Saque"><span data-ic="search" data-ic-size="16"></span>Procurar</button>
         </div>
         <div id="inv-trade-panel"></div>
         <div id="inv-list"></div>
@@ -464,6 +449,6 @@
 <!-- Efeitos sonoros: para desligar de vez, troque true por false. O jogador também liga/desliga em Menu → Som. -->
 <script>window.TV_SOUND = true;</script>
 <script src="tv-icons.js"></script>
-  <script src="app.js?v=f23"></script>
+  <script src="app.js?v=f24"></script>
 </body>
 </html>
