@@ -703,3 +703,33 @@ Uma entrega só. Os painéis foram refeitos por dentro (mesmo app, mesmos dados 
 **Testes.** Regressão completa: 41 suítes de verificação, nenhuma falha, incluindo a suíte nova `t_f24` (59 verificações: ficha, condições, pontinhos, Saque, Mochila, Dados, Mestre, Sessão, Campanhas, celular e computador). As suítes antigas foram atualizadas para os painéis novos.
 
 **Arquivos que mudam:** `app.js`, `style.css`, `index.html` (`?v=f24`), `AUDITORIA-E-MUDANCAS.md`.
+
+
+---
+
+# Rodada f25 — UI/UX proporcional e fim das travadas
+
+Arquivos tocados: `style.css`, `app.js`, `index.html` (só o cabeçalho e a posição dos palcos da roleta). Nenhum dado, regra de jogo ou caminho do Firebase mudou.
+
+## O que travava (e o que foi feito)
+
+| Sintoma | Causa real (medida com trace do Chromium) | Correção |
+|---|---|---|
+| Fechar/abrir ficha lateral e Mesa no PC | O recuo do mapa era uma variável CSS no `<body>`: cada toggle refazia o estilo da página inteira (~7,5 mil elementos). Pins com animação infinita e `body:has()` pioravam. | Largura fixa `--rail` e variáveis `--l/--r` só nos elementos que as usam; `:has()` trocado por classes; ping dos pins agora para (3 ciclos); só re-renderiza o painel que mudou; a lista de Camadas (3,3 mil nós) só monta quando abre. |
+| Roleta do saque lenta | Dezenas de linhas animadas por `top`/`setTimeout`, relayout a cada passo; palco ficava abaixo da dobra no PC. | Uma única tira animada por transform (Web Animations, vai para a GPU); 1 item ≈ 1,7 s, 5 itens ≈ 3 s (antes 6,5–9 s); o palco flutua no topo do painel e não desloca a lista. Botão **Pular** continua. |
+| Gavetas (saque, mochila, mesa, tático) | `backdrop-filter` em 14 lugares, transição de altura. | Removidos; só transform/opacity; gavetas fechadas ficam `visibility:hidden`. |
+| Mapa tático | Mapa principal continuava renderizando por baixo; `invalidateSize` a cada resize. | Mapa principal fica em `content-visibility:hidden` enquanto o tático está aberto; resize no máximo 1× por frame. |
+
+Medição (Chromium, CPU 4× mais lento, tempo de tarefa na janela da ação): fechar ficha 773→621 ms (pior frame 250→83), reabrir ficha 568→375, fechar Mesa 633→465, abrir saque 482→259, roleta 2090→492–945 ms de CPU, abrir mapa tático 328→146, abrir painel tático 278→85, trocar painel tático 270→40.
+
+## Sistema visual
+
+- Proporção: trilho lateral `--rail: clamp(320px, 25vw, 420px)`; gavetas `--drawer = trilho × 1,25`; cabeçalho de 56 px; botão de fechar 40 px em todos os painéis.
+- Escala: espaços `--sp-1..5`, raios `--r-xs..lg`, tipos `--fs-xs..xl`; texto mínimo de 12 px; rótulos em caixa normal (sem MAIÚSCULAS espaçadas); movimento 190 ms entra / 130 ms sai; `prefers-reduced-motion` respeitado.
+- Mapa tático: cabeçalho igual ao do app, barra de ferramentas flutuante centralizada no espaço livre, ferramentas em gaveta lateral (PC) ou folha inferior (celular), estado vazio com ação ("Criar cena"), zoom no canto esquerdo, a cena se enquadra na área visível.
+- Cabeçalho: removido o "TAU VOLANTIS // CAMPO"; o nome do app não é mais cortado no celular (quem encolhe é o chip da campanha).
+
+## Para testar no seu aparelho
+1. Saque: clique num local e veja a roleta no topo do painel; "Pular" encerra na hora.
+2. Fechar/abrir a ficha e a Mesa várias vezes seguidas com o mapa cheio de pins.
+3. Mapa tático (mestre): criar cena, abrir Cena/Token/Combate/Dados, voltar ao mapa.

@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Tau Volantis">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="style.css?v=f24">
+<link rel="stylesheet" href="style.css?v=f25">
 </head>
 <body>
 
@@ -42,8 +42,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="17" x2="20" y2="17"></line></svg>
         </button>
         <div class="app-header-title">
-          <span class="app-header-eyebrow">Tau Volantis // Campo</span>
-          <span class="app-header-name">Mapa de <span>Sobrevivência</span></span>
+          <span class="app-header-name">Tau Volantis</span>
           <button type="button" class="campaign-chip" id="campaign-chip" aria-label="Campanha ativa"></button>
         </div>
         <button class="header-btn" id="search-toggle-btn" type="button" aria-label="Buscar" aria-expanded="false">
@@ -324,16 +323,18 @@
         <select id="loot-pin-select"></select>
       </div>
 
+      <!-- f25: palcos da roleta ficam no topo e flutuam sobre a lista (altura 0): a busca é sempre visível e nada se desloca -->
+      <div class="search-stage" id="fish-stage" hidden role="status" aria-live="polite"></div>
+      <div class="search-stage" id="loot-stage" hidden role="status" aria-live="polite"></div>
+
       <p class="sq-h">Cidade</p>
       <div class="loc-grid" id="loc-grid"></div>
 
       <p class="sq-h">Campo e mata</p>
       <div class="loc-grid rural" id="loc-grid-rural"></div>
       <button type="button" class="loc-card fish" id="fish-btn" aria-label="Pescar em rios, igarapés e margens"><span class="lc-ic" data-fish-ic></span><span class="lc-nm">Pescar</span><span class="lc-ct">Rios, igarapés e margens</span></button>
-      <div class="search-stage" id="fish-stage" hidden role="status" aria-live="polite"></div>
       <div id="fish-result"></div>
 
-      <div class="search-stage" id="loot-stage" hidden role="status" aria-live="polite"></div>
       <div id="result-zone"></div>
 
       <details class="sq-set">
@@ -449,6 +450,6 @@
 <!-- Efeitos sonoros: para desligar de vez, troque true por false. O jogador também liga/desliga em Menu → Som. -->
 <script>window.TV_SOUND = true;</script>
 <script src="tv-icons.js"></script>
-  <script src="app.js?v=f24"></script>
+  <script src="app.js?v=f25"></script>
 </body>
 </html>

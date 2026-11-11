@@ -1223,6 +1223,13 @@
   }
 
   // ---------- pin icon factory ----------
+  // f25: setIcon() recria o DOM do marcador (e reinicia pinDrop/ping). Só troca quando o HTML realmente mudou.
+  function iconSig(icon){ const o = icon.options; return (o.className || '') + '|' + (o.html || '') + '|' + (o.iconSize || ''); }
+  function setIconIfChanged(marker, icon){
+    const sig = iconSig(icon);
+    if(marker._sig === sig) return;
+    marker._sig = sig; marker.setIcon(icon);
+  }
   function pinIcon(pin){
     if(pin.type === 'lugar') return lgIcon(pin);
     const typeId = pin.type;
@@ -1473,7 +1480,7 @@
       // com popup aberto localmente (é o próprio, por isso fazemos aqui)
       const marker = pinMarkers[pin.id];
       if(marker){
-        marker.setIcon(pinIcon(pin));
+        setIconIfChanged(marker, pinIcon(pin));
         if(marker.dragging){ if(pin.locked) marker.dragging.disable(); else marker.dragging.enable(); }
       }
       renderPins();
@@ -1791,7 +1798,9 @@
       seen.add(pin.id);
       let marker = pinMarkers[pin.id];
       if(!marker){
-        marker = L.marker([pin.lat, pin.lng], { icon: pinIcon(pin), draggable: !pin.locked });
+        const ic0 = pinIcon(pin);
+        marker = L.marker([pin.lat, pin.lng], { icon: ic0, draggable: !pin.locked });
+        marker._sig = iconSig(ic0);
         marker._pinId = pin.id;
         marker.on('click', (e) => { L.DomEvent.stopPropagation(e); if(pin.type === 'lugar') lgOpen(pin.id); });
         marker.on('dragstart', () => { pinDraggingId = pin.id; });
@@ -1818,7 +1827,7 @@
         // aberto localmente, este marcador específico não é tocado
         const ll = marker.getLatLng();
         if(ll.lat !== pin.lat || ll.lng !== pin.lng) marker.setLatLng([pin.lat, pin.lng]);
-        marker.setIcon(pinIcon(pin));
+        setIconIfChanged(marker, pinIcon(pin));
         if(marker.dragging){ if(pin.locked) marker.dragging.disable(); else marker.dragging.enable(); }
       }
     });
@@ -2783,14 +2792,16 @@
     navDrawer.classList.remove('open');
     navDrawerBackdrop.classList.remove('open');
   }
-  navSearchInput.addEventListener('input', renderNavList);
+  navSearchInput.addEventListener('input', () => renderNavList(true));
 
   document.getElementById('token-select-toggle-btn').addEventListener('click', () => {
     setTokenSelectMode(!tokenSelectMode);
   });
 
-  function renderNavList(){
+  // f25: a lista de Camadas só é montada com a folha aberta (antes eram ~3.300 elementos sempre presentes e re-criados a cada mudança de pin)
+  function renderNavList(force){
     if(typeof invHoldersChanged === 'function') invHoldersChanged();
+    if(force !== true && !navDrawer.classList.contains('open')) return;
     const listPins = document.getElementById('nav-list-pins');
     const listTokens = document.getElementById('nav-list-tokens');
     const listShapes = document.getElementById('nav-list-shapes');
@@ -3588,7 +3599,7 @@
     if(!lgCanEdit(pin)) return;
     pin.locked = !pin.locked;
     const mk = pinMarkers[pin.id];
-    if(mk){ mk.setIcon(pinIcon(pin)); if(mk.dragging){ if(pin.locked) mk.dragging.disable(); else mk.dragging.enable(); } }
+    if(mk){ setIconIfChanged(mk, pinIcon(pin)); if(mk.dragging){ if(pin.locked) mk.dragging.disable(); else mk.dragging.enable(); } }
     saveKey(KEY_PINS, pins); renderPins();
     lgFill(pin);
     toast(pin.locked ? 'Lugar fixado no mapa.' : 'Lugar solto: dá para arrastar.');
@@ -4123,55 +4134,71 @@
   }
   // O resultado já foi sorteado e registrado antes de a animação começar:
   // ela é só visual (fechar a página no meio não muda nada).
+  // f25: a roleta agora é UMA tira de linhas deslizando com transform (Web Animations, roda no compositor).
+  // Antes cada passo reescrevia o HTML, forçava reflow e esperava até 220 ms, então uma busca de 3 itens levava ~4,5 s
+  // e engasgava sempre que o resto da página estava ocupado. Agora: ~0,9 s no primeiro item e ~0,55 s nos seguintes.
   function playSearch(opts){
-    const stage = opts.stage, pool = opts.pool, found = opts.found;
+    const stage = opts.stage, pool = (opts.pool && opts.pool.length) ? opts.pool : null, found = opts.found;
     return new Promise(resolve => {
-      let skipped = false, finished = false;
+      let skipped = false, finished = false, anim = null;
       const timers = [];
       const wait = ms => new Promise(r => { timers.push(setTimeout(r, ms)); });
       stage.hidden = false;
-      stage.innerHTML = `
+      stage.innerHTML = `<div class="ss-card">
         <div class="ss-head"><span class="ss-title"></span><button type="button" class="ss-skip">Pular</button></div>
-        <div class="ss-reel" aria-hidden="true"><div class="ss-row ss-prev"></div><div class="ss-row ss-cur"></div><div class="ss-row ss-next"></div></div>
-        <div class="ss-found"></div>`;
-      const titleEl = stage.querySelector('.ss-title'), reel = stage.querySelector('.ss-reel');
-      const rPrev = stage.querySelector('.ss-prev'), rCur = stage.querySelector('.ss-cur'), rNext = stage.querySelector('.ss-next');
+        <div class="ss-win" aria-hidden="true"><div class="ss-strip"></div><div class="ss-sel"></div></div>
+        <div class="ss-found"></div></div>`;
+      const titleEl = stage.querySelector('.ss-title'), strip = stage.querySelector('.ss-strip'), sel = stage.querySelector('.ss-sel');
       const foundBox = stage.querySelector('.ss-found');
       titleEl.textContent = opts.title;
-      const rowHtml = it => `<span class="item-icon" aria-hidden="true">${svgIcon(it._icon || itemIconName(it))}</span><span class="ss-name">${escapeHtml(it.name)}</span>`;
+      const rowHtml = it => `<div class="ss-row"><span class="item-icon" aria-hidden="true">${svgIcon(it._icon || itemIconName(it))}</span><span class="ss-name">${escapeHtml(it.name)}</span></div>`;
       const rand = prev => {
+        if(!pool) return { name:'…', _icon:'hole', category:'' };
         let it, g = 0;
         do{ it = pool[Math.floor(Math.random() * pool.length)]; }while(it === prev && pool.length > 1 && g++ < 6);
         return it;
       };
-      const paint = (a, b, c2, landed) => {
-        rPrev.innerHTML = rowHtml(a); rCur.innerHTML = rowHtml(b); rNext.innerHTML = rowHtml(c2);
-        rCur.classList.toggle('ss-landed', !!landed);
-      };
+      let last = rand(null);   // item que está no centro da janela agora
       const finish = () => {
         if(finished) return;
         finished = true;
         timers.forEach(clearTimeout);
+        if(anim){ try{ anim.cancel(); }catch(e){} anim = null; }
         stage.hidden = true; stage.innerHTML = '';
         resolve();
       };
       stage.querySelector('.ss-skip').addEventListener('click', () => { skipped = true; TVSound.stop(); finish(); });
-      async function spinTo(target, steps, endDelay){
-        let cur = rand(null), nxt = rand(cur), prv = rand(cur);
-        for(let i = 0; i < steps && !skipped; i++){
-          const t = steps > 1 ? i / (steps - 1) : 1;
-          prv = cur; cur = nxt; nxt = rand(cur);
-          paint(prv, cur, nxt, false);
-          reel.classList.remove('ss-tick'); void reel.offsetWidth; reel.classList.add('ss-tick'); TVSound.tick();
-          await wait(55 + (endDelay - 55) * t * t);   // desacelera até parar
+      async function spinTo(target, rows, ms){
+        // tira: [anterior, atual, ...sorteados..., alvo, seguinte]; a janela mostra 3 linhas e o centro é a segunda
+        const list = [rand(last), last];
+        for(let i = 0; i < rows - 1; i++) list.push(rand(list[list.length - 1]));
+        list.push(target); list.push(rand(target));
+        strip.innerHTML = list.map(rowHtml).join('');
+        sel.classList.remove('landed');
+        const rowPx = strip.firstElementChild.offsetHeight || 42, dist = rows * rowPx;
+        strip.style.transform = 'translateY(0)';
+        if(!strip.animate){ strip.style.transform = `translateY(${-dist}px)`; await wait(140); }
+        else {
+          anim = strip.animate([{ transform:'translateY(0)' }, { transform:`translateY(${-dist}px)` }], { duration:ms, easing:'cubic-bezier(.215,.61,.355,1)', fill:'forwards' });
+          // um "tique" por linha que passa pelo centro (curva ease-out-cubic), sem rajada de sons no começo
+          let lastTick = -99;
+          for(let i = 1; i <= rows; i++){
+            const t = (1 - Math.pow(1 - i / rows, 1 / 3)) * ms;
+            if(t - lastTick < 42 && i < rows - 3) continue;
+            lastTick = t; timers.push(setTimeout(() => { if(!skipped) TVSound.tick(); }, t));
+          }
+          await new Promise(r => { anim.onfinish = r; anim.oncancel = r; });
         }
         if(skipped) return;
-        paint(rand(target._icon ? null : target), target, rand(target._icon ? null : target), true); TVSound.play('land');
+        strip.style.transform = `translateY(${-dist}px)`;
+        if(anim){ anim.cancel(); anim = null; }
+        strip.children[rows + 1].classList.add('ss-landed'); sel.classList.add('landed'); TVSound.play('land');
+        last = target;
       }
       (async () => {
         for(let k = 0; k < found.length && !skipped; k++){
           titleEl.textContent = found.length > 1 ? `${opts.title} (${k + 1}/${found.length})` : opts.title;
-          await spinTo(found[k], k === 0 ? 14 : 9, k === 0 ? 220 : 180);
+          await spinTo(found[k], k === 0 ? 14 : 8, k === 0 ? 800 : 420);
           if(skipped) return;
           const it = found[k], rar = opts.rarity ? opts.rarity(it) : null;
           const chip = document.createElement('div');
@@ -4179,16 +4206,16 @@
           chip.innerHTML = `${iconHtml(it)}<span class="ss-chip-name">${escapeHtml(it.name)}</span>${rar ? `<span class="rarity-tag ${rar.cls}">${rar.label}</span>` : ''}`;
           foundBox.appendChild(chip);
           TVSound.found(TVSound.lootKind(it, rar));
-          await wait(380);
+          await wait(120);
         }
         if(!found.length && !skipped){
-          await spinTo({ name: opts.emptyText || 'Nada de útil aqui', _icon: 'hole', category: '' }, 14, 220);
+          await spinTo({ name: opts.emptyText || 'Nada de útil aqui', _icon: 'hole', category: '' }, 12, 800);
           if(skipped) return;
           TVSound.play('empty');
-          await wait(380);
+          await wait(180);
         }
         if(skipped) return;
-        await wait(450);
+        await wait(250);
         finish();
       })();
     });
@@ -6239,7 +6266,8 @@
     const s = activeSession();
     const parts = [campaignMeta ? campaignMeta.name + (campaignMeta.archived ? ' (arquivada)' : '') : 'Campanha', s ? s.title : 'sem sessão'];
     if(cfg().modules.clock && clockText()) parts.push(clockText());
-    chip.innerHTML = ic('book', 13) + '<span>' + esc(parts.join(' · ')) + '</span>';
+    // f25: nome da campanha em destaque; sessão e hora ficam como texto secundário (somem no celular), sem "·" colando tudo numa linha
+    chip.innerHTML = ic('book', 14) + '<span class="cc-name">' + esc(parts[0]) + '</span>' + parts.slice(1).map(x => '<span class="cc-sub">' + esc(x) + '</span>').join('');
     chip.setAttribute('aria-label', 'Campanha ativa: ' + parts.join(', ') + '. Abrir campanhas e sessões.');
     hudMiniChanged(); hudFeedChanged(); f23Refresh();
   }
@@ -7815,7 +7843,7 @@
       <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-act="op-migrate">Migrar</button><button type="button" class="inv-mini-btn" data-act="op-keep">Manter antigo</button></div></div>`;
   }
   function renderReminders(card, dis){
-    return `<div class="hub-label">Lembretes da mesa (patente, o que o grupo quiser)</div>
+    return `<div class="hub-label">Lembretes da mesa</div>
       ${(card.reminders || []).map((r, i) => `<div class="bonus-row"><input type="text" data-bind="card.reminders.${i}.label" value="${esc(r.label)}" placeholder="Campo" ${dis}>
         <input type="text" data-bind="card.reminders.${i}.value" value="${esc(r.value)}" placeholder="Valor" ${dis}>
         <button type="button" class="inv-mini-btn danger" data-act="rem-del" data-i="${i}" ${dis} aria-label="Remover lembrete">${ic('close', 16)}</button></div>`).join('')}
@@ -8205,6 +8233,19 @@
   const tacUI = { open:false, sid:null, sel:null, panel:'', ruler:false, pts:[], gd:null, drag:false, dirty:false, seen:false, nfSrc:'blank', imgCache:{}, last:null, focusTok:null, markers:{}, bannerOff:null };
   let tacMap = null, tacBase = null, tacGridLayer = null, tacTokLayer = null, tacRulerLayer = null, tacBuiltKey = '';
   const tacEl = id => document.getElementById(id);
+  // f25: no desktop a gaveta de ferramentas cobre o lado direito do mapa. Largura reservada (0 no celular, onde ela sobe de baixo).
+  function tacSheetW(){
+    const sh = tacEl('tac-sheet');
+    if(!sh || sh.hidden || window.innerWidth < 1025) return 0;
+    return sh.offsetWidth || 0;
+  }
+  // mantém o centro da área visível no mesmo ponto do mapa quando a gaveta abre/fecha (sem mexer no zoom)
+  function tacSheetShift(){
+    if(!tacMap || !tacUI.open || !tacMap._loaded) return;     // antes do primeiro setView o Leaflet não sabe o centro
+    const want = tacSheetW() / 2, d = want - (tacUI.shift || 0);
+    tacUI.shift = want;
+    if(Math.abs(d) > 0.5) tacMap.panBy([d, 0], { animate:false });
+  }
   // escapa também aspas (usado dentro de atributos) e preserva o número 0
   function tacX(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
   function tacPath(){ return scopedKey(KEY_TAC); }
@@ -8317,7 +8358,7 @@
     if(tacMap) return;
     tacMap = L.map('tac-map', { crs:L.CRS.Simple, zoomSnap:0.25, zoomDelta:0.5, minZoom:-4, maxZoom:3, attributionControl:false, zoomControl:false, doubleClickZoom:false });
     tacMap.createPane('tacBase').style.zIndex = 200;
-    L.control.zoom({ position:'topright', zoomInText:'+', zoomOutText:'−' }).addTo(tacMap);
+    L.control.zoom({ position:'topleft', zoomInText:'+', zoomOutText:'−' }).addTo(tacMap);
     tacGridLayer = L.layerGroup().addTo(tacMap);
     tacRulerLayer = L.layerGroup().addTo(tacMap);
     tacTokLayer = L.layerGroup().addTo(tacMap);
@@ -8338,7 +8379,9 @@
       tacClearBase(); tacBuiltKey = '';
       tacGridLayer.clearLayers(); tacTokLayer.clearLayers(); tacRulerLayer.clearLayers();
       empty.hidden = false;
-      empty.textContent = isMaster() ? 'Nenhuma cena ainda. Toque em “Cenas” para criar a primeira.' : 'O mestre ainda não ativou uma cena tática.';
+      empty.innerHTML = isMaster()
+        ? '<div class="te-box"><b>Nenhuma cena ainda</b><p>Crie uma cena para posicionar tokens e medir distâncias.</p><button type="button" class="te-btn" data-tac="panel-scenes">Criar cena</button></div>'
+        : '<div class="te-box"><b>Sem cena ativa</b><p>O mestre ainda não ativou uma cena tática.</p></div>';
       return;
     }
     empty.hidden = true;
@@ -8359,7 +8402,9 @@
       }
       tacMap.invalidateSize();
       tacMap.setMaxBounds(bounds.pad(0.6));
-      tacMap.fitBounds(bounds, { animate:false });
+      const rw = tacSheetW();
+      tacMap.fitBounds(bounds, { animate:false, paddingBottomRight:[rw, window.innerWidth >= 1025 ? 96 : 0], paddingTopLeft:[0, 0] });
+      tacUI.shift = rw / 2;
       tacMap.setMinZoom(tacMap.getZoom() - 1.5);
       tacUI.pts = []; tacRulerLayer.clearLayers();
     }
@@ -8568,7 +8613,7 @@
     let p = tacUI.panel;
     if(['scenes', 'new', 'grid', 'combat'].includes(p) && !m) p = tacUI.panel = '';
     if(p === 'token' && !(sc && tacTokensOf(sid).some(t => t.id === tacUI.sel))) p = tacUI.panel = '';
-    if(!p){ sh.hidden = true; sh.innerHTML = ''; return; }
+    if(!p){ sh.hidden = true; sh.innerHTML = ''; tacEl('tac').classList.remove('sheet-on'); tacSheetShift(); return; }
     let h = '';
     if(p === 'scenes') h = tacPanelScenes();
     else if(p === 'new') h = tacPanelNew();
@@ -8581,6 +8626,7 @@
     let fk = null;
     if(ae && sh.contains(ae) && ae.dataset && ae.dataset.tac) fk = { a:ae.dataset.tac, dc:ae.dataset.dc, dr:ae.dataset.dr, id:ae.dataset.id };
     sh.innerHTML = h; sh.hidden = false; sh.dataset.p = p;
+    tacEl('tac').classList.add('sheet-on'); tacSheetShift();
     if(p === 'token'){
       const fr = sh.querySelector('.fr-pick'), tc = tacEl('tt-color');
       if(fr){ frPickerWire(fr, () => tc ? tc.value : ''); if(tc) tc.addEventListener('input', () => fr.__paint()); }
@@ -8774,7 +8820,7 @@
       case 'back': tacClose(); return;
       case 'close-sheet': tacUI.panel = ''; tacUI.gd = null; tacDrawGrid(); tacRenderBar(); tacRenderSheet(); return;
       case 'ruler': tacUI.ruler = !tacUI.ruler; tacUI.pts = []; tacDrawRuler(); tacRenderBar(); return;
-      case 'center': if(tacMap && sc) tacMap.fitBounds(L.latLngBounds([[0, 0], [sc.h, sc.w]]), { animate:false }); return;
+      case 'center': if(tacMap && sc){ const rw = tacSheetW(); tacMap.fitBounds(L.latLngBounds([[0, 0], [sc.h, sc.w]]), { animate:false, paddingBottomRight:[rw, window.innerWidth >= 1025 ? 96 : 0] }); tacUI.shift = rw / 2; } return;
       case 'dice': openHub('dados'); return;
       case 'undo': tacUndo(); return;
       case 'tok-step': if(sel && tacCanMove(sel)){ tacUI.focusTok = null; tacMoveTo(sid, sel, { c:Math.round(+sel.c) + (+D.dc), r:Math.round(+sel.r) + (+D.dr) }).then(() => tacDrawTokens()); } return;
@@ -8929,7 +8975,7 @@
   function tacOpen(){
     areaClose();
     closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets();
-    tacUI.open = true;
+    tacUI.open = true; tacUI.shift = 0;
     tacEl('tac').hidden = false;
     tacRenderArea();
     tacInitMap();
@@ -8944,8 +8990,11 @@
     root.addEventListener('click', e => { const b = e.target.closest('[data-tac]'); if(b && root.contains(b)) tacAction(b.dataset.tac, b); });
     root.addEventListener('change', e => { if(e.target && e.target.dataset && e.target.dataset.tacCh) tacChange(e.target); });
     root.addEventListener('input', e => { if(e.target && e.target.dataset && e.target.dataset.tacCh === 'g') tacChange(e.target); });
-    window.addEventListener('resize', () => { if(tacUI.open && tacMap) tacMap.invalidateSize(); });
-    if(window.ResizeObserver) new ResizeObserver(() => { if(tacUI.open && tacMap) tacMap.invalidateSize({ animate:false }); }).observe(tacEl('tac-mapwrap'));
+    // f25: invalidateSize no máximo 1x por frame (redimensionar a janela disparava dezenas por segundo)
+    let tacRz = 0;
+    const tacFit = () => { if(tacRz) return; tacRz = requestAnimationFrame(() => { tacRz = 0; if(tacUI.open && tacMap) tacMap.invalidateSize({ animate:false }); }); };
+    window.addEventListener('resize', tacFit);
+    if(window.ResizeObserver) new ResizeObserver(tacFit).observe(tacEl('tac-mapwrap'));
     document.addEventListener('keydown', e => { if(e.key === 'Escape' && tacUI.open && !hubIsOpen()) tacClose(); });
     const bo = tacEl('tac-banner-open'), bx = tacEl('tac-banner-x');
     if(bo) bo.addEventListener('click', tacOpen);
@@ -9108,7 +9157,7 @@
     const pinWords = PIN_TYPES.map(t => t.label).join(' ');
     const L = [
       { id:'add', ic:'plus', t:'Marcar no mapa', d:m ? 'Pins, token, nota, áreas e rotas' : 'Nota e token', kw:'marcar adicionar nota token pin ' + (m ? 'area rota medir selecionar ' + pinWords : ''), run:() => { hudCloseSheets(); hudToggleSheet('add-sheet'); } },
-      { id:'list', ic:'layers', t:'Camadas e lista do mapa', d:'Mapa-base e ir até pins, tokens, áreas e rotas', kw:'lista navegar viagem rapida buscar mapa camadas base satelite ruas filtros', run:() => { hudCloseSheets(); hudToggleSheet('lay-sheet', renderNavList); } },
+      { id:'list', ic:'layers', t:'Camadas e lista do mapa', d:'Mapa-base e ir até pins, tokens, áreas e rotas', kw:'lista navegar viagem rapida buscar mapa camadas base satelite ruas filtros', run:() => { hudCloseSheets(); hudToggleSheet('lay-sheet', () => renderNavList(true)); } },
       { id:'char', ic:'user', t:'Ficha', d:'Perícias, ataques, poderes e condições', kw:'ficha personagem pericia ataque condicao atributo poder', run:tab('ficha') },
       { id:'inv', ic:'bag', t:'Mochila', d:'Itens, equipamento e trocas', kw:'mochila inventario item equipar trocar', run:() => { hudCloseSheets(); hudEnsureWho(); openInventory(null); } },
       { id:'roll', ic:'dice', t:'Rolar dados', d:'d20, perícias e ataques', kw:'rolar dado dados d20 teste', run:() => hudOpenQuickRoll() },
@@ -9294,7 +9343,9 @@
     f23DockBadge(n && !visibleNow ? n : 0);
   }
   function hudMarkSeen(){ const f = hud.feed; if(!(hudCol() ? !f.collapsed : f.sheet) || F23.mesaTab !== 'feed') return; const top = hudFeedItems()[0]; const t = Math.max(f.seen, top ? top.ts : 0, Date.now() - 2000); if(t !== f.seen){ f.seen = t; hudSavePrefs(); } }
-  function hudFeedLayout(){
+  // f25: scope 'feed' | 'mini' redesenha só o painel que mudou. Fechar a ficha não refaz o feed nem a mesa (e vice-versa),
+  // e um painel fechado não é redesenhado.
+  function hudFeedLayout(scope){
     const f = hud.feed, col = hudCol(), feed = hudEl('feed');
     document.body.classList.toggle('feed-col', col && !f.collapsed);
     document.body.classList.toggle('mini-col', col && !hud.miniOff);
@@ -9303,14 +9354,15 @@
     hudEl('feed-backdrop').classList.toggle('open', !col && f.sheet);
     hudEl('feed-close').setAttribute('aria-label', col ? 'Recolher o feed' : 'Fechar o feed');
     if(open) hudMarkSeen();
-    f23RenderMesa(); hudRenderFeed(); hudRenderMini();
+    if(!scope || scope === 'feed'){ if(open){ f23RenderMesa(); hudRenderFeed(); } else hudFeedChip(); }
+    if(!scope || scope === 'mini') hudRenderMini();
     hudDockSync();
   }
   function hudFeedOpen(v){
     const f = hud.feed;
     if(hudCol()){ f.collapsed = !v; hudSavePrefs(); }
     else { if(v){ closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets('feed'); } f.sheet = !!v; if(!v) f.tall = false; }
-    hudFeedLayout();
+    hudFeedLayout('feed');
   }
   // o feed mostra só os 40 mais recentes; o histórico de rolagens guardado no banco é podado acima de 60 (o registro de itens e o diário não são tocados)
   const HUD_FEED_MAX = 40, HUD_ROLLS_KEEP = 60;
@@ -9323,8 +9375,8 @@
     if(!hudReady) return;
     hudPruneRolls();
     const f = hud.feed;
-    if(hudCol() ? !f.collapsed : f.sheet) hudMarkSeen();
-    hudRenderFeed();
+    if(hudCol() ? !f.collapsed : f.sheet){ hudMarkSeen(); hudRenderFeed(); }
+    else hudFeedChip();   // feed fechado: só atualiza o chip/contador
   }
   function hudWireFeed(){
     const feed = hudEl('feed');
@@ -9386,11 +9438,11 @@
   function hudMiniChanged(){ if(!hudReady || miniT) return; miniT = setTimeout(() => { miniT = 0; hudRenderMini(); }, 0); }
   function hudWireMini(){
     const el = hudEl('mini');
-    hudEl('mini-tab').addEventListener('click', () => { hud.miniOff = false; hudSavePrefs(); hudFeedLayout(); });
+    hudEl('mini-tab').addEventListener('click', () => { hud.miniOff = false; hudSavePrefs(); hudFeedLayout('mini'); });
     el.addEventListener('click', e => {
       const b = e.target.closest('[data-hud]'); if(!b) return;
       const w = hudWho();
-      if(b.dataset.hud === 'mhide'){ hud.miniOff = true; hudSavePrefs(); hudFeedLayout(); setTimeout(() => { const t = hudEl('mini-tab'); if(t) t.focus(); }, 0); }
+      if(b.dataset.hud === 'mhide'){ hud.miniOff = true; hudSavePrefs(); hudFeedLayout('mini'); setTimeout(() => { const t = hudEl('mini-tab'); if(t) t.focus(); }, 0); }
       else if(b.dataset.hud === 'minv'){ hudEnsureWho(); openInventory(w); }
     });
   }
@@ -9456,7 +9508,7 @@
     hudEl('filt-pop').addEventListener('click', e => { const b = e.target.closest('[data-mf]'); if(b) mapfToggle(b.dataset.mf); });
     hudEl('map-chips').addEventListener('click', e => {
       const b = e.target.closest('button'); if(!b) return;
-      if(b.id === 'mchip-layers'){ f23CloseFilters(); f23CloseMstrip(); hudToggleSheet('lay-sheet', renderNavList); }
+      if(b.id === 'mchip-layers'){ f23CloseFilters(); f23CloseMstrip(); hudToggleSheet('lay-sheet', () => renderNavList(true)); }
       else if(b.id === 'mchip-filters') f23ToggleFilters();
       else if(b.id === 'mchip-add'){ f23CloseFilters(); f23CloseMstrip(); hudToggleSheet('add-sheet', f23PrepAdd); }
       else if(b.id === 'mchip-master') f23ToggleMstrip();
@@ -9878,12 +9930,12 @@
 
   // ---- Ficha: painel da esquerda no desktop, folha no celular ----
   function f23ShowFicha(){
-    if(hudCol()){ hud.miniOff = false; hudSavePrefs(); hudFeedLayout(); return; }
+    if(hudCol()){ hud.miniOff = false; hudSavePrefs(); hudFeedLayout('mini'); return; }
     hudCloseSheets(); hudEnsureWho(); const w = hudWho(); if(w) hub.charToken = w;
     openHub('ficha');
   }
   function f23ToggleFicha(){
-    if(hudCol()){ hud.miniOff = !hud.miniOff; hudSavePrefs(); hudFeedLayout(); return; }
+    if(hudCol()){ hud.miniOff = !hud.miniOff; hudSavePrefs(); hudFeedLayout('mini'); return; }
     if(hubDrawer.classList.contains('open') && hubGroupOf(hub.tab) === 'ficha'){ closeHub(); return; }
     f23ShowFicha();
   }
@@ -9891,7 +9943,7 @@
     const w = hudWho(); if(w) hub.charToken = w;
     if(OP_TABS.some(t => t[0] === tab)) hub.opTab = tab;
     hudCloseSheets(); f23CloseMstrip();
-    if(hudCol()){ hud.miniOff = false; hudSavePrefs(); hudFeedLayout(); }
+    if(hudCol()){ hud.miniOff = false; hudSavePrefs(); hudFeedLayout('mini'); }
     else { hudEnsureWho(); openHub('ficha'); }
   }
   async function f23RollDef(key){
@@ -10208,12 +10260,19 @@
     if(PLACES_ON){ map.on('moveend', placesLater); placesRefresh(); }
     { const ps = hudEl('pl-status'); if(ps){ ps.addEventListener('click', () => { if(ps.classList.contains('pl-retry')) plRetryNow(); }); ps.addEventListener('keydown', e => { if((e.key === 'Enter' || e.key === ' ') && ps.classList.contains('pl-retry')){ e.preventDefault(); plRetryNow(); } }); } }
     map.on('zoomend', clusterUpdate); clusterSync();
+    // f25: classe no <body> em vez de body:has(.leaflet-popup) no CSS (o :has() no body reavaliava a página inteira a cada mudança de DOM)
+    map.on('popupopen', () => document.body.classList.add('lf-popup'));
+    map.on('popupclose', () => document.body.classList.remove('lf-popup'));
     const ctg = document.getElementById('cluster-toggle'); if(ctg) ctg.addEventListener('click', () => clusterSetOn(!cl.on));
     clusterUpdate();
     map.on('click', () => { hudCloseSheets(); if(!hudCol() && hud.feed.sheet) hudFeedOpen(false); });
     f23Init(); hudFeedLayout(); hudDockSync();
     // o mapa recalcula o tamanho quando as colunas do desktop abrem ou fecham
-    if(window.ResizeObserver) new ResizeObserver(() => { if(map) map.invalidateSize({ animate:false }); }).observe(document.getElementById('map'));
+    let mapRz = 0;
+    if(window.ResizeObserver) new ResizeObserver(() => {
+      if(mapRz) return;
+      mapRz = requestAnimationFrame(() => { mapRz = 0; if(map && !document.body.classList.contains('tac-on')) map.invalidateSize({ animate:false }); });
+    }).observe(document.getElementById('map'));
   }
 
   hudInit();
