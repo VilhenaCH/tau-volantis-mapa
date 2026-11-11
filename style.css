@@ -1353,15 +1353,6 @@ img, svg{ shape-rendering: geometricPrecision; }
 #area-tatico{ position:relative; }
 .area-live{ position:absolute; top:0.5rem; right:0.5rem; font-size:0.75rem; font-weight:700; color:var(--bg-0); background:var(--frost); border-radius:var(--r-pill); padding:0 0.5rem; }
 .area-live[hidden]{ display:none; }
-#tac-banner{ position:fixed; left:calc(var(--l) + 1rem); bottom:calc(var(--sheet-b) + 3.4rem); z-index:930; display:flex; align-items:center; gap:0.5rem; box-sizing:border-box; max-width:min(380px, calc(100vw - 2rem)); padding:0.5rem 0.5rem 0.5rem 0.75rem; background:var(--bg-2); border:1px solid var(--frost); border-radius:var(--r-md); font-family:var(--f-body); color:var(--ink); }
-#tac-banner[hidden]{ display:none; }
-#tac-banner .tb-txt{ flex:1; min-width:0; display:flex; flex-direction:column; }
-#tac-banner .tb-txt small{ font-size:0.75rem; color:var(--ink-dim); }
-#tac-banner .tb-txt b{ font-size:0.8rem; font-weight:400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-#tac-banner-open{ min-width:76px; min-height:44px; background:var(--frost); color:var(--bg-0); border:0; border-radius:var(--r-sm); font-family:var(--f-body); font-size:0.8rem; font-weight:700; cursor:pointer; }
-#tac-banner-x{ width:44px; min-height:44px; background:transparent; color:var(--ink); border:1px solid var(--line); border-radius:var(--r-sm); font-size:1.25rem; cursor:pointer; }
-#tac-banner button:focus-visible{ outline:2px solid var(--frost); outline-offset:2px; }
-@media (max-width:720px){ #tac-banner{ left:0.75rem; right:0.75rem; max-width:none; } }
 #tac-undo{ position:absolute; left:0.75rem; bottom:0.75rem; z-index:800; display:flex; align-items:center; gap:0.5rem; min-height:44px; padding:0 1rem; background:var(--bg-2); border:1px solid var(--frost); border-radius:var(--r-pill); color:var(--ink); font-family:var(--f-body); font-size:0.8rem; cursor:pointer; }
 #tac-undo[hidden]{ display:none; }
 #tac-undo:focus-visible{ outline:2px solid var(--frost); outline-offset:2px; }
@@ -1529,9 +1520,9 @@ div.ox-sh{ cursor:default; }
 @media (min-width:1100px){ :root{ --dock-h:0px; --sheet-b:5.6rem; } }
 /* f25: quem precisa saber das colunas declara --l/--r no próprio elemento.
    Um custom property herdável alterado no <body> obrigava o navegador a refazer o estilo da página inteira (~7.000 elementos) a cada abrir/fechar. */
-#dock, #verbs, .hud-credits, #tac-banner, .hud-sheet, #dock-roll{ --l:0px; --r:0px; }
-body.mini-col :is(#dock, #verbs, .hud-credits, #tac-banner, .hud-sheet, #dock-roll){ --l:var(--rail); }
-body.feed-col :is(#dock, #verbs, .hud-credits, #tac-banner, .hud-sheet, #dock-roll){ --r:var(--rail); }
+#dock, #verbs, .hud-credits, #tac-fab, .hud-sheet, #dock-roll{ --l:0px; --r:0px; }
+body.mini-col :is(#dock, #verbs, .hud-credits, #tac-fab, .hud-sheet, #dock-roll){ --l:var(--rail); }
+body.feed-col :is(#dock, #verbs, .hud-credits, #tac-fab, .hud-sheet, #dock-roll){ --r:var(--rail); }
 body.mini-col main{ left:var(--rail); }
 body.feed-col main{ right:var(--rail); }
 
@@ -3112,3 +3103,35 @@ button.ox-sh:active{ background:var(--s3); }
 
 /* com o mapa tático aberto o mapa principal não precisa renderizar nada (está coberto): zero animação, zero pintura */
 body.tac-on :is(main, #mini, #feed){ content-visibility:hidden; }
+
+
+/* ================= f26 · bloco 1: botão flutuante da cena tática ================= */
+.sr-only{ position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+#tac-fab{
+  --l:0px; --r:0px;
+  position:fixed; z-index:3205; box-sizing:border-box; width:44px; height:44px; padding:0;
+  display:flex; align-items:center; justify-content:center; border-radius:50%; cursor:pointer;
+  background:var(--bg-1); color:var(--ink); border:1.5px solid var(--hud-line); box-shadow:var(--shadow-2);
+  /* empilhado logo acima do d20 (58 px) e alinhado ao mesmo eixo */
+  right:calc(0.8rem + 7px); bottom:calc(var(--dock-h) + 0.8rem + 58px + 0.6rem);
+  transition:transform 0.15s var(--ease-soft), border-color 0.15s var(--ease-soft);
+}
+#tac-fab[hidden]{ display:none; }
+#tac-fab:hover{ transform:translateY(-2px); border-color:var(--hazard); }
+#tac-fab:active{ transform:scale(0.95); }
+#tac-fab:focus-visible{ outline:3px solid var(--ink); outline-offset:3px; }
+.tf-dot{ position:absolute; top:-2px; right:-2px; width:12px; height:12px; border-radius:50%; background:var(--hazard); border:2px solid var(--bg-0); }
+/* anel: só transform/opacity, 3 repetições e para (fica o ponto laranja) */
+#tac-fab.fresh::after{ content:''; position:absolute; inset:-2px; border-radius:50%; border:2px solid var(--hazard); pointer-events:none; animation:f26Ping 1.2s ease-out 3 both; }
+@keyframes f26Ping{ from{ transform:scale(1); opacity:0.9; } to{ transform:scale(1.7); opacity:0; } }
+/* rótulo com o nome da cena: só onde há mouse; aparece por opacity (sem mexer no layout) */
+.tf-label{ display:none; }
+@media (hover:hover) and (min-width:721px){
+  .tf-label{ display:block; position:absolute; right:calc(100% + 10px); top:50%; transform:translateY(-50%); max-width:220px; padding:6px 10px; border-radius:var(--r-sm);
+    background:var(--hud-bg-active); border:1px solid var(--hud-line); color:var(--ink); font-size:0.8125rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0; pointer-events:none; transition:opacity 0.15s var(--ease-soft); }
+  #tac-fab:hover .tf-label, #tac-fab:focus-visible .tf-label{ opacity:1; }
+}
+@media (min-width:1100px){ #tac-fab{ bottom:calc(1rem + 58px + 0.6rem); right:calc(var(--r) + 1rem + 7px); } }
+/* some nas mesmas situações do botão de dados */
+body.tac-on #tac-fab, body.panel-open #tac-fab, body.sheet-open #tac-fab, body.mesa-open #tac-fab, body.pop-open #tac-fab, body.lf-popup #tac-fab{ display:none; }
+@media (prefers-reduced-motion: reduce){ #tac-fab{ transition:none; } #tac-fab.fresh::after{ animation:none; } }

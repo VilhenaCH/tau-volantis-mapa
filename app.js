@@ -8588,11 +8588,16 @@
     const sc = tac.active && tac.scenes[tac.active] ? tac.scenes[tac.active] : null;
     if(typeof hudTacLive === 'function') hudTacLive(sc);
     if(typeof hudDockSync === 'function') hudDockSync();
-    const bn = tacEl('tac-banner');
-    if(!bn) return;
+    const fab = tacEl('tac-fab');
+    if(!fab) return;
     const show = !!sc && !tacUI.open && tacUI.bannerOff !== tac.active;
-    bn.hidden = !show;
-    if(show) tacEl('tac-banner-name').textContent = sc.name || 'Cena';
+    fab.hidden = !show;
+    if(show){
+      const nm = sc.name || 'Cena';
+      fab.setAttribute('aria-label', 'Cena tática ativa: ' + nm + '. Abrir');
+      fab.querySelector('.tf-label').textContent = nm;
+      if(tacUI.fresh === tac.active) fab.classList.add('fresh');
+    }
   }
   function tacRenderTurn(){
     const el = tacEl('tac-turn'), sid = tacCurId(), sc = tacScene(sid);
@@ -8955,6 +8960,10 @@
     const prev = tac.active, turnBefore = tacTurnKey(prev);
     tac = { active:(v && v.active) || null, scenes:(v && v.scenes) || {} };
     if(tacUI.seen && tac.active && tac.active !== prev && !tacUI.open && !isMaster() && tac.scenes[tac.active]) toast('Cena tática ativa: ' + (tac.scenes[tac.active].name || 'Cena') + ' (botão Tático)');
+    if(tac.active && tac.active !== prev && tac.scenes[tac.active]){
+      tacUI.fresh = tac.active; tacUI.bannerOff = null;              // cena nova: o botão volta e o anel pulsa 3 vezes
+      const lv = tacEl('tac-fab-live'); if(lv) lv.textContent = 'Cena tática ativa: ' + (tac.scenes[tac.active].name || 'Cena');
+    }
     tacUI.seen = true;
     const turnAfter = tacTurnKey(tac.active);
     if(turnAfter && turnAfter !== turnBefore && !isMaster()){
@@ -8996,9 +9005,17 @@
     window.addEventListener('resize', tacFit);
     if(window.ResizeObserver) new ResizeObserver(tacFit).observe(tacEl('tac-mapwrap'));
     document.addEventListener('keydown', e => { if(e.key === 'Escape' && tacUI.open && !hubIsOpen()) tacClose(); });
-    const bo = tacEl('tac-banner-open'), bx = tacEl('tac-banner-x');
-    if(bo) bo.addEventListener('click', tacOpen);
-    if(bx) bx.addEventListener('click', () => { tacUI.bannerOff = tac.active; tacRenderArea(); });
+    // f26: botão flutuante — toque abre; segurar 500 ms (ou botão direito, ou Shift+clique) esconde até a próxima cena
+    const fab = tacEl('tac-fab');
+    if(fab){
+      let hold = 0, held = false;
+      const dismiss = () => { held = true; tacUI.bannerOff = tac.active; tacRenderArea(); toast('Botão escondido. Reabra por Tático.'); };
+      fab.addEventListener('pointerdown', () => { held = false; clearTimeout(hold); hold = setTimeout(dismiss, 500); });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => fab.addEventListener(ev, () => clearTimeout(hold)));
+      fab.addEventListener('contextmenu', e => { e.preventDefault(); clearTimeout(hold); dismiss(); });
+      fab.addEventListener('click', e => { if(held){ held = false; return; } if(e.shiftKey){ dismiss(); return; } fab.classList.remove('fresh'); tacUI.fresh = null; tacOpen(); });
+      fab.addEventListener('animationend', e => { if(e.animationName === 'f26Ping'){ fab.classList.remove('fresh'); tacUI.fresh = null; } });
+    }
   })();
 
   document.getElementById('hub-drawer-close-btn').addEventListener('click', closeHub);
