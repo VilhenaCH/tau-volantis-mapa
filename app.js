@@ -285,7 +285,9 @@
   const KEY_TACIMG = 'tv-map:tactical-img';   // imagens de cena enviadas do celular (lidas só ao abrir a cena)
   const KEY_GMTAC = 'tv-map:gm-tactical';     // tokens ocultos do mestre
   const KEY_SCENE = 'tv-map:scene';           // cena da mesa (Exploração, Combate, Descanso): só o mestre muda (f23)
-  const DB_KEYS = new Set([KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC, KEY_SCENE]);
+  const KEY_ROSTER = 'tv-map:roster';         // gaveta de personagens dos jogadores (membros da campanha)
+  const KEY_GMROSTER = 'tv-map:gm-roster';    // gaveta de NPCs do mestre (só o mestre lê e grava)
+  const DB_KEYS = new Set([KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC, KEY_SCENE, KEY_ROSTER, KEY_GMROSTER]);
   const SCOPED_KEYS = new Set([KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG].concat(Array.from(DB_KEYS)));
 
   // ---------- campanhas: todo dado de jogo pertence a uma campanha ----------
@@ -1135,6 +1137,7 @@
     selectedPinType = null;
     tokenModeOn = false;
     if(lg.reloc){ lg.reloc = null; hideDrawHint(); }
+    if(rosterUI && rosterUI.placing) rosterSetPlacing(null);
     areaDrawStop(); areaEditStop(false);
     stopRouteMode();
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
@@ -1777,7 +1780,7 @@
   // é atualizado (posição/ícone) quando o próprio dado daquele pin muda —
   // nunca quando outro pin qualquer muda. Isso é o que permite que o mapa
   // continue "vivo" pra todo mundo mesmo com alguém editando uma nota.
-  function renderPins(){ renderPinsCore(); if(mapEntitiesHook) mapEntitiesHook(); plDraw(); clusterUpdate(); }
+  function renderPins(){ renderPinsCore(); if(mapEntitiesHook) mapEntitiesHook(); plDraw(); clusterUpdate(); rosterChanged(); }
   function renderPinsCore(){
     // NPCs (pins) que estão "dentro" de um veículo/abrigo, ou empilhados junto
     // com um token/outro NPC no mesmo ponto, não aparecem soltos no mapa —
@@ -2165,7 +2168,7 @@
     b.textContent = cl.on ? 'Agrupar ao afastar: ligado' : 'Agrupar ao afastar: desligado';
   }
 
-  function renderTokens(){ renderTokensCore(); if(mapEntitiesHook) mapEntitiesHook(); hudMiniChanged(); mapfRender(); plDraw(); plWarmSoon(); clusterUpdate(); }
+  function renderTokens(){ renderTokensCore(); if(mapEntitiesHook) mapEntitiesHook(); hudMiniChanged(); mapfRender(); plDraw(); plWarmSoon(); clusterUpdate(); rosterChanged(); }
   function renderTokensCore(){
     tokensLayer.clearLayers();
     Object.keys(tokenMarkers).forEach(k => delete tokenMarkers[k]);
@@ -2948,6 +2951,7 @@
 
   // ---------- map click: circle/route steps, or place pin/token ----------
   map.on('click', async (e) => {
+    if(rosterUI && rosterUI.placing){ rosterMapTap(e.latlng); return; }
     if(lg.reloc){ lgRelocTo(e.latlng); return; }
     if(area.draw){ areaDrawTap(e.latlng); return; }
     if(area.edit) return;
@@ -4606,6 +4610,8 @@
     closeHub();
     saqueDrawer.classList.add('open');
     drawerBackdrop.classList.add('open');
+    stagger(saqueDrawer.querySelector('.drawer-body'));
+    guiaOferecer('saque');
   }
   function closeDrawer(){
     saqueDrawer.classList.remove('open');
@@ -4633,12 +4639,69 @@
     saque:'Saque', guardar:'Guardou', recusar:'Não manteve', adicionar:'Adicionou (tabela)',
     usar:'Usou', descartar:'Descartou', troca:'Troca', craft:'Fabricação', inv_removido:'Inventário removido',
     vasculhar:'Vasculhou contêiner', pegar:'Pegou de contêiner', depositar:'Guardou em contêiner',
-    condicao:'Condição', reparar:'Reparo', ajuste:'Ajuste do mestre'
+    condicao:'Condição', reparar:'Reparo', ajuste:'Ajuste do mestre', recarga:'Recarregou', descarga:'Descarregou'
   };
   const SOURCE_LABELS = { saque:'saque', pesca:'pesca', tabela:'tabela de itens', inventario:'inventário', 'contêiner':'contêiner', mestre:'concedido pelo mestre', craft:'fabricação', troca:'troca' };
 
   const invDrawer = document.getElementById('inv-drawer');
   const invBackdrop = document.getElementById('inv-drawer-backdrop');
+  const rosterDrawer = document.getElementById('roster-drawer');
+  const rosterBackdrop = document.getElementById('roster-drawer-backdrop');
+
+  // ================= f26 · kit de movimento: só transform/opacity, curto, desligado com prefers-reduced-motion =================
+  var f26Reduced = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches:false };
+  var pulseMem = {};
+  const STAG_MAX_H = 260, STAG_MAX_N = 3;   // medido: cada bloco animado custa ~25 ms ao abrir o Saque a CPU x4; 3 blocos ficam dentro dos +10%
+  // entrada escalonada: os 3 primeiros blocos pequenos e visíveis do painel entram em 160 ms, 40 ms um depois do outro; só na abertura
+  function stagger(panel){
+    if(!panel || f26Reduced.matches) return;
+    cancelAnimationFrame(panel._stagR);
+    // no próximo quadro: o DOM já está final e a leitura de estilo não força um cálculo a mais
+    panel._stagR = requestAnimationFrame(() => {
+      let n = 0;
+      Array.prototype.forEach.call(panel.children, c => {
+        // blocos grandes (listas, grades) não animam: virar camada própria custa mais do que o efeito vale
+        if(c.hidden || n >= STAG_MAX_N || getComputedStyle(c).display === 'none' || c.getBoundingClientRect().height > STAG_MAX_H){ c.classList.remove('f26-s'); return; }
+        c.style.setProperty('--i', n++); c.classList.add('f26-s');
+      });
+      panel.classList.add('f26-stag');
+      clearTimeout(panel._stagT);
+      panel._stagT = setTimeout(() => panel.classList.remove('f26-stag'), 160 + (STAG_MAX_N - 1) * 40 + 80);
+    });
+  }
+  // painéis que desenham o conteúdo logo depois de abrir (hub): vale a entrada do último desenho dentro de 250 ms
+  function stagWant(panel){ if(panel){ panel._stagWant = performance.now() + 250; stagger(panel); } }
+  function stagIfWanted(panel){ if(panel && panel._stagWant && performance.now() < panel._stagWant) stagger(panel); }
+  // pulso de 140 ms (escala 1 → 1,08 → 1 e cor de destaque) num número que acabou de mudar
+  function pulse(el){
+    if(!el || f26Reduced.matches) return;
+    if(el.classList.contains('f26-pulse')){ el.classList.remove('f26-pulse'); requestAnimationFrame(() => el.classList.add('f26-pulse')); }
+    else el.classList.add('f26-pulse');
+  }
+  document.addEventListener('animationend', e => { if(e.animationName === 'f26Pulse') e.target.classList.remove('f26-pulse'); });
+  // números marcados com data-pulse="chave" pulsam quando o texto muda entre um desenho e o seguinte
+  function pulseScan(root){
+    if(!root || f26Reduced.matches) return;
+    root.querySelectorAll('[data-pulse]').forEach(el => { const k = el.dataset.pulse, t = el.textContent; if(k in pulseMem && pulseMem[k] !== t) pulse(el); pulseMem[k] = t; });
+  }
+  // abas com um único indicador que desliza (translateX/scaleX); o elemento é recriado a cada desenho, então nasce no lugar anterior
+  function tabInd(box, inset){
+    if(!box || box.hidden) return;
+    const a = box.querySelector('[aria-selected="true"]');
+    let ind = box.querySelector(':scope > .tab-ind');
+    if(!a){ if(ind) ind.remove(); return; }
+    if(!ind){
+      ind = document.createElement('i'); ind.className = 'tab-ind'; ind.setAttribute('aria-hidden', 'true');
+      if(box._tabInd) ind.style.transform = box._tabInd;
+      box.appendChild(ind);
+    }
+    // a medida é lida no próximo quadro (layout já pronto, sem forçar um layout no meio do desenho)
+    requestAnimationFrame(() => {
+      if(!a.isConnected || !ind.isConnected) return;
+      const pad = inset || 0, tr = 'translateX(' + (a.offsetLeft + pad) + 'px) scaleX(' + (Math.max(0, a.offsetWidth - pad * 2) / 100) + ')';
+      box._tabInd = tr; ind.style.transform = tr;
+    });
+  }
   const itemAddDest = document.getElementById('item-add-dest');
   const invUI = { sel:null, holderId:null, tab:'inv', trade:null, panel:null, logHolder:'', logAction:'', takeTo:null, depositOpen:false, filter:'', cat:'' };
   let lastHolderSig = '';
@@ -4732,13 +4795,14 @@
   const CONDITION_CATS = new Set(['Armas de Fogo','Armas Brancas e Improvisadas','Ferramentas','Ferramentas Agrícolas','Roupas e Proteção contra Frio',
     'Mochilas e Contêineres','Eletrônicos e Comunicação','Peças de Veículos','Iluminação','Pesca e Rio','Acampamento e Utilidades','Abrigo Rural e Construção']);
   function hasCondition(i){ return !!i && CONDITION_CATS.has(i.category) && !isStackable(i); }
-  const EQUIP_SLOTS = [['cabeca','Cabeça'],['tronco','Tronco'],['maos','Mãos'],['pernas','Pernas'],['botas','Botas'],['mochila','Mochila'],['acessorio','Acessório']];
-  const DEFAULT_SLOT_CAP = { cabeca:1, tronco:1, maos:2, pernas:1, botas:1, mochila:1, acessorio:3 };
+  const EQUIP_SLOTS = [['arma1','Arma principal'],['arma2','Arma secundária'],['cabeca','Cabeça'],['tronco','Tronco'],['maos','Mãos'],['pernas','Pernas'],['botas','Botas'],['mochila','Mochila'],['acessorio','Acessório']];
+  const DEFAULT_SLOT_CAP = { arma1:1, arma2:1, cabeca:1, tronco:1, maos:2, pernas:1, botas:1, mochila:1, acessorio:3 };
   function slotLabel(k){ const s = EQUIP_SLOTS.find(x => x[0] === k); return s ? s[1] : k; }
   // Sugestão de espaço pelo nome do item. É só um palpite para pré-selecionar:
   // quem equipa pode escolher qualquer espaço, e nenhum bônus é aplicado.
-  function suggestSlot(i){
+  function suggestSlot(i, hid){
     const n = normName(i.name);
+    if(TVArmas.ehArma(i.category)) return (hid && equippedItems(hid).some(x => x.slot === 'arma1' && x.uid !== i.uid)) ? 'arma2' : 'arma1';
     if(/\b(bota|botina)/.test(n)) return 'botas';
     if(/gorro|balaclava|capuz|chapeu|bandana|protetor de ouvido|oculos|mascara|headlamp|lanterna de cabeca/.test(n)) return 'cabeca';
     if(i.category === 'Mochilas e Contêineres' && /mochila|sacola|saco de estopa|bolsa/.test(n) && !/cinto|coldre/.test(n)) return 'mochila';
@@ -4746,11 +4810,19 @@
     if(/cinto|coldre|luva|cachecol|relogio|fones|suspensorio/.test(n)) return 'acessorio';
     if(/calca|perneira|meia|meiao/.test(n)) return 'pernas';
     if(/jaqueta|casaco|parka|colete|sobretudo|macacao|poncho|capa de|uniforme|jaleco|blusao|camisa|avental|roupa|traje/.test(n)) return 'tronco';
-    if(i.category === 'Armas de Fogo' || i.category === 'Armas Brancas e Improvisadas' || i.category === 'Ferramentas' || i.category === 'Ferramentas Agrícolas' || i.category === 'Iluminação') return 'maos';
+    if(i.category === 'Ferramentas' || i.category === 'Ferramentas Agrícolas' || i.category === 'Iluminação') return 'maos';
     return null;
   }
   function canEquip(i){ return !!i && !consumableByDefault(i) && i.category !== 'Documentos e Itens de Lore'; }
   function equippedItems(hid){ return invItems(hid).filter(i => i.slot); }
+  // armas empunhadas: espaços de arma e, em dados antigos, "Mãos"
+  const WEAPON_SLOTS = ['arma1', 'arma2', 'maos'];
+  function weaponsOf(hid){
+    return equippedItems(hid).filter(i => WEAPON_SLOTS.indexOf(i.slot) !== -1 && TVArmas.ehArma(i.category))
+      .sort((a, b) => WEAPON_SLOTS.indexOf(a.slot) - WEAPON_SLOTS.indexOf(b.slot));
+  }
+  function magOf(inst){ return Math.max(0, parseInt(inst && inst.mag, 10) || 0); }   // item antigo sem `mag` = descarregada
+  function magCap(inst){ return TVArmas.capacidade(ITEMS_BY_ID[inst.itemId], inst); }
 
   // Planeja a entrada de itens num dono, juntando em pilhas quando possível.
   // Não grava: acumula em `ops` e devolve o resultado de cada item.
@@ -4830,7 +4902,8 @@
     adicionar:['➕ Adicionou pela tabela', 0x4f9a63], usar:['🧪 Usou', 0xd9a441], descartar:['🗑 Descartou', 0xb04a32],
     troca:['⇄ Troca', 0x7a64c8], craft:['🛠 Fabricação', 0xc9923a], inv_removido:['⚠ Inventário removido', 0xb04a32],
     vasculhar:['📦 Contêiner vasculhado', 0xb4b4b4], pegar:['📤 Pegou de contêiner', 0x4f9a63], depositar:['📥 Guardou em contêiner', 0x4f9a63],
-    condicao:['🔧 Condição alterada', 0xd9a441], reparar:['🔧 Reparo', 0xc9923a], ajuste:['🧰 Ajuste do mestre', 0x7a64c8]
+    condicao:['🔧 Condição alterada', 0xd9a441], reparar:['🔧 Reparo', 0xc9923a], ajuste:['🧰 Ajuste do mestre', 0x7a64c8],
+    recarga:['🔫 Recarregou', 0x4f9a63], descarga:['🔫 Descarregou', 0xb4b4b4]
   };
   let auditQueue = [];
   let auditBusy = false;
@@ -4858,6 +4931,7 @@
       case 'depositar': return `${who} **guardou** ${qnames(e.gave)} em **${md(e.counterpartName || '?')}**`;
       case 'condicao': case 'reparar': return `${who}: ${it} · condição ${md(e.condFrom || '—')} → **${md(e.condTo || '—')}**${e.note ? ' — ' + md(e.note) : ''}`;
       case 'ajuste': return `**${md(e.actorName || '?')}** (mestre) ajustou ${who}: ${md(e.note || '')}${e.item ? ' · ' + it : ''}`;
+      case 'recarga': case 'descarga': return `${who} ${e.action === 'recarga' ? '**recarregou**' : '**descarregou**'} ${it} · ${e.qty || 0} tiro(s) · carregador ${e.magAfter != null ? e.magAfter : '?'}/${e.magMax != null ? e.magMax : '?'}`;
       default: return who;
     }
   }
@@ -5168,6 +5242,40 @@
     const ok = await commitInv({ [hid + '/' + uid]: upd }, []);
     if(ok){ invUI.panel = null; toast(slot ? `${inst.name} equipado (${slotLabel(slot)}).` : `${inst.name} desequipado.`); renderInvDrawer(); }
   }
+  // Recarregar: tira 1 unidade de munição do mesmo calibre por tiro que falta (pilhas menores primeiro).
+  async function doRecarregar(hid, uid){
+    const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid], ref = inst && ITEMS_BY_ID[inst.itemId];
+    if(!holder || !inst){ toast('Item não encontrado.', true); return; }
+    if(!TVArmas.usaMunicao(ref)){ toast(`${inst.name} não usa munição.`, true); return; }
+    const cap = magCap(inst);
+    if(magOf(inst) >= cap){ toast(`${inst.name} já está carregada (${cap}/${cap}).`); return; }
+    const plan = TVArmas.planoRecarga(invItems(hid), inst, ref, i => ITEMS_BY_ID[i.itemId]);
+    if(!plan.carregados){
+      toast(ref.calibre === 'festim' ? 'Festim não carrega arma de verdade.' : `Sem munição ${TVArmas.rotuloCalibre(ref.calibre)} na mochila de ${holder.name}.`, true); return;
+    }
+    const ops = {};
+    Object.keys(plan.ops).forEach(u => { ops[hid + '/' + u] = plan.ops[u] === null ? null : Object.assign({}, plan.ops[u], { v:DATA_SCHEMA }); });
+    const after = plan.ops[uid].mag;
+    const ok = await commitInv(ops, [mkLog('recarga', holder, { item:itemRef(inst, 1), qty:plan.carregados, magAfter:after, magMax:cap, source:'inventario' })]);
+    if(ok){ invUI.panel = null; toast(`${inst.name}: ${after}/${cap}${plan.faltou ? ` (faltou munição para ${plan.faltou})` : ''}.`); renderInvDrawer(); }
+  }
+  // Descarregar: devolve os tiros à mochila como munição; se não couber, recusa e nada muda.
+  async function doDescarregar(hid, uid){
+    const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid], ref = inst && ITEMS_BY_ID[inst.itemId];
+    if(!holder || !inst){ toast('Item não encontrado.', true); return; }
+    const d = TVArmas.planoDescarga(inst);
+    if(!d.tiros){ toast(`${inst.name} já está descarregada.`); return; }
+    const ammo = TVArmas.municaoDoCalibre(ref && ref.calibre, ITEMS);
+    const ops = {};
+    if(ammo){
+      const p = planAdds(hid, [{ item:ammo, qty:d.tiros }], ops);
+      if(!p.res[0].ok){ toast(`Mochila de ${holder.name} cheia (${capTxt(hid)}). Libere espaço para guardar os ${d.tiros} tiro(s).`, true); return; }
+    }   // sem munição de fábrica para o calibre (ex.: festim): os tiros somem no descarregar, como a arma tinha
+    ops[hid + '/' + uid] = Object.assign({}, d.armaDepois, { v:DATA_SCHEMA });
+    const ok = await commitInv(ops, [mkLog('descarga', holder, { item:itemRef(inst, 1), qty:d.tiros, magAfter:0, magMax:magCap(inst), source:'inventario' })]);
+    if(ok){ invUI.panel = null; toast(`${inst.name} descarregada: ${d.tiros} tiro(s) na mochila.`); renderInvDrawer(); }
+  }
+  window.__tvArmas = { weaponsOf, doRecarregar, doDescarregar, spendMag, atacar:opWeaponAttack };   // só para os testes automáticos
   async function doCondition(hid, uid, level, note){
     const holder = holderById(hid), inst = inventories[hid] && inventories[hid][uid];
     if(!holder || !inst){ toast('Item não encontrado.', true); return; }
@@ -5413,16 +5521,20 @@
     closeHub();
     closeDrawer();
     closeNavDrawer();
+    closeRoster();
     if(hid) invUI.holderId = hid;
     else if(!invUI.holderId || !holderById(invUI.holderId)) invUI.holderId = charSelect.value || (holderList()[0] || {}).id || null;
     invUI.trade = null; invUI.panel = null;
     renderInvDrawer();
     invDrawer.classList.add('open');
     invBackdrop.classList.add('open');
+    stagger(invDrawer.querySelector('.drawer-body'));
+    guiaOferecer('mochila');
   }
   function closeInventory(){
     invDrawer.classList.remove('open');
     invBackdrop.classList.remove('open');
+    closeRoster();     // abrir qualquer outro painel fecha a gaveta de personagens (e cancela o "Colocar")
   }
 
   function containerHeaderHtml(h){
@@ -5466,9 +5578,12 @@
     const fill = document.getElementById('inv-cap-fill');
     const cc = cfg(), cap = hid ? holderCap(hid) : Infinity;
     const pct = isCont ? (cap === Infinity ? 0 : n / cap) : (cc.invMode === 'slots' ? n / MAX_INV : (cc.invMode === 'carga' ? invWeight(hid) / cc.invLimit : 0));
-    fill.style.width = Math.min(100, pct * 100) + '%';
+    fill.style.transform = 'scaleX(' + Math.max(0, Math.min(1, pct || 0)) + ')';
     fill.className = pct >= 1 ? 'full' : (pct >= 0.8 ? 'warn' : '');
-    document.getElementById('inv-cap-text').textContent = capTxt(hid);
+    const capEl = document.getElementById('inv-cap-text');
+    const capKey = 'cap:' + hid, capPrev = capEl.dataset.pulse === capKey ? capEl.textContent : null;
+    capEl.dataset.pulse = capKey; capEl.textContent = capTxt(hid);
+    if(capPrev !== null && capPrev !== capEl.textContent) pulse(capEl);       // carga mudou: pulso curto
     document.getElementById('inv-trade-open').disabled = !hid;
     document.getElementById('inv-trade-open').style.display = isCont ? 'none' : '';
     document.getElementById('inv-merge').style.display = isCont ? 'none' : '';
@@ -5500,9 +5615,16 @@
     invGridFill(list, items, mkRow);
   }
 
+  // carregador: pontos (até 12) + número + calibre
+  function magLineHtml(inv, ref){
+    const m = magOf(inv), cap = magCap(inv);
+    const pips = cap <= 12 ? `<span class="mag-pips" aria-hidden="true">${Array.from({ length:cap }, (_, k) => `<i${k < m ? ' class="on"' : ''}></i>`).join('')}</span>` : '';
+    return `<div class="mag-line">${pips}<b data-pulse="mag:${esc(String(inv.uid))}">Carregador ${m}/${cap}</b><span class="mag-cal">${escapeHtml(TVArmas.rotuloCalibre(ref.calibre))}</span></div>`;
+  }
   // detalhe do item aberto: nome, utilidade e ações
   function invRowEl(inv, hid, isCont){
       const ref = ITEMS_BY_ID[inv.itemId];
+      const gun = !isCont && TVArmas.usaMunicao(ref);
       const row = document.createElement('div');
       row.className = 'inv-item' + (inv.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '') + (inv.cond === 0 ? ' broken' : '');
       row.innerHTML = `
@@ -5510,8 +5632,10 @@
         <span class="inv-item-cat">${escapeHtml(inv.category)}</span>${inv.cond != null ? `<span class="inv-item-cat cond-${inv.cond}">${escapeHtml(COND_LEVELS[inv.cond])}</span>` : ''}
         ${ref ? `<div class="inv-item-util">${escapeHtml(ref.utility)}</div>${itemFactsHtml(ref)}${compatLine(ref)}` : ''}
         ${inv.foundAt ? `<div class="inv-item-util inv-found">${ic('pin', 13)} ${escapeHtml(inv.foundAt)}</div>` : ''}
+        ${gun ? magLineHtml(inv, ref) : ''}
         <div class="inv-item-actions">
           ${isCont ? `<button type="button" class="inv-mini-btn primary" data-act="cont-take" ${containerOpenFor(hid) ? '' : 'disabled'}>Pegar</button>` : `
+          ${gun ? `<button type="button" class="inv-mini-btn primary" data-act="reload" ${magOf(inv) >= magCap(inv) ? 'disabled' : ''}>Recarregar</button><button type="button" class="inv-mini-btn" data-act="unload" ${magOf(inv) ? '' : 'disabled'}>Descarregar</button>` : ''}
           <button type="button" class="inv-mini-btn" data-act="use">Usar</button>
           ${canEquip(inv) ? `<button type="button" class="inv-mini-btn" data-act="${inv.slot ? 'unequip' : 'equip'}">${inv.slot ? 'Desequipar' : 'Equipar'}</button>` : ''}
           <button type="button" class="inv-mini-btn" data-act="trade">Trocar</button>`}
@@ -5520,7 +5644,9 @@
       const act = (a, fn) => { const b = row.querySelector(`[data-act="${a}"]`); if(b) b.addEventListener('click', fn); };
       const setPanel = p => { invUI.panel = Object.assign({ uid:inv.uid, note:'' }, p); renderInvDrawer(); };
       act('use', () => setPanel({ type:'use', consume:consumableByDefault(inv) }));
-      act('equip', () => setPanel({ type:'equip', slot:suggestSlot(inv) || 'acessorio' }));
+      act('equip', () => setPanel({ type:'equip', slot:suggestSlot(inv, hid) || 'acessorio' }));
+      act('reload', () => doRecarregar(hid, inv.uid));
+      act('unload', () => doDescarregar(hid, inv.uid));
       act('unequip', () => doEquip(hid, inv.uid, null));
       act('cont-take', () => containerTake(hid, [inv.uid], invUI.takeTo));
       act('more', () => { invUI.panel = (invUI.panel && invUI.panel.uid === inv.uid && invUI.panel.type === 'more') ? null : { type:'more', uid:inv.uid, note:'' }; renderInvDrawer(); });
@@ -5540,8 +5666,10 @@
     const eq = equippedItems(hid), caps = cfg().equipSlots;
     return `<div class="eq-strip" role="group" aria-label="Equipamento">${EQUIP_SLOTS.map(s => {
       const list = eq.filter(i => i.slot === s[0]), cap = caps[s[0]] != null ? caps[s[0]] : 1;
-      if(!list.length) return `<div class="eq-tile"><span class="eq-tile-name">${escapeHtml(s[1])}</span><span class="eq-tile-empty">vazio</span></div>`;
-      return `<button type="button" class="eq-tile on" data-act="eq-pick" data-uid="${escapeHtml(list[0].uid)}" aria-label="${escapeHtml(s[1])}: ${escapeHtml(list.map(i => i.name).join(', '))}. Tocar para ver o item"><span class="eq-tile-name">${escapeHtml(s[1])}${cap > 1 ? ` <small>${list.length}/${cap}</small>` : ''}</span>${iconHtml({ id:list[0].itemId, name:list[0].name, category:list[0].category })}<span class="eq-tile-item">${escapeHtml(list[0].name)}${list.length > 1 ? ' +' + (list.length - 1) : ''}</span></button>`;
+      const wide = s[0] === 'arma1' || s[0] === 'arma2' ? ' wide' : '';
+      if(!list.length) return `<div class="eq-tile${wide}"><span class="eq-tile-name">${escapeHtml(s[1])}</span><span class="eq-tile-empty">vazio</span></div>`;
+      const gun0 = wide && TVArmas.usaMunicao(ITEMS_BY_ID[list[0].itemId]) ? `<span class="eq-tile-mag">${magOf(list[0])}/${magCap(list[0])}</span>` : '';
+      return `<button type="button" class="eq-tile on${wide}" data-act="eq-pick" data-uid="${escapeHtml(list[0].uid)}" aria-label="${escapeHtml(s[1])}: ${escapeHtml(list.map(i => i.name).join(', '))}. Tocar para ver o item"><span class="eq-tile-name">${escapeHtml(s[1])}${cap > 1 ? ` <small>${list.length}/${cap}</small>` : ''}</span>${iconHtml({ id:list[0].itemId, name:list[0].name, category:list[0].category })}<span class="eq-tile-item">${escapeHtml(list[0].name)}${list.length > 1 ? ' +' + (list.length - 1) : ''}</span>${gun0}</button>`;
     }).join('')}</div>`;
   }
   function invGridFill(list, items, mkRow){
@@ -5553,7 +5681,7 @@
       b.type = 'button'; b.dataset.uid = inv.uid; b.setAttribute('aria-pressed', String(on));
       b.className = 'inv-tile' + (on ? ' sel' : '') + (inv.slot ? ' eq' : '') + (inv.category === 'Itens Anômalos e Paranormais' ? ' anomalo' : '') + (inv.cond === 0 ? ' broken' : '');
       b.setAttribute('aria-label', inv.name + (q > 1 ? ', quantidade ' + q : '') + (inv.slot ? ', equipado em ' + slotLabel(inv.slot) : '') + (inv.cond != null ? ', ' + COND_LEVELS[inv.cond] : ''));
-      b.innerHTML = `${iconHtml({ id:inv.itemId, name:inv.name, category:inv.category })}<span class="it-name">${escapeHtml(inv.name)}</span>${q > 1 ? `<span class="it-qty">×${q}</span>` : ''}${inv.slot ? '<i class="it-eq" title="Equipado"></i>' : ''}${inv.cond != null && inv.cond < 2 ? `<i class="it-cond c${inv.cond}" title="${escapeHtml(COND_LEVELS[inv.cond])}"></i>` : ''}`;
+      b.innerHTML = `${iconHtml({ id:inv.itemId, name:inv.name, category:inv.category })}<span class="it-name">${escapeHtml(inv.name)}</span>${q > 1 ? `<span class="it-qty">×${q}</span>` : ''}${inv.slot ? '<i class="it-eq" title="Equipado"></i>' : ''}${TVArmas.usaMunicao(ITEMS_BY_ID[inv.itemId]) ? `<span class="it-mag" title="Tiros no carregador">${magOf(inv)}/${magCap(inv)}</span>` : ''}${inv.cond != null && inv.cond < 2 ? `<i class="it-cond c${inv.cond}" title="${escapeHtml(COND_LEVELS[inv.cond])}"></i>` : ''}`;
       b.addEventListener('click', () => { invUI.sel = on ? null : inv.uid; if(on) invUI.panel = null; invUI.focus = inv.uid; invUI.reveal = !on; renderInvDrawer(); });
       list.appendChild(b);
       if(on){ const d = document.createElement('div'); d.className = 'inv-detail'; d.id = 'inv-detail'; d.appendChild(mkRow(inv)); list.appendChild(d); }
@@ -5726,6 +5854,7 @@
       case 'depositar': return `${who} guardou ${escapeHtml(namesOf(e.gave))} em ${escapeHtml(e.counterpartName || '?')}`;
       case 'condicao': case 'reparar': return `${who}: ${it} · condição ${escapeHtml(e.condFrom || '—')} → ${escapeHtml(e.condTo || '—')}`;
       case 'ajuste': return `${escapeHtml(e.actorName || '?')} (mestre) ajustou ${who}: ${escapeHtml(e.note || '')}${e.item ? ' · ' + it : ''}`;
+      case 'recarga': case 'descarga': return `${who} ${e.action === 'recarga' ? 'recarregou' : 'descarregou'} ${it} · ${e.qty || 0} tiro(s) · carregador ${e.magAfter != null ? e.magAfter : '?'}/${e.magMax != null ? e.magMax : '?'}`;
       default: return who;
     }
   }
@@ -5780,6 +5909,9 @@
     renderLootResults(); renderFishResults();
     refreshAddDest(); updateSaqueInvCount();
     hudFeedChanged();
+    if(hubIsOpen()) renderHub();       // seção Armas da ficha
+    rosterChanged();
+    hudQRChanged();                    // lista de armas da folha Rolar
   }
 
   document.getElementById('saque-open-inv').addEventListener('click', () => openInventory(charSelect.value || null));
@@ -5866,6 +5998,9 @@
   let journal = {};
   let gmJournal = {};
   let gmOff = null;
+  let roster = {};            // gaveta compartilhada (personagens dos jogadores)
+  let gmRoster = {};          // gaveta do mestre (NPCs): só existe para o mestre
+  let gmRosterOff = null;
   let tac = { active:null, scenes:{} };   // mapa tático (público)
   let gmTac = {};                          // tokens ocultos (só o mestre recebe)
   let tacGmOff = null;
@@ -5981,7 +6116,7 @@
   // mensagem clara quando o banco recusa uma gravação (antes falhava em silêncio)
   function dbFailMsg(what){
     const e = DB.lastError || '';
-    return what + ' não foi salvo.' + (/permission|denied/i.test(e) ? ' O Firebase recusou a gravação: confira se as regras publicadas são as de firebase-rules.SUGESTAO-v3.json.' : (e ? ' (' + e + ')' : ''));
+    return what + ' não foi salvo.' + (/permission|denied/i.test(e) ? ' O Firebase recusou a gravação: confira se as regras publicadas são as de firebase-rules.SUGESTAO-v4.json (a v4 inclui tudo da v3 e a gaveta).' : (e ? ' (' + e + ')' : ''));
   }
   function todayStr(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
@@ -5991,7 +6126,7 @@
     lgReset(); routeReset();
     pins = []; tokens = []; shapes = []; routes = [];
     weather = { state:'calmo', updatedAt:null, updatedBy:null };
-    inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {}; journal = {}; gmJournal = {};
+    inventories = {}; lootLog = []; characters = {}; rolls = {}; recipes = {}; clock = null; campShortcuts = {}; sessions = {}; journal = {}; gmJournal = {}; roster = {}; gmRoster = {};
     hub.resDraft = null; hub.slotDraft = null; hub.cfgDraft = null;
     tacReset(); f23SceneReset();
     rollsSeen = null;
@@ -6012,9 +6147,10 @@
     on(KEY_SHORTCUTS, v => { campShortcuts = v || {}; hubChanged(); });
     syncOff.push(DB.on('campaign-sessions/' + activeCampaignId, v => { sessions = v || {}; updateHud(); hubChanged(); }));
     on(KEY_JOURNAL, v => { journal = v || {}; hubChanged(); hudFeedChanged(); }, 300);
+    on(KEY_ROSTER, v => { roster = v || {}; rosterChanged(); });
     on(KEY_TAC, v => tacOnData(v));
     on(KEY_SCENE, v => f23SceneData(v));
-    syncOff.push(() => { if(gmOff){ gmOff(); gmOff = null; } if(tacGmOff){ tacGmOff(); tacGmOff = null; } });
+    syncOff.push(() => { if(gmOff){ gmOff(); gmOff = null; } if(tacGmOff){ tacGmOff(); tacGmOff = null; } if(gmRosterOff){ gmRosterOff(); gmRosterOff = null; } });
     syncGm();
   }
   function activateCampaign(id){
@@ -6841,15 +6977,19 @@
     hubTitleSync();
     hubDrawer.classList.add('open'); hubBackdrop.classList.add('open');   // antes do render: a visão da gaveta só renderiza quando está aberta
     renderHub();
+    stagWant(document.getElementById('hub-body'));
+    if(g === 'ficha') guiaOferecer('ficha');
   }
   function hubTitleSync(){
     const g = hubGroupOf(hub.tab), t = document.getElementById('hub-title');
     if(t) t.textContent = g === 'ficha' ? 'Ficha' : (isMaster() ? 'Mestre e ajustes' : 'Ajustes');
+    const q = document.getElementById('hub-guia'); if(q) q.hidden = g !== 'ficha';
   }
   function closeHub(){ hubDrawer.classList.remove('open'); hubBackdrop.classList.remove('open'); }
   function hubIsOpen(){ return hubDrawer.classList.contains('open'); }
   function hubChanged(){
     if(!invReady) return;
+    rosterChanged();
     const vs = hubViewDefs().filter(v => v.body && v.on());
     if(!vs.length) return;
     const ae = document.activeElement;
@@ -6870,7 +7010,7 @@
     try{ renderHubNow(); } finally { hubBusy = false; }
   }
   function renderHubNow(){
-    hubViewDefs().forEach(v => { if(v.body && v.on()) renderHubView(v); });
+    hubViewDefs().forEach(v => { if(v.body && v.on()){ renderHubView(v); pulseScan(v.body); } });
     hubDirty = false;
   }
   function renderHubView(v){
@@ -6891,6 +7031,7 @@
       }
       html += fn ? fn() : '';
       v.body.innerHTML = html;
+      stagIfWanted(v.body);
     }
     if(keep){
       const el = v.roots.map(r => r && Array.from(r.querySelectorAll('[data-bind]')).find(x => x.dataset.bind === keep.bind)).find(Boolean);
@@ -7217,17 +7358,310 @@
     return html;
   }
 
+  // ---------- gaveta de personagens: gravação (a lógica dos planos está em tv-gaveta.js) ----------
+  const rosterCol = e => (e.kind === 'npc' ? KEY_GMROSTER : KEY_ROSTER);
+  const rosterAll = () => Object.keys(roster).map(k => roster[k]).concat(Object.keys(gmRoster).map(k => gmRoster[k])).filter(Boolean);
+  function rosterCanEdit(e){
+    return isMaster() || (e.kind === 'pc' && (!e.ownerId || (!!currentUser && e.ownerId === currentUser.uid)));
+  }
+  async function rosterSave(e){
+    if(!e || !e.id) return false;
+    if(e.kind === 'npc' && !isMaster()){ toast('Só o mestre guarda NPCs na gaveta.', true); return false; }
+    if(!rosterCanEdit(e)){ toast('Só o dono do personagem (ou o mestre) altera esta entrada.', true); return false; }
+    const col = rosterCol(e);
+    (col === KEY_GMROSTER ? gmRoster : roster)[e.id] = e;
+    const ok = await DB.set(scopedKey(col) + '/' + e.id, JSON.parse(JSON.stringify(e)));
+    if(!ok) toast(dbFailMsg('A gaveta'), true);
+    rosterChanged();
+    return ok;
+  }
+  async function rosterDelete(id){
+    const e = roster[id] || gmRoster[id]; if(!e) return false;
+    if(!rosterCanEdit(e)){ toast('Só o dono do personagem (ou o mestre) apaga esta entrada.', true); return false; }
+    const col = rosterCol(e);
+    delete (col === KEY_GMROSTER ? gmRoster : roster)[id];
+    const ok = await DB.set(scopedKey(col) + '/' + id, null);
+    if(!ok) toast(dbFailMsg('A gaveta'), true);
+    rosterChanged();
+    return ok;
+  }
+  // Aplica os "writes" de TVGaveta (caminhos lógicos). tokens e pins são vetores salvos inteiros; ficha e mochila são nós.
+  // Com Firebase vai tudo em uma única gravação multi-caminho (colocar ou guardar nunca fica pela metade).
+  async function rosterApply(writes, entrada){
+    let tk = tokens, pn = pins, tkCh = false, pnCh = false;
+    const chars = {}, invs = {};
+    Object.keys(writes).forEach(path => {
+      const i = path.indexOf('/'), col = path.slice(0, i), id = path.slice(i + 1), v = writes[path];
+      if(col === 'tokens'){ tk = tk.filter(x => x.id !== id).concat(v ? [v] : []); tkCh = true; }
+      else if(col === 'pins'){ pn = pn.filter(x => x.id !== id).concat(v ? [v] : []); pnCh = true; }
+      else if(col === 'characters') chars[id] = v;
+      else if(col === 'inventories') invs[id] = v;
+    });
+    if(tkCh) tokens = tk;
+    if(pnCh) pins = pn;
+    Object.keys(chars).forEach(id => { if(chars[id] === null) delete characters[id]; else characters[id] = chars[id]; });
+    Object.keys(invs).forEach(id => { if(invs[id] === null) delete inventories[id]; else inventories[id] = invs[id]; });
+    const upd = {};
+    Object.keys(chars).forEach(id => { upd[scopedKey(KEY_CHARS) + '/' + id] = chars[id]; });
+    if(entrada){ (entrada.kind === 'npc' ? gmRoster : roster)[entrada.id] = entrada; upd[scopedKey(rosterCol(entrada)) + '/' + entrada.id] = entrada; }
+    let ok = true;
+    if(firebaseReady){
+      if(tkCh) upd[scopedKey(KEY_TOKENS)] = tokens;
+      if(pnCh) upd[scopedKey(KEY_PINS)] = pins;
+      Object.keys(invs).forEach(id => { upd[scopedKey(KEY_INV) + '/' + id] = invs[id]; });
+      ok = await DB.update(JSON.parse(JSON.stringify(upd)));
+    } else {
+      const jobs = [DB.update(JSON.parse(JSON.stringify(upd)))];
+      if(tkCh) jobs.push(saveKey(KEY_TOKENS, tokens));
+      if(pnCh) jobs.push(saveKey(KEY_PINS, pins));
+      if(Object.keys(invs).length) jobs.push(saveKey(KEY_INV, inventories));
+      ok = (await Promise.all(jobs)).every(r => r !== false);
+    }
+    if(!ok) toast(dbFailMsg('A gaveta'), true);
+    if(tkCh) renderTokens();
+    if(pnCh) renderPins();
+    if(Object.keys(invs).length) onInvChanged();
+    hubChanged(); rosterChanged();
+    return ok;
+  }
+  window.__tvRoster = { get roster(){ return roster; }, get gmRoster(){ return gmRoster; }, save:rosterSave, del:rosterDelete, apply:rosterApply, syncGmFor, backup:buildBackup };   // só para os testes automáticos
+
+  // ---------- gaveta de personagens: tela ----------
+  var rosterUI = { ready:false, open:false, aba:'todos', filtro:'', form:null, placing:null, t:0 };   // var: lido antes de este módulo existir
+  const ROSTER_COLORS = ['', '#e5484d', '#f5a524', '#f2d03b', '#46c25f', '#2fb6c7', '#4c8dff', '#a566ff', '#ff6fb1'];
+  const rsEl = id => document.getElementById(id);
+  const rosterUid = () => (currentUser ? currentUser.uid : null);
+  const rosterNamesOnMap = () => tokens.map(t => t.label || 'Token').concat(pins.filter(p => p.type === 'npc').map(p => p.title || 'NPC'));
+  // ficha inicial de quem nasce na gaveta (Ordem Paranormal, igual à de uma ficha migrada)
+  function rosterStarterCard(name){
+    return { tokenId:'', name, player:'', notes:'', reminders:[], skills:[], needs:{}, systemId:'ordem',
+      attributes:{ agi:1, for:1, int:1, pre:1, vig:1 }, meta:{ class:'', origin:'' }, nex:5, level:1, skillsV2:{},
+      resources2:{ pv:{ cur:0, max:0 }, pd:{ cur:0, max:0 } }, attacks:[], conditions:[] };
+  }
+  // quem já está no mapa sem passar pela gaveta aparece como "No mapa" (virtual: só vira entrada quando você guarda)
+  function rosterDerived(){
+    const ref = {}; rosterAll().forEach(e => { if(e.onMap) ref[e.onMap] = 1; });
+    const master = isMaster(), uid = rosterUid(), out = [];
+    tokens.forEach(t => {
+      if(ref[t.id] || (!master && !(uid && t.ownerId === uid))) return;
+      out.push({ id:t.id, kind:'pc', name:String(t.label || 'Token'), color:t.color || '', ownerId:t.ownerId || null, ownerName:t.ownerName || null, tpl:false, card:{}, inv:{}, onMap:t.id, derived:true, createdAt:0, updatedAt:0 });
+    });
+    if(master) pins.forEach(p => {
+      if(p.type !== 'npc' || ref[p.id]) return;
+      out.push({ id:p.id, kind:'npc', name:String(p.title || 'NPC'), ownerId:null, ownerName:null, tpl:false, card:{}, inv:{}, onMap:p.id, derived:true, createdAt:0, updatedAt:0 });
+    });
+    return out;
+  }
+  const rosterFind = id => roster[id] || gmRoster[id] || rosterDerived().find(e => e.id === id) || null;
+  // o que vale agora: no mapa, a ficha e a mochila ao vivo; guardado, o que a entrada tem
+  function rosterLive(e){
+    const id = e.onMap, real = !!id && (e.kind === 'pc' ? tokens.some(t => t.id === id) : pins.some(p => p.id === id));
+    return { onMap:real, card:(id && characters[id]) || e.card || {}, inv:(id && inventories[id]) || e.inv || {} };
+  }
+  function rosterWeaponTxt(inv){
+    const w = Object.keys(inv || {}).filter(isItemKey).map(k => inv[k])
+      .filter(i => i && typeof i === 'object' && WEAPON_SLOTS.indexOf(i.slot) !== -1 && TVArmas.ehArma(i.category))
+      .sort((a, b) => WEAPON_SLOTS.indexOf(a.slot) - WEAPON_SLOTS.indexOf(b.slot))[0];
+    if(!w) return '';
+    return w.name + (TVArmas.usaMunicao(ITEMS_BY_ID[w.itemId]) ? ' ' + magOf(w) + '/' + magCap(w) : '');
+  }
+  function rosterCardHtml(e){
+    const lv = rosterLive(e), onMap = lv.onMap, canEd = e.derived ? (isMaster() || (e.kind === 'pc' && !!rosterUid() && e.ownerId === rosterUid())) : rosterCanEdit(e);
+    const pv = opRes(lv.card, 'pv'), wtxt = rosterWeaponTxt(lv.inv), n = Object.keys(lv.inv || {}).filter(isItemKey).length;
+    const meta = [pv.max > 0 ? `PV <b data-pulse="rs-pv:${esc(e.id)}">${pv.cur}/${pv.max}</b>` : '', wtxt ? `<span data-pulse="rs-w:${esc(e.id)}">${esc(wtxt)}</span>` : '', n ? n + (n === 1 ? ' item' : ' itens') : ''].filter(Boolean).join('<span class="rs-sep">·</span>');
+    const tags = (onMap ? '<span class="rs-tag on">No mapa</span>' : '<span class="rs-tag">Na gaveta</span>') + (e.tpl ? '<span class="rs-tag tpl" title="Cada vez que vai ao mapa, vira uma cópia nova">Modelo</span>' : '');
+    const dis = !canEd ? ' disabled' : '';
+    const prim = onMap
+      ? `<button type="button" class="inv-mini-btn" data-roster="ir">${ic('map', 16)} Ir</button><button type="button" class="inv-mini-btn primary" data-roster="guardar"${dis}>Guardar</button>`
+      : `<button type="button" class="inv-mini-btn primary" data-roster="colocar"${dis}>${ic('map', 16)} Colocar</button><button type="button" class="inv-mini-btn" data-roster="centro"${dis}>No centro</button>`;
+    const sec = e.derived
+      ? `<button type="button" class="inv-mini-btn" data-roster="ficha">Ficha</button><button type="button" class="inv-mini-btn" data-roster="mochila">Mochila</button>`
+      : `<button type="button" class="inv-mini-btn" data-roster="ficha"${onMap ? '' : ' disabled'}>Ficha</button><button type="button" class="inv-mini-btn" data-roster="mochila"${onMap ? '' : ' disabled'}>Mochila</button>
+         <button type="button" class="inv-mini-btn rs-sw${e.tpl ? ' on' : ''}" role="switch" aria-checked="${!!e.tpl}" data-roster="modelo" title="Ligado: cada vez que vai ao mapa, vira uma cópia nova. Desligado: é o mesmo personagem que sai e volta."${onMap || !canEd ? ' disabled' : ''}>Modelo</button>
+         <button type="button" class="inv-mini-btn" data-roster="duplicar"${onMap || !canEd ? ' disabled' : ''}>Duplicar</button>
+         <button type="button" class="inv-mini-btn" data-roster="editar"${onMap || !canEd ? ' disabled' : ''}>Editar</button>
+         <button type="button" class="inv-mini-btn danger" data-roster="excluir"${canEd ? '' : ' disabled'}>Excluir</button>`;
+    return `<article class="rs-card${onMap ? ' on-map' : ''}" data-id="${esc(e.id)}"><div class="rs-main"><span class="rs-dot" style="--c:${esc(e.color || (e.kind === 'npc' ? 'var(--hazard)' : '#ffffff'))}"></span>
+      <div class="rs-info"><b class="rs-name">${esc(e.name)}</b>${meta ? `<div class="rs-meta">${meta}</div>` : ''}<div class="rs-tags">${tags}</div></div></div>
+      <div class="rs-acts">${prim}</div><div class="rs-sub">${sec}</div></article>`;
+  }
+  function rosterFormHtml(f){
+    const master = isMaster();
+    const colors = f.kind === 'pc' ? `<div class="rs-colors" role="radiogroup" aria-label="Cor do token">${ROSTER_COLORS.map(c => `<button type="button" class="rs-sw-color${(f.color || '') === c ? ' on' : ''}" role="radio" aria-checked="${(f.color || '') === c}" data-roster="cor" data-c="${c}" style="--c:${c || '#ffffff'}" aria-label="${c ? 'Cor ' + c : 'Cor padrão'}"></button>`).join('')}</div>` : '';
+    return `<div class="rs-form-box"><b class="rs-form-title">${f.mode === 'edit' ? 'Editar' : 'Novo personagem'}</b>
+      <label class="rs-lab">Nome<input type="text" id="rs-name" maxlength="40" autocomplete="off" value="${esc(f.name || '')}" placeholder="${f.kind === 'npc' ? 'Ex.: Zumbi, Cultista' : 'Nome do personagem'}"></label>
+      ${master && f.mode !== 'edit' ? `<label class="rs-lab">Tipo<select id="rs-kind"><option value="pc"${f.kind === 'pc' ? ' selected' : ''}>Personagem de jogador</option><option value="npc"${f.kind === 'npc' ? ' selected' : ''}>NPC do mestre</option></select></label>` : ''}
+      ${colors}
+      ${f.mode === 'edit' ? '' : `<label class="check-row"><input type="checkbox" id="rs-tpl"${f.tpl ? ' checked' : ''}> Modelo: cada vez que for ao mapa, vira uma cópia nova (bom para vários zumbis)</label>`}
+      <div class="inv-item-actions"><button type="button" class="inv-mini-btn primary" data-roster="${f.mode === 'edit' ? 'salvar' : 'criar'}">${f.mode === 'edit' ? 'Salvar' : 'Criar na gaveta'}</button><button type="button" class="inv-mini-btn" data-roster="cancelar">Cancelar</button></div></div>`;
+  }
+  function rosterRender(){
+    if(!rosterUI || !rosterUI.ready || !rosterUI.open) return;
+    const master = isMaster(), abas = TVGaveta.abas(master);
+    if(!abas.some(a => a[0] === rosterUI.aba)) rosterUI.aba = abas[0][0];
+    const tabsEl = rsEl('rs-tabs');
+    tabsEl.hidden = abas.length < 2;
+    tabsEl.innerHTML = abas.map(a => `<button type="button" role="tab" class="rs-tab${a[0] === rosterUI.aba ? ' on' : ''}" aria-selected="${a[0] === rosterUI.aba}" data-roster-tab="${a[0]}">${a[1]}</button>`).join('');
+    tabInd(tabsEl);
+    const q = String(rosterUI.filtro || '').trim().toLowerCase(), ok = e => !q || String(e.name).toLowerCase().indexOf(q) !== -1;
+    const stored = TVGaveta.visiveis({ master, uid:rosterUid(), aba:rosterUI.aba }, roster, gmRoster).filter(ok);
+    const der = rosterDerived().filter(e => ok(e) && (rosterUI.aba !== 'npcs' || e.kind === 'npc')).sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR', { sensitivity:'base' }));
+    const CAP = 60, shown = der.slice(0, CAP);
+    let html = stored.map(rosterCardHtml).join('');
+    if(shown.length) html += `<div class="rs-label">Já no mapa (${der.length})</div>` + shown.map(rosterCardHtml).join('') + (der.length > CAP ? `<p class="hub-hint">Mostrando ${CAP} de ${der.length}. Use a busca para achar os outros.</p>` : '');
+    if(!html) html = `<div class="inv-empty">${q ? 'Nenhum personagem com esse nome.' : (master ? 'A gaveta está vazia. Toque em Novo para criar um personagem ou NPC e deixá-lo guardado.' : 'Você ainda não guardou nenhum personagem. Toque em Novo para criar o seu.')}</div>`;
+    const list = rsEl('rs-list'), st = list.scrollTop;
+    list.innerHTML = html; list.scrollTop = st;
+    pulseScan(list);
+  }
+  function rosterChanged(){
+    if(!rosterUI || !rosterUI.ready || !rosterUI.open || rosterUI.t) return;
+    rosterUI.t = setTimeout(() => { rosterUI.t = 0; rosterRender(); }, 60);   // junta várias mudanças seguidas num só desenho
+  }
+  function rosterFormShow(f){
+    rosterUI.form = f;
+    const box = rsEl('rs-form');
+    if(!f){ box.hidden = true; box.innerHTML = ''; return; }
+    box.innerHTML = rosterFormHtml(f); box.hidden = false;
+    const nm = rsEl('rs-name'); if(nm){ nm.focus(); nm.select(); }
+  }
+  function openRoster(){
+    hudCloseSheets(); closeHub(); closeDrawer(); closeNavDrawer(); closeInventory();
+    clearModes();
+    rosterUI.open = true; rosterUI.form = null; rosterUI.filtro = ''; rsEl('rs-filter').value = ''; rosterFormShow(null);
+    rosterRender();
+    rosterDrawer.classList.add('open'); rosterBackdrop.classList.add('open');
+    stagger(rosterDrawer.querySelector('.drawer-body'));
+    guiaOferecer('gaveta');
+  }
+  function closeRoster(keepPlacing){
+    if(!rosterUI) return;
+    if(!keepPlacing && rosterUI.placing){ rosterSetPlacing(null); hideDrawHint(); }
+    if(!rosterUI.open) return;
+    rosterUI.open = false;
+    rosterDrawer.classList.remove('open'); rosterBackdrop.classList.remove('open');
+  }
+  async function rosterPlace(e0, pos){
+    let e = e0;
+    if(!e || e.derived) return false;
+    const lv = rosterLive(e);
+    if(e.onMap && !lv.onMap) e = Object.assign({}, e, { onMap:null, card:lv.card, inv:lv.inv });   // o objeto sumiu do mapa: vale o que sobrou dele
+    if(!e.tpl && e.onMap){ toast(e.name + ' já está no mapa.', true); return false; }
+    let plano;
+    try{ plano = TVGaveta.planoColocar(e, { pos:{ lat:pos.lat, lng:pos.lng }, novoId:newId, nomesNoMapa:rosterNamesOnMap(), agora:Date.now() }); }
+    catch(err){ toast(err.message, true); return false; }
+    const ok = await rosterApply(plano.writes, e.tpl ? null : plano.entradaDepois);
+    if(ok){ const o = plano.writes[(e.kind === 'pc' ? 'tokens/' : 'pins/') + plano.idNoMapa]; toast((o.label || o.title) + ' foi para o mapa.'); }
+    return ok;
+  }
+  async function rosterStore(e){
+    if(!e || !e.onMap) return false;
+    if(e.tpl){ toast('Modelo não volta para a gaveta: cada cópia no mapa é independente.', true); return false; }
+    const lv = rosterLive(e), obj = e.kind === 'pc' ? tokens.find(t => t.id === e.onMap) : pins.find(p => p.id === e.onMap);
+    const holder = obj ? { name:(e.kind === 'pc' ? obj.label : obj.title) || e.name, color:obj.color || '' } : {};
+    let plano;
+    try{ plano = TVGaveta.planoGuardar(e, { holder, card:lv.card, inv:lv.inv, agora:Date.now() }); }
+    catch(err){ toast(err.message, true); return false; }
+    const depois = plano.entradaDepois; delete depois.derived; if(!depois.createdAt) depois.createdAt = depois.updatedAt;
+    const ok = await rosterApply(plano.writes, depois);
+    if(ok) toast(depois.name + ' foi para a gaveta com a ficha e a mochila.');
+    return ok;
+  }
+  async function rosterCreate(){
+    const f = rosterUI.form, master = isMaster();
+    if(!f) return;
+    if(!master && firebaseReady && !rosterUid()){ toast('Entre na sua conta para guardar personagens na gaveta.', true); return; }
+    const kind = master && rsEl('rs-kind') ? rsEl('rs-kind').value : 'pc';
+    const e = TVGaveta.nova({ kind, name:rsEl('rs-name').value, tpl:rsEl('rs-tpl').checked, color:kind === 'pc' ? f.color : '', ownerId:rosterUid() }, { novoId:newId, agora:Date.now() });
+    e.ownerName = ownerFields().ownerName || null;
+    e.card = rosterStarterCard(e.name);
+    if(await rosterSave(e)){ rosterFormShow(null); rosterRender(); toast(e.name + ' está na gaveta.'); }
+  }
+  // enquanto "Colocar" espera o toque, marcadores e formas ficam transparentes ao toque: qualquer ponto do mapa serve
+  function rosterSetPlacing(id){ rosterUI.placing = id || null; document.body.classList.toggle('roster-placing', !!id); }
+  function rosterPlaceMode(e){
+    clearModes();
+    rosterSetPlacing(e.id); closeRoster(true);
+    showDrawHint('Toque no mapa para colocar <b>' + esc(e.name) + '</b>. Esc cancela.');
+  }
+  rsEl('roster-drawer').addEventListener('click', async ev => {
+    const tb = ev.target.closest('[data-roster-tab]');
+    if(tb){ rosterUI.aba = tb.dataset.rosterTab; rosterRender(); return; }
+    const b = ev.target.closest('[data-roster]'); if(!b || b.disabled) return;
+    const act = b.dataset.roster, cardEl = b.closest('.rs-card'), id = cardEl ? cardEl.dataset.id : null, e = id ? rosterFind(id) : null;
+    if(act === 'novo'){ const m = isMaster(); rosterFormShow({ mode:'new', kind:'pc', name:'', color:'', tpl:false }); if(!m) rsEl('rs-name').focus(); }
+    else if(act === 'cancelar') rosterFormShow(null);
+    else if(act === 'criar') await rosterCreate();
+    else if(act === 'cor'){ const f = rosterUI.form; if(f){ f.color = b.dataset.c || ''; rsEl('rs-form').querySelectorAll('.rs-sw-color').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-checked', String(on)); }); } }
+    else if(act === 'salvar'){
+      const f = rosterUI.form, cur = f && rosterFind(f.id); if(!cur) return;
+      const nome = rsEl('rs-name').value.trim() || cur.name;
+      const upd = Object.assign({}, cur, { name:nome, updatedAt:Date.now() }); if(cur.kind === 'pc') upd.color = f.color || '';
+      if(!upd.color) delete upd.color;
+      if(await rosterSave(upd)){ rosterFormShow(null); rosterRender(); }
+    }
+    else if(!e) return;
+    else if(act === 'colocar') rosterPlaceMode(e);
+    else if(act === 'centro') await rosterPlace(e, map.getCenter());
+    else if(act === 'guardar') await rosterStore(e);
+    else if(act === 'ir'){ const o = e.kind === 'pc' ? tokens.find(t => t.id === e.onMap) : pins.find(p => p.id === e.onMap); if(!o){ toast('Não achei este personagem no mapa.', true); return; } closeRoster(); map.flyTo([o.lat, o.lng], Math.max(map.getZoom(), 16)); }
+    else if(act === 'ficha'){ if(!rosterLive(e).onMap){ toast('Coloque o personagem no mapa para abrir a ficha.', true); return; } closeRoster(); hudSetWho(e.onMap); f23ShowFicha(); }
+    else if(act === 'mochila'){ if(!rosterLive(e).onMap){ toast('Coloque o personagem no mapa para abrir a mochila.', true); return; } openInventory(e.onMap); }
+    else if(act === 'modelo') await rosterSave(Object.assign({}, e, { tpl:!e.tpl, updatedAt:Date.now() }));
+    else if(act === 'duplicar'){
+      const nomes = rosterAll().map(x => x.name), cp = TVGaveta.duplicar(e, { novoId:newId, nomes, agora:Date.now() });
+      if(await rosterSave(cp)) toast(cp.name + ' criado na gaveta.');
+    }
+    else if(act === 'editar') rosterFormShow({ mode:'edit', id:e.id, kind:e.kind, name:e.name, color:e.color || '' });
+    else if(act === 'excluir'){
+      const onMap = rosterLive(e).onMap;
+      if(!window.confirm(`Excluir "${e.name}" da gaveta?` + (onMap ? ' O token que está no mapa continua lá.' : ' A ficha e a mochila guardadas serão apagadas.'))) return;
+      if(await rosterDelete(e.id)) rosterRender();
+    }
+  });
+  rsEl('rs-filter').addEventListener('input', ev => { rosterUI.filtro = ev.target.value; rosterRender(); });
+  rsEl('roster-drawer').addEventListener('change', ev => {
+    if(ev.target.id !== 'rs-kind') return;
+    const f = rosterUI.form; if(!f) return;
+    f.kind = ev.target.value; f.tpl = f.kind === 'npc'; f.name = rsEl('rs-name').value;
+    rosterFormShow(f);
+    rsEl('rs-kind').value = f.kind; rsEl('rs-tpl').checked = f.tpl;
+  });
+  rsEl('roster-drawer').addEventListener('keydown', ev => { if(ev.key === 'Enter' && ev.target.id === 'rs-name'){ ev.preventDefault(); const b = rsEl('roster-drawer').querySelector('[data-roster="criar"], [data-roster="salvar"]'); if(b) b.click(); } });
+  rsEl('roster-drawer-close-btn').addEventListener('click', () => closeRoster());
+  rosterBackdrop.addEventListener('click', () => closeRoster());
+  document.addEventListener('keydown', ev => {
+    if(ev.key !== 'Escape') return;
+    if(rosterUI.placing){ clearModes(); return; }
+    if(rosterUI.open) closeRoster();
+  });
+  // toque no mapa enquanto "Colocar" está ativo
+  function rosterMapTap(latlng){
+    const id = rosterUI.placing; rosterSetPlacing(null); hideDrawHint();
+    const e = rosterFind(id); if(e) rosterPlace(e, latlng);
+  }
+  window.__tvRoster = Object.assign(window.__tvRoster || {}, {
+    view:(master, uid, aba) => TVGaveta.visiveis({ master, uid, aba:aba || 'todos' }, roster, gmRoster),
+    tabs:master => TVGaveta.abas(master) });
+  rosterUI.ready = true;
+
   // ---------- diário, grupo, mundo e área do mestre ----------
   const DJ_TYPES = [['resumo','Resumo'],['pista','Pista'],['decisao','Decisão'],['objetivo','Objetivo'],['nota','Nota'],['evento','Evento']];
   const OBJ_STATES = [['aberto','Aberto'],['cumprido','Cumprido'],['falhou','Falhou']];
   const TIMELINE_ACTIONS = new Set(['vasculhar','pegar','depositar','troca','craft','inv_removido','reparar','ajuste']);
-  function syncGm(){
+  function syncGm(){ syncGmFor(isMaster() && (!firebaseReady || !!currentUser)); }
+  // coleções privadas do mestre (diário, tokens ocultos, NPCs da gaveta): para quem não é mestre nem existe ouvinte
+  function syncGmFor(master){
     if(gmOff){ gmOff(); gmOff = null; }
     gmJournal = {};
-    if(isMaster() && (!firebaseReady || currentUser)) gmOff = DB.on(scopedKey(KEY_GMJ), v => { gmJournal = v || {}; hubChanged(); hudFeedChanged(); }, 300);
+    if(master) gmOff = DB.on(scopedKey(KEY_GMJ), v => { gmJournal = v || {}; hubChanged(); hudFeedChanged(); }, 300);
     if(tacGmOff){ tacGmOff(); tacGmOff = null; }
     gmTac = {};
-    if(isMaster() && (!firebaseReady || currentUser)) tacGmOff = DB.on(scopedKey(KEY_GMTAC), v => { gmTac = v || {}; tacChanged(); });
+    if(master) tacGmOff = DB.on(scopedKey(KEY_GMTAC), v => { gmTac = v || {}; tacChanged(); });
+    if(gmRosterOff){ gmRosterOff(); gmRosterOff = null; }
+    gmRoster = {};
+    if(master) gmRosterOff = DB.on(scopedKey(KEY_GMROSTER), v => { gmRoster = v || {}; rosterChanged(); });
+    rosterChanged();
   }
   async function addJournal(e){
     const gm = e.vis === 'mestre';
@@ -7395,7 +7829,7 @@
     hub.bulkPick = []; toast('Ajuste aplicado.'); renderHub();
   }
   // ---------- backup e restauração ----------
-  const BACKUP_KEYS = [KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG, KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC, KEY_SCENE];
+  const BACKUP_KEYS = [KEY_PINS, KEY_TOKENS, KEY_SHAPES, KEY_ROUTES, KEY_WEATHER, KEY_INV, KEY_LOG, KEY_CHARS, KEY_ROLLS, KEY_RECIPES, KEY_CLOCK, KEY_SHORTCUTS, KEY_JOURNAL, KEY_GMJ, KEY_TAC, KEY_TACIMG, KEY_GMTAC, KEY_SCENE, KEY_ROSTER, KEY_GMROSTER];
   async function buildBackup(){
     const data = {};
     for(const k of BACKUP_KEYS){ try{ const v = await readScoped(activeCampaignId, k); if(v != null) data[k] = v; }catch(e){ /* sem permissão: segue */ } }
@@ -7551,7 +7985,7 @@
       base = n === 1 ? 'd20' + at + ': ' + t0.value
         : n + 'd20 ' + (sh.keep === 'kl' ? 'menor' : 'maior') + at + ' [' + t0.dice.map(fmtDie).join(', ') + '] → ' + t0.value;
     } else base = fmtTerms(r.terms || []);
-    return base + (r.bonuses || []).map(b => ' ' + opBonusTxt(b)).join('') + ' = ' + r.total + (sh.kind === 'attack' && sh.crit ? ' · CRÍTICO!' : '');
+    return base + (r.bonuses || []).map(b => ' ' + opBonusTxt(b)).join('') + ' = ' + r.total + (sh.kind === 'attack' && sh.crit ? ' · CRÍTICO!' : '') + (sh.tiros ? ' · Tiros ' + sh.tiros : '');
   }
   // cartão que fica 7 s no topo da tela com o resultado (o histórico fica na aba Dados)
   function opToast(r){
@@ -7595,19 +8029,19 @@
     const t = opD20(p.pool);
     await opRecord(id, sd.name + (ov && ov !== sd.attr ? ' (' + opAttrLabel(ov) + ')' : ''), [t], p.parts.concat(p.conds), { kind:'skill', key, attr:p.pool.attr, val:p.pool.val, pool:p.pool.n, keep:p.pool.keep });
   }
-  async function opRollAttack(atkId, tokenId, attrOv){
+  async function opRollAttack(atkId, tokenId, attrOv, extra){
     const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
-    const card = ensureCard(id), atk = (card.attacks || []).find(x => x.id === atkId); if(!atk) return;
+    const card = ensureCard(id), atk = opAtk(card, id, atkId); if(!atk) return;
     const ov = opAttrOk(attrOv), p = opParts(card, atk.skill || '', ov || atk.attribute || '', 'attack');
     const t = opD20(p.pool);
     const nat = t.value, margin = Math.min(20, Math.max(2, parseInt(atk.critMargin, 10) || 20));
     const crit = nat >= margin;      // crítico: o d20 que ficou (o maior, ou o menor com atributo 0) caiu dentro da margem
     hub.opCrit = hub.opCrit || {}; hub.opCrit[atkId] = crit;
-    await opRecord(id, (atk.name || 'Ataque') + ' · ataque', [t], p.parts.concat(p.conds), { kind:'attack', atk:atkId, crit, nat, attr:p.pool.attr, val:p.pool.val, pool:p.pool.n, keep:p.pool.keep });
+    await opRecord(id, (atk.name || 'Ataque') + ' · ataque', [t], p.parts.concat(p.conds), Object.assign({ kind:'attack', atk:atkId, crit, nat, attr:p.pool.attr, val:p.pool.val, pool:p.pool.n, keep:p.pool.keep }, extra || {}));
   }
   async function opRollDamage(atkId, tokenId){
     const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
-    const card = ensureCard(id), atk = (card.attacks || []).find(x => x.id === atkId); if(!atk) return;
+    const card = ensureCard(id), atk = opAtk(card, id, atkId); if(!atk) return;
     const pe = parseExpr(atk.damage || '');
     if(pe.error || !pe.terms.length){ toast(pe.error || 'Escreva o dano do ataque (ex.: 1d10+2).', true); return; }
     const crit = !!(hub.opCrit && hub.opCrit[atkId]), mult = Math.min(10, Math.max(1, parseInt(atk.critMult, 10) || 2));
@@ -7620,6 +8054,71 @@
     if(atk.addTrainingToDamage && atk.skill){ const tr = OP_TRAIN[opSkillDef(card, atk.skill).s.training] || OP_TRAIN.none; bonuses.push({ label:tr[0], value:tr[1] }); }
     if(hub.opCrit) hub.opCrit[atkId] = false;
     await opRecord(id, (atk.name || 'Ataque') + ' · dano' + (crit ? ' (crítico ×' + mult + ')' : ''), results, bonuses, { kind:'damage', atk:atkId, crit });
+  }
+  // ---- armas empunhadas: o ataque é "virtual" (id "w:{uid}"), nada é copiado para card.attacks ----
+  function opAtk(card, tokenId, atkId){
+    if(String(atkId).indexOf('w:') === 0){
+      const uid = String(atkId).slice(2), w = weaponsOf(tokenId).find(x => x.uid === uid);
+      return w ? TVArmas.ataque(w, ITEMS_BY_ID[w.itemId]) : undefined;
+    }
+    return (card.attacks || []).find(x => x.id === atkId);
+  }
+  // gasta 1 tiro; devolve quantos sobraram ou -1 se não havia. Com Firebase é uma transação (dois toques no último tiro = um ataque);
+  // sem Firebase a checagem e a escrita acontecem na mesma tacada síncrona, pelo mesmo efeito.
+  async function spendMagN(hid, uid){
+    const inst = inventories[hid] && inventories[hid][uid]; if(!inst) return -1;
+    if(firebaseReady){
+      try{
+        const r = await firebaseDb.ref('tau-volantis/' + scopedKey(KEY_INV) + '/' + hid + '/' + uid + '/mag')
+          .transaction(cur => cur === null ? null : ((typeof cur === 'number' && cur > 0) ? cur - 1 : undefined));
+        const v = r.snapshot.val();
+        return (r.committed && typeof v === 'number') ? v : -1;
+      }catch(e){ console.error('Falha ao gastar tiro', e); toast('Não foi possível salvar (confira as regras do Firebase).', true); return -1; }
+    }
+    const cur = magOf(inst); if(cur <= 0) return -1;
+    inst.mag = cur - 1;
+    await saveKey(KEY_INV, inventories); onInvChanged();
+    return inst.mag;
+  }
+  async function spendMag(hid, uid){ return (await spendMagN(hid, uid)) >= 0; }
+  // Atacar = checagens → gasta 1 tiro (arma de fogo) → rola ataque → rola dano (com o crítico do ataque)
+  async function opWeaponAttack(uid, tokenId, attrOv){
+    const id = tokenId || hub.charToken; if(!opCanEdit(id, 'Só o dono do personagem (ou o mestre) rola por ele.')) return;
+    const w = weaponsOf(id).find(x => x.uid === uid);
+    if(!w){ toast('Essa arma não está empunhada.', true); return; }
+    if(w.cond === 0){ toast(`Arma quebrada: ${w.name}. Conserte antes de atacar.`, true); return; }
+    let extra = null;
+    if(TVArmas.usaMunicao(ITEMS_BY_ID[w.itemId])){
+      const left = await spendMagN(id, uid);
+      if(left < 0){ toast('Sem tiros. Recarregue.', true); return; }
+      extra = { tiros:left + '/' + magCap(w) };
+    }
+    await opRollAttack('w:' + uid, id, attrOv, extra);
+    await opRollDamage('w:' + uid, id);
+  }
+  async function doMagMax(hid, uid, n){
+    const inst = inventories[hid] && inventories[hid][uid]; if(!inst) return;
+    n = Math.trunc(Number(n));
+    if(!(n >= 1 && n <= 99)){ toast('A capacidade vai de 1 a 99 tiros.', true); return; }
+    if(await commitInv({ [hid + '/' + uid]: Object.assign({}, inst, { magMax:n, mag:Math.min(magOf(inst), n), v:DATA_SCHEMA }) }, [])) toast(`${inst.name}: carregador de ${n} tiros.`);
+  }
+  // linha de uma arma empunhada (ficha, aba Combate)
+  function opWeaponRow(card, hid, w, dis){
+    const ref = ITEMS_BY_ID[w.itemId], a = TVArmas.ataque(w, ref), gun = TVArmas.usaMunicao(ref);
+    const p = opParts(card, a.skill, a.attribute, 'attack'), crit = !!(hub.opCrit && hub.opCrit['w:' + w.uid]), open = hub.opWMore === w.uid;
+    const meta = [a.damage || '—', a.critMargin + '/×' + a.critMult, ref && ref.alc, gun ? TVArmas.rotuloCalibre(ref.calibre) : '', slotLabel(w.slot)].filter(Boolean).join(' · ');
+    const uid = esc(w.uid);
+    return `<div class="op-atk op-w" data-id="${uid}"><div class="op-atk-top"><div><b>${esc(w.name)}</b><small>${esc(meta)}</small></div>
+      <span class="op-total" title="${esc(opPoolHelp(p.pool))} + bônus do ataque"><span class="op-pool${p.pool.low ? ' low' : ''}">${p.pool.label}</span> ${opSgn(opSum(p))}</span></div>
+      ${gun ? magLineHtml(w, ref) : ''}
+      <div class="inv-item-actions">${gun && !magOf(w)
+        ? `<button type="button" class="inv-mini-btn primary" data-act="op-w-reload" data-id="${uid}" ${dis}>Recarregar</button>`
+        : `<button type="button" class="inv-mini-btn primary" data-act="op-w-atk" data-id="${uid}" ${dis}>${ic('swords', 16)} Atacar</button>`}
+        <button type="button" class="inv-mini-btn ${crit ? 'op-crit-btn' : ''}" data-act="op-w-dmg" data-id="${uid}" ${dis}>Só dano${crit ? ' (crítico ×' + esc(String(a.critMult)) + ')' : ''}</button>
+        <button type="button" class="inv-mini-btn" data-act="op-w-more" data-id="${uid}" aria-expanded="${open}">${open ? 'Fechar' : 'Mais'}</button></div>
+      ${open ? `<div class="op-atk-form">${gun ? `<button type="button" class="inv-mini-btn" data-act="op-w-unload" data-id="${uid}" ${dis}>Descarregar</button>
+        <div class="bonus-row"><label class="op-fld">Capacidade do carregador<input type="number" min="1" max="99" data-w-cap="${uid}" value="${magCap(w)}" ${dis}></label><button type="button" class="inv-mini-btn" data-act="op-w-cap" data-id="${uid}" ${dis}>Salvar</button></div>`
+        : '<p class="hub-hint">Esta arma não usa munição.</p>'}</div>` : ''}</div>`;
   }
   // ---- formato antigo → Ordem Paranormal (aditivo e reversível) ----
   function opSkipped(id){
@@ -7857,7 +8356,7 @@
   function opMeter(card, k, dis){
     const r = opRes(card, k), pct = r.max > 0 ? Math.max(0, Math.min(100, Math.round(r.cur / r.max * 100))) : 0, low = r.max > 0 && r.cur / r.max < 0.3, nm = OP_RES[k];
     const inp = (f, v, lab) => `<input class="ox-vit-in ox-vit-${f}" type="number" inputmode="numeric" min="0" data-res="${k}" data-f="${f}" value="${v}" aria-label="${esc(nm[1])}: ${lab}" ${dis}>`;
-    return `<div class="ox-vit ox-vit-${k}${low ? ' low' : ''}" style="--c:${nm[2]};--p:${pct}%" role="group" aria-label="${esc(nm[1])}"><i class="ox-vit-fill" aria-hidden="true"></i>
+    return `<div class="ox-vit ox-vit-${k}${low ? ' low' : ''}" style="--c:${nm[2]};--p:${pct}%;--pn:${pct / 100}" role="group" aria-label="${esc(nm[1])}"><i class="ox-vit-fill" aria-hidden="true"></i>
       <span class="ox-vit-k">${low ? ic('alert', 14) : ''}${nm[0]}</span>${inp('cur', r.cur, 'atual')}<span class="ox-vit-sep" aria-hidden="true">/</span>${inp('max', r.max, 'máximo')}</div>`;
   }
   // PV/PD digitados direto: atualiza a barra no lugar, sem refazer a ficha (o foco continua no campo seguinte)
@@ -7874,7 +8373,8 @@
     const box = root && root.closest ? root.closest('.ox-vit') : null;
     if(box && hub.opTab !== 'poderes'){
       const mx = opNum(r.max), cu = opNum(r.cur);
-      box.style.setProperty('--p', (mx > 0 ? Math.max(0, Math.min(100, Math.round(cu / mx * 100))) : 0) + '%');
+      const pp = mx > 0 ? Math.max(0, Math.min(100, Math.round(cu / mx * 100))) : 0;
+      box.style.setProperty('--p', pp + '%'); box.style.setProperty('--pn', pp / 100);
       box.classList.toggle('low', mx > 0 && cu / mx < 0.3);
       box.querySelector('.ox-vit-cur').value = r.cur; box.querySelector('.ox-vit-max').value = r.max;
     } else setTimeout(hubChanged, 0);
@@ -7956,6 +8456,8 @@
     // ataques
     const A = card.attributes || {};
     const skillOpts = a => OP_SKILLS.map(x => opt(x[0], x[1], a.skill)).join('') + Object.keys(card.skillsV2 || {}).filter(k => k.indexOf('x_') === 0).map(k => opt(k, opSkillDef(card, k).name, a.skill)).join('');
+    const wl = weaponsOf(hub.charToken);
+    html += `<div class="ox-hd"><h3>Armas</h3></div>${wl.map(w => opWeaponRow(card, hub.charToken, w, dis)).join('') || '<p class="hub-hint">Nenhuma arma empunhada. Na Mochila, equipe uma arma como Arma principal ou secundária.</p>'}`;
     html += `<div class="ox-hd"><h3>Ataques</h3></div>${(card.attacks || []).map((a, i) => {
       const p = opParts(card, a.skill || '', a.attribute || '', 'attack'), open = hub.opEdit === a.id, sk = a.skill ? opSkillDef(card, a.skill).name : '';
       const crit = !!(hub.opCrit && hub.opCrit[a.id]);
@@ -8140,6 +8642,12 @@
       case 'op-skill-del': opDelSkill(D.k); break;
       case 'op-skill-add': opAddSkill((hubQ('#op-skill-new') || {}).value, (hubQ('#op-skill-attr') || {}).value, false); break;
       case 'op-skill-all': opAddSkill('', '', true); break;
+      case 'op-w-atk': opWeaponAttack(D.id); break;
+      case 'op-w-dmg': opRollDamage('w:' + D.id); break;
+      case 'op-w-reload': doRecarregar(hub.charToken, D.id); break;
+      case 'op-w-unload': doDescarregar(hub.charToken, D.id); break;
+      case 'op-w-more': hub.opWMore = hub.opWMore === D.id ? null : D.id; renderHub(); break;
+      case 'op-w-cap': doMagMax(hub.charToken, D.id, (hubQ('[data-w-cap="' + D.id + '"]') || {}).value); break;
       case 'op-atk-new': opNewAttack(); break;
       case 'op-atk-edit': hub.opEdit = hub.opEdit === D.id ? null : D.id; renderHub(); break;
       case 'op-atk-del': opDelAttack(D.id); break;
@@ -8630,7 +9138,9 @@
     const ae = document.activeElement;
     let fk = null;
     if(ae && sh.contains(ae) && ae.dataset && ae.dataset.tac) fk = { a:ae.dataset.tac, dc:ae.dataset.dc, dr:ae.dataset.dr, id:ae.dataset.id };
+    const wasHidden = sh.hidden;
     sh.innerHTML = h; sh.hidden = false; sh.dataset.p = p;
+    if(wasHidden) stagger(sh);
     tacEl('tac').classList.add('sheet-on'); tacSheetShift();
     if(p === 'token'){
       const fr = sh.querySelector('.fr-pick'), tc = tacEl('tt-color');
@@ -8986,6 +9496,8 @@
     closeHub(); closeDrawer(); closeNavDrawer(); closeInventory(); hudCloseSheets();
     tacUI.open = true; tacUI.shift = 0;
     tacEl('tac').hidden = false;
+    stagger(tacEl('tac-bar'));
+    { const tg = tacEl('tac-guia'), tid = guiaPapel() === 'mestre' ? 'tatico-mestre' : 'tatico-jogador'; if(tg) tg.dataset.guia = tid; guiaOferecer(tid); }
     tacRenderArea();
     tacInitMap();
     tacRender();
@@ -9038,8 +9550,8 @@
   const hudPlain = html => { const d = document.createElement('div'); d.innerHTML = html; return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
   const hudCol = () => !!(window.matchMedia && window.matchMedia('(min-width:1100px)').matches);
   const hud = { who:null, idxAdd:false, idxQ:'', mapf:new Set(), feed:{ f:'all', m:'all', seen:0, collapsed:false, sheet:false, tall:false, open:null, more:false } };
-  // f23: estado dos painéis, da cena e dos ajustes (por aparelho: tv-map:adv, tv-map:tour, tv-map:mesa-tab)
-  const LS_ADV = 'tv-map:adv', LS_TOUR = 'tv-map:tour', LS_MESAT = 'tv-map:mesa-tab';
+  // f23: estado dos painéis, da cena e dos ajustes (por aparelho: tv-map:adv, tv-map:guia:*, tv-map:mesa-tab)
+  const LS_ADV = 'tv-map:adv', LS_MESAT = 'tv-map:mesa-tab';
   const F23 = { mesaTab:'feed', tacLive:false, scene:'explorar', sceneBy:'', sceneAt:0, sceneSeen:false, mstrip:false, filt:false, sig:'', verbs:[], fnItems:[], modalClose:null, modalPrev:null };
   const lsGet = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
   const lsSet = (k, v) => { try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){} };
@@ -9082,7 +9594,9 @@
     hudCloseSheets(id);
     const pair = hudSheetIds.find(p => p[0] === id);
     hudEl(pair[0]).classList.add('open'); hudEl(pair[1]).classList.add('open');
+    if(id === 'qr-sheet') guiaOferecer('rolagem');
     hudDockSync();
+    stagger(hudEl(id));
   }
   const hudIsOpen = id => hudEl(id).classList.contains('open');
   function hudToggleSheet(id, render){
@@ -9118,14 +9632,14 @@
     const ficha = hudCol() ? !hud.miniOff : (hubOpen && hubGroupOf(hub.tab) === 'ficha');
     const sheets = hudIsOpen('qr-sheet') || hudIsOpen('add-sheet') || hudIsOpen('lay-sheet');
     const st = { 'dock-roll':hudIsOpen('qr-sheet'), 'dock-ficha':ficha, 'dock-inv':inv, 'dock-mesa':mesa };
-    st['dock-map'] = !(sheets || inv || saque || hubOpen || tacUI.open || (!hudCol() && (mesa || ficha)));
+    st['dock-map'] = !(sheets || inv || saque || hubOpen || rosterDrawer.classList.contains('open') || tacUI.open || (!hudCol() && (mesa || ficha)));
     Object.keys(st).forEach(k => { const b = hudEl(k); if(b){ b.classList.toggle('active', !!st[k]); b.setAttribute('aria-pressed', String(!!st[k])); } });
     const lc = hudEl('mchip-layers'); if(lc){ lc.classList.toggle('active', hudIsOpen('lay-sheet')); lc.setAttribute('aria-expanded', String(hudIsOpen('lay-sheet'))); }
     const ac = hudEl('mchip-add'); if(ac){ ac.classList.toggle('active', hudIsOpen('add-sheet')); ac.setAttribute('aria-expanded', String(hudIsOpen('add-sheet'))); }
     document.body.classList.toggle('tac-on', !!tacUI.open);
     document.body.classList.toggle('sheet-open', sheets);
     document.body.classList.toggle('mesa-open', mesa && !hudCol());
-    document.body.classList.toggle('panel-open', [saqueDrawer, invDrawer, hubDrawer, navDrawer].some(el => el.classList.contains('open')));
+    document.body.classList.toggle('panel-open', [saqueDrawer, invDrawer, hubDrawer, navDrawer, rosterDrawer].some(el => el.classList.contains('open')));
   }
   function hudTacLive(sc){
     F23.tacLive = !!sc;
@@ -9155,7 +9669,7 @@
     hudEl('dock-mesa').addEventListener('click', f23ToggleMesa);
     // o dock reflete o que está aberto, mesmo quando outra parte do app abre/fecha as folhas
     const mo = new MutationObserver(hudDockSync);
-    [saqueDrawer, invDrawer, hubDrawer, navDrawer, hudEl('qr-sheet'), hudEl('add-sheet')].forEach(el => mo.observe(el, { attributes:true, attributeFilter:['class'] }));
+    [saqueDrawer, invDrawer, hubDrawer, navDrawer, rosterDrawer, hudEl('qr-sheet'), hudEl('add-sheet')].forEach(el => mo.observe(el, { attributes:true, attributeFilter:['class'] }));
     document.addEventListener('keydown', e => { if(e.key === 'Escape' && (hudIsOpen('add-sheet') || hudIsOpen('qr-sheet') || hudIsOpen('lay-sheet') || (hud.feed.sheet && !hudCol()))) hudCloseSheets(); });
     ['add', 'qr', 'lay'].forEach(k => {
       hudEl(k + '-backdrop').addEventListener('click', () => hudCloseSheets());
@@ -9165,6 +9679,7 @@
     hudEl('lay-close').addEventListener('click', () => hudCloseSheets());
     // ao escolher uma ferramenta do mapa a folha se fecha para você tocar no mapa
     hudEl('idx-add-body').addEventListener('click', e => { if(e.target.closest('.tool-btn')) setTimeout(() => hudCloseSheets(), 120); });
+    hudEl('tool-roster').addEventListener('click', () => openRoster());
   }
 
   // ---- funções do app (alimentam a busca única; o antigo Índice foi removido) ----
@@ -9179,6 +9694,7 @@
       { id:'inv', ic:'bag', t:'Mochila', d:'Itens, equipamento e trocas', kw:'mochila inventario item equipar trocar', run:() => { hudCloseSheets(); hudEnsureWho(); openInventory(null); } },
       { id:'roll', ic:'dice', t:'Rolar dados', d:'d20, perícias e ataques', kw:'rolar dado dados d20 teste', run:() => hudOpenQuickRoll() },
       { id:'diary', ic:'book', t:'Diário', d:'Pistas, objetivos e linha do tempo', kw:'diario pista objetivo nota linha tempo', run:tab('diario') },
+      { id:'roster', ic:'users', t:'Personagens (gaveta)', d:'Criar e guardar personagens; colocar no mapa quando quiser', kw:'gaveta personagem personagens npc guardar colocar criar modelo copia', run:() => { hudCloseSheets(); openRoster(); } },
       { id:'group', ic:'users', t:'Grupo', d:'Personagens e participantes da mesa', kw:'grupo jogadores participantes', run:tab('grupo') },
       m ? { id:'session', ic:'list', t:'Sessão', d:'Abrir, encerrar e resumir sessões', kw:'sessao resumo encerrar', run:tab('sessao') } : null,
       { id:'world', ic:'map', t:'Mundo', d:'Relógio, locais e exploração', kw:'mundo relogio locais exploracao hora dia', run:tab('mundo') },
@@ -9211,7 +9727,7 @@
     const sh = hudEl('qr-sheet'), w = hudWho(), h = holderById(w), card = w ? characters[w] : null, ordem = !!(card && card.systemId === 'ordem');
     const editable = holderList().filter(canEditHolder), can = !!(h && canEditHolder(h));
     const last = rollUI.last;
-    let html = `<div class="sheet-grab" aria-hidden="true"></div><div class="sheet-head"><b>Rolar</b><button type="button" class="sheet-x" data-hud="close" aria-label="Fechar">${ic('close', 18)}</button></div>
+    let html = `<div class="sheet-grab" aria-hidden="true"></div><div class="sheet-head"><b>Rolar</b><button type="button" class="guia-q" data-guia="rolagem" title="Dica rápida" aria-label="Dica rápida: rolagem">?</button><button type="button" class="sheet-x" data-hud="close" aria-label="Fechar">${ic('close', 18)}</button></div>
       ${last ? `<div class="qr-last${last.sheet && last.sheet.crit ? ' crit' : ''}" role="status"><div class="qr-last-total">${last.total}</div><div><b>${esc(last.whoName || '')} · ${esc(last.skill || 'Rolagem')}</b><span>${esc(hudRollLine(last))}</span></div></div>` : ''}
       <select id="qr-who" class="qr-who" data-hud-who data-native aria-label="Rolando como"><option value="">Sem personagem</option>${editable.map(x => opt(x.id, (x.type === 'npc' ? 'NPC · ' : '') + x.name, w)).join('')}</select>
       <div class="qr-dice">${DIE_SIDES.map(s => `<button type="button" class="qr-die" data-hud="die" data-s="${s}" aria-label="Rolar d${s}">${dieSvg(s, 'd' + s, '', 'd' + s)}</button>`).join('')}<button type="button" class="qr-die qr-more" data-hud="full" aria-label="Mais dados">${ic('more', 22)}<span>Mais</span></button></div>
@@ -9223,6 +9739,13 @@
       html += `<div class="hub-label">Atributo</div>
         <select id="qr-attr" data-hud-attr aria-label="Atributo desta rolagem"><option value="">Automático</option>${OP_ATTRS.map(x => opt(x[0], x[1] + ' ' + opAttrOf(card, x[0]), ov || '')).join('')}</select>
         <div class="hub-label">Perícias</div><div class="qr-chips">${rows.map(sd => { const q = pp(sd.key); return `<button type="button" class="qr-chip" data-hud="skill" data-k="${esc(sd.key)}" title="${esc(opPoolHelp(q.pool))}"><span>${esc(sd.name)}</span><b>${q.pool.label}${opSgn(opSum(q))}</b></button>`; }).join('') || '<span class="hub-hint">Adicione perícias na ficha.</span>'}</div>`;
+      const wl = weaponsOf(w);
+      if(wl.length) html += `<div class="hub-label">Armas</div>${wl.map(x => {
+        const ref = ITEMS_BY_ID[x.itemId], a = TVArmas.ataque(x, ref), gun = TVArmas.usaMunicao(ref), q = opParts(card, a.skill, ov || a.attribute, 'attack'), crit = !!(hub.opCrit && hub.opCrit['w:' + x.uid]);
+        return `<div class="qr-atk"><span><b>${esc(x.name)}</b><small>${esc(a.damage || '—')}${gun ? ' · ' + magOf(x) + '/' + magCap(x) : ''}</small></span>
+        ${gun && !magOf(x) ? `<button type="button" class="inv-mini-btn primary" data-hud="wreload" data-id="${esc(x.uid)}">Recarregar</button>`
+          : `<button type="button" class="inv-mini-btn primary" data-hud="watk" data-id="${esc(x.uid)}">${ic('swords', 16)} Atacar ${q.pool.label}${opSgn(opSum(q))}</button>`}
+        <button type="button" class="inv-mini-btn ${crit ? 'op-crit-btn' : ''}" data-hud="wdmg" data-id="${esc(x.uid)}">Só dano${crit ? ' crítico' : ''}</button></div>`; }).join('')}`;
       if((card.attacks || []).length) html += `<div class="hub-label">Ataques</div>${card.attacks.map(a => { const crit = !!(hub.opCrit && hub.opCrit[a.id]); return `<div class="qr-atk"><span><b>${esc(a.name || 'Ataque')}</b><small>${esc(a.damage || '—')}</small></span>
         <button type="button" class="inv-mini-btn primary" data-hud="atk" data-id="${esc(a.id)}">${ic('dice', 16)} Ataque ${(() => { const q = opParts(card, a.skill || '', ov || a.attribute || '', 'attack'); return q.pool.label + opSgn(opSum(q)); })()}</button>
         <button type="button" class="inv-mini-btn ${crit ? 'op-crit-btn' : ''}" data-hud="dmg" data-id="${esc(a.id)}">Dano${crit ? ' crítico' : ''}</button></div>`; }).join('')}`;
@@ -9251,6 +9774,9 @@
         case 'skill': await opRollSkill(D.k, w, hud.qrAttr); break;
         case 'atk': await opRollAttack(D.id, w, hud.qrAttr); break;
         case 'dmg': await opRollDamage(D.id, w); break;
+        case 'watk': await opWeaponAttack(D.id, w, hud.qrAttr); break;
+        case 'wdmg': await opRollDamage('w:' + D.id, w); break;
+        case 'wreload': await doRecarregar(w, D.id); break;
         case 'lskill': { const s = ((characters[w] || {}).skills || [])[+D.i]; if(s) await hudRoll([{ sign:1, n:1, sides:20 }], Number(s.bonus) ? [{ label:s.name || 'Bônus', value:Number(s.bonus) }] : [], s.name || 'Perícia'); break; }
         case 'full': hudCloseSheets(); openHub('dados'); break;
       }
@@ -9340,13 +9866,18 @@
     return `<div class="fd-row ${cls}${open ? ' open' : ''}"><button type="button" class="fd-main" data-fd="toggle" data-key="${esc(it.key)}" aria-expanded="${open}">
       <span class="fd-ic">${ic(ic0, 18)}</span><span class="fd-body"><b>${head}</b><span class="fd-line">${line}</span></span><span class="fd-side">${side}<time>${esc(hudRel(it.ts))}</time></span></button>${open ? `<div class="fd-detail">${detail}</div>` : ''}</div>`;
   }
+  var feedPrev = null;
   function hudRenderFeed(){
     const f = hud.feed, items = hudFeedVisible(), master = isMaster();
     hudEl('feed-filters').innerHTML = HUD_FEED_FILTERS.map(x => `<button type="button" class="fd-chip${f.f === x[0] ? ' on' : ''}" data-fd="filter" data-v="${x[0]}" aria-pressed="${f.f === x[0]}">${x[1]}</button>`).join('');
     const mf = hudEl('feed-mfilters'); mf.hidden = !master;
     if(master) mf.innerHTML = HUD_FEED_M.map(x => `<button type="button" class="fd-chip${f.m === x[0] ? ' on' : ''}" data-fd="mfilter" data-v="${x[0]}" aria-pressed="${f.m === x[0]}">${x[1]}</button>`).join('');
-    hudEl('feed-list').innerHTML = items.length ? items.slice(0, HUD_FEED_MAX).map(hudRow).join('')
+    const shown = items.slice(0, HUD_FEED_MAX), list = hudEl('feed-list');
+    list.innerHTML = shown.length ? shown.map(hudRow).join('')
       : '<div class="inv-empty">Nada por aqui ainda.</div>';
+    // só o item novo entra deslizando; os antigos não se mexem
+    if(feedPrev && !f26Reduced.matches && list.children.length === shown.length) shown.forEach((it, i) => { if(!feedPrev.has(it.key)) list.children[i].classList.add('f26-new'); });
+    feedPrev = new Set(shown.map(it => it.key));
     hudFeedChip();
   }
   function hudFeedChip(){
@@ -9368,6 +9899,8 @@
     document.body.classList.toggle('mini-col', col && !hud.miniOff);
     const open = col ? !f.collapsed : f.sheet;
     feed.classList.toggle('open', open); feed.classList.toggle('tall', !col && (f.tall || F23.mesaTab !== 'feed'));
+    if(open && !feed._f26Open){ feedPrev = null; stagger(feed); }   // só na abertura
+    feed._f26Open = open;
     hudEl('feed-backdrop').classList.toggle('open', !col && f.sheet);
     hudEl('feed-close').setAttribute('aria-label', col ? 'Recolher o feed' : 'Fechar o feed');
     if(open) hudMarkSeen();
@@ -9445,7 +9978,9 @@
     const who = hl.length > 1 ? holderSelect('hub.charToken', hub.charToken, false, hl) : (!card && hCur ? `<b class="fp-name">${esc(hCur.name)}</b>` : '');
     const st = fichapBody.scrollTop;
     fpHead.innerHTML = `<div class="fp-top"><span class="fp-tag">Ficha</span><div class="fp-who">${who}</div>
+      <button type="button" class="fp-btn" data-hud="mroster" aria-label="Abrir a gaveta de personagens" title="Personagens (gaveta)">${ic('users', 18)}</button>
       <button type="button" class="fp-btn" data-hud="minv" aria-label="Abrir a mochila" title="Mochila">${ic('bag', 18)}</button>
+      <button type="button" class="fp-btn guia-q" data-guia="ficha" aria-label="Dica rápida: ficha e armas" title="Dica rápida">?</button>
       <button type="button" class="fp-btn" data-hud="mhide" aria-label="Recolher o painel da ficha" title="Recolher">${ic('close', 18)}</button></div>${fixed ? `<div class="ox" data-optab="${esc(ox ? ox.dataset.optab || '' : '')}">${fixed}</div>` : ''}`;
     fichapBody.innerHTML = tmp.innerHTML;
     fichapBody.scrollTop = st;
@@ -9455,12 +9990,13 @@
   function hudMiniChanged(){ if(!hudReady || miniT) return; miniT = setTimeout(() => { miniT = 0; hudRenderMini(); }, 0); }
   function hudWireMini(){
     const el = hudEl('mini');
-    hudEl('mini-tab').addEventListener('click', () => { hud.miniOff = false; hudSavePrefs(); hudFeedLayout('mini'); });
+    hudEl('mini-tab').addEventListener('click', () => { hud.miniOff = false; hudSavePrefs(); hudFeedLayout('mini'); guiaOferecer('ficha'); });
     el.addEventListener('click', e => {
       const b = e.target.closest('[data-hud]'); if(!b) return;
       const w = hudWho();
       if(b.dataset.hud === 'mhide'){ hud.miniOff = true; hudSavePrefs(); hudFeedLayout('mini'); setTimeout(() => { const t = hudEl('mini-tab'); if(t) t.focus(); }, 0); }
       else if(b.dataset.hud === 'minv'){ hudEnsureWho(); openInventory(w); }
+      else if(b.dataset.hud === 'mroster') openRoster();
     });
   }
 
@@ -9919,8 +10455,9 @@
   function f23OpenMesa(tab){
     F23.mesaTab = hubTabsFor('mesa').some(t => t[0] === tab) ? tab : 'feed';
     lsSet(LS_MESAT, F23.mesaTab);
-    if(!f23MesaVisible()){ hudFeedOpen(true); return; }
+    if(!f23MesaVisible()){ hudFeedOpen(true); guiaOferecer('mesa'); return; }
     hudFeedLayout();
+    guiaOferecer('mesa');
   }
   function f23ToggleMesa(){
     if(f23MesaVisible()){ hudFeedOpen(false); return; }
@@ -9933,6 +10470,7 @@
     const ae = document.activeElement, keepTab = ae && box.contains(ae) ? ae.dataset.mesa : null;
     box.innerHTML = tabs.map(t => `<button type="button" role="tab" class="mesa-tab${F23.mesaTab === t[0] ? ' active' : ''}" id="mesa-tab-${t[0]}" data-mesa="${t[0]}" aria-selected="${F23.mesaTab === t[0]}" tabindex="${F23.mesaTab === t[0] ? 0 : -1}">${t[1]}</button>`).join('');
     if(keepTab){ const n = box.querySelector('[data-mesa="' + keepTab + '"]'); if(n) n.focus({ preventScroll:true }); }
+    tabInd(box, 8);
     const feedOn = F23.mesaTab === 'feed';
     hudEl('mesa-feed').hidden = !feedOn; mesaBody.hidden = feedOn;
     if(feedOn || !f23MesaVisible()) return;
@@ -9947,12 +10485,12 @@
 
   // ---- Ficha: painel da esquerda no desktop, folha no celular ----
   function f23ShowFicha(){
-    if(hudCol()){ hud.miniOff = false; hudSavePrefs(); hudFeedLayout('mini'); return; }
+    if(hudCol()){ hud.miniOff = false; hudSavePrefs(); hudFeedLayout('mini'); guiaOferecer('ficha'); return; }
     hudCloseSheets(); hudEnsureWho(); const w = hudWho(); if(w) hub.charToken = w;
     openHub('ficha');
   }
   function f23ToggleFicha(){
-    if(hudCol()){ hud.miniOff = !hud.miniOff; hudSavePrefs(); hudFeedLayout('mini'); return; }
+    if(hudCol()){ hud.miniOff = !hud.miniOff; hudSavePrefs(); hudFeedLayout('mini'); if(!hud.miniOff) guiaOferecer('ficha'); return; }
     if(hubDrawer.classList.contains('open') && hubGroupOf(hub.tab) === 'ficha'){ closeHub(); return; }
     f23ShowFicha();
   }
@@ -9985,7 +10523,7 @@
     if(!m){ el.hidden = true; F23.mstrip = false; return; }
     const t = chip.querySelector('.mc-t'); if(t) t.textContent = 'Mestre · ' + sc.name;
     const fa = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset : null;
-    el.innerHTML = `<div class="ms-label">Cena da mesa <span>todos veem</span></div>
+    el.innerHTML = `<div class="ms-label">Cena da mesa <span>todos veem</span><button type="button" class="guia-q" data-guia="mestre" title="Dica rápida" aria-label="Dica rápida: ferramentas do mestre">?</button></div>
       <div class="ms-scene" role="group" aria-label="Cena da mesa">${SCENES.map(s => `<button type="button" class="ms-seg${s.id === F23.scene ? ' on' : ''}" data-ms="scene" data-id="${s.id}" aria-pressed="${s.id === F23.scene}">${ic(s.ic, 16)}<span>${s.name}</span></button>`).join('')}</div>
       <div class="ms-hint">${esc(sc.hint)}</div>
       <div class="ms-tools">
@@ -10005,6 +10543,7 @@
     if(!isMaster()) return;
     const sp = appPopovers.find(p => p.popover.id === 'hud-search'); if(sp) sp.close();
     hudCloseSheets(); f23CloseFilters(); F23.mstrip = true; f23RenderMstrip();
+    guiaOferecer('mestre');
   }
   function f23CloseMstrip(){ if(!F23.mstrip) return; F23.mstrip = false; f23RenderMstrip(); }
   function f23ToggleMstrip(){ if(F23.mstrip){ f23CloseMstrip(); return; } hudEl('mchip-master') && f23OpenMstrip(); }
@@ -10099,7 +10638,8 @@
     const adv = f23Adv(), fa = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset.cfg + '|' + (document.activeElement.dataset.v || '') : null;
     el.innerHTML = `<div class="cfg-row"><div class="cfg-t"><b>Ferramentas avançadas</b><span>Mapas Relevo e Nevado${isMaster() ? ' e registro de itens' : ''}</span></div>
         <button type="button" class="sw${adv ? ' on' : ''}" role="switch" aria-checked="${adv}" data-cfg="adv" aria-label="Ferramentas avançadas"><i></i></button></div>
-      <div class="cfg-row cfg-btns"><button type="button" class="inv-mini-btn" data-cfg="keys">${ic('sliders', 15)} Atalhos de teclado</button><button type="button" class="inv-mini-btn" data-cfg="tour">${ic('eye', 15)} Rever a introdução</button></div>`;
+      <div class="cfg-row cfg-btns"><button type="button" class="inv-mini-btn" data-cfg="keys">${ic('sliders', 15)} Atalhos de teclado</button></div>
+      <div class="cfg-guia" role="group" aria-label="Tutoriais"><div class="cfg-t"><b>Tutoriais</b><span>Dicas rápidas de cada parte do app</span></div>${TVGuia.tours.filter(t => t.papel === 'todos' || t.papel === guiaPapel()).map(t => { const v = TVGuia.visto(t.id, guiaStore); return `<div class="guia-row${v ? ' ok' : ''}" data-guia-tour="${t.id}"><span class="guia-ck" aria-hidden="true">${v ? '✓' : ''}</span><span class="guia-n">${esc(t.titulo)}</span><button type="button" class="inv-mini-btn" data-guia-rever="${t.id}" aria-label="${v ? 'Rever' : 'Ver'} o tutorial: ${esc(t.titulo)}">${v ? 'Rever' : 'Ver'}</button></div>`; }).join('')}</div>`;
     if(fa){ const p = fa.split('|'); const n = el.querySelector('[data-cfg="' + p[0] + '"]' + (p[1] ? '[data-v="' + p[1] + '"]' : '')); if(n) n.focus({ preventScroll:true }); }
   }
   function f23OpenSettings(){
@@ -10122,7 +10662,7 @@
     }
     F23.modalPrev = document.activeElement;
     F23.modalClose = () => { m.hidden = true; m.innerHTML = ''; document.querySelectorAll('.tour-hl').forEach(x => x.classList.remove('tour-hl')); F23.modalClose = null; if(onClose) onClose(); if(F23.modalPrev && F23.modalPrev.focus && document.contains(F23.modalPrev)){ try{ F23.modalPrev.focus({ preventScroll:true }); }catch(e){} } };
-    m.innerHTML = html; m.hidden = false;
+    m.className = 'f23-modal'; m.innerHTML = html; m.hidden = false;
     return m;
   }
   const F23_KEYS = [['D', 'Rolar dados'], ['F', 'Abrir ou recolher a ficha'], ['M', 'Abrir ou fechar a mochila'], ['E', 'Abrir ou recolher a mesa (feed, grupo, diário)'], ['/', 'Buscar função, lugar, pin ou perícia'], ['C', 'Campanhas'], ['Esc', 'Fechar o que estiver aberto'], ['?', 'Esta lista']];
@@ -10134,35 +10674,145 @@
     m.querySelector('[data-f23="close"]').addEventListener('click', () => F23.modalClose());
     m.querySelector('[data-f23="close"]').focus();
   }
-  function f23TourSteps(){
-    const m = isMaster(), s = [
-      { t:'Bem-vindo à mesa', x:'O mapa fica sempre à vista. Em volta dele ficam só quatro coisas: Mapa, Ficha, Mochila e Mesa.', el:'#dock' },
-      { t:'O dado está sempre à mão', x:'O d20 flutuante rola dados, perícias e ataques sem sair do mapa. No teclado: D.', el:'#dock-roll' },
-      { t:'Ficha e Mochila', x:'A Ficha mostra PV, perícias, ataques e poderes. A Mochila guarda os itens em grade.', el:'#dock-ficha' },
-      { t:'Mesa', x:'O feed de rolagens, o grupo, o diário e o mundo ficam juntos no painel Mesa.', el:'#dock-mesa' },
-      { t:'Marcar no mapa', x:m ? 'Use Marcar para pins, tokens, notas, áreas e rotas.' : 'Use Marcar para deixar notas e criar o seu token.', el:'#mchip-add' }
-    ];
-    if(m) s.push({ t:'Faixa do mestre', x:'Em Mestre você escolhe a cena (Exploração, Combate ou Descanso) e abre clima, sessão e tático.', el:'#mchip-master' });
-    s.push({ t:'Busca única', x:'A lupa acha funções, lugares, pins e perícias. Os Ajustes ficam no menu ☰.', el:'#search-toggle-btn' });
-    return s;
+  // ---- tutoriais por parte (tv-guia.js): aviso "Ver dica rápida?", botões ?, lista em Ajustes ----
+  const guiaStore = { get:k => lsGet(k), set:(k, v) => lsSet(k, v), del:k => lsSet(k, null) };
+  const guiaUI = { papel:null, timer:0, poll:0, conv:null, autoMs:12000, ate:0 };
+  const guiaPapel = () => guiaUI.papel || (isMaster() ? 'mestre' : 'jogador');
+  // primeiro elemento do seletor que está de fato na tela (existe, não está escondido e tem tamanho)
+  function guiaAlvo(sel){
+    let list; try{ list = document.querySelectorAll(sel); }catch(e){ return null; }
+    for(let k = 0; k < list.length; k++){
+      const n = list[k]; if(n.hidden || n.closest('[hidden]')) continue;
+      const r = n.getBoundingClientRect(); if(r.width > 0 && r.height > 0) return n;
+    }
+    return null;
   }
-  function f23Tour(start){
-    const steps = f23TourSteps(); let i = start || 0;
-    const done = () => { lsSet(LS_TOUR, '1'); };
+  const guiaExiste = sel => !!guiaAlvo(sel);
+  // como abrir cada parte (para "Ver" em Ajustes) e como saber que ela continua aberta (para o aviso sumir quando fecha)
+  const guiaFichaOn = () => hudCol() ? !hud.miniOff : (hubIsOpen() && hubGroupOf(hub.tab) === 'ficha');
+  const GUIA_PAINEL = {
+    'visao-geral':{ aberto:() => true, abrir:() => {} },
+    ficha:{ aberto:guiaFichaOn, abrir:() => f23ShowFicha(), prepara:() => { if(!guiaFichaOn() || hub.opTab === 'combate') return false; f23FichaTab('combate'); return true; } },   // as armas ficam na aba Combate: o tour leva para lá
+    mochila:{ aberto:() => invDrawer.classList.contains('open'), abrir:() => { hudCloseSheets(); hudEnsureWho(); openInventory(null); } },
+    saque:{ aberto:() => saqueDrawer.classList.contains('open'), abrir:() => hudOpenSaque() },
+    mesa:{ aberto:() => f23MesaVisible(), abrir:() => f23OpenMesa(F23.mesaTab) },
+    rolagem:{ aberto:() => hudIsOpen('qr-sheet'), abrir:() => hudToggleSheet('qr-sheet', () => { hud.qrAttr = ''; hudRenderQR(); }) },
+    'tatico-mestre':{ aberto:() => tacUI.open, abrir:() => tacOpen() },
+    'tatico-jogador':{ aberto:() => tacUI.open, abrir:() => { if(tac.active && tac.scenes[tac.active]) tacOpen(); else toast('Quando o mestre ativar uma cena tática, abra-a para ver esta dica.'); } },
+    gaveta:{ aberto:() => !!(rosterUI && rosterUI.open), abrir:() => openRoster() },
+    mestre:{ aberto:() => !!F23.mstrip, abrir:() => { if(!F23.mstrip) f23ToggleMstrip(); } }
+  };
+  const guiaAberto = id => { const p = GUIA_PAINEL[id]; try{ return !p || p.aberto(); }catch(e){ return false; } };
+  function guiaRefreshCfg(){ if(hudEl('cfg-body')) f23RenderCfg(); }
+  function guiaFecharConvite(marcar){
+    clearTimeout(guiaUI.timer); clearInterval(guiaUI.poll); guiaUI.poll = 0;
+    const c = guiaUI.conv; if(!c || c.hidden) return;
+    c.hidden = true; c.classList.remove('anc');
+    document.querySelectorAll('.guia-chama').forEach(x => x.classList.remove('guia-chama'));
+    if(marcar){ TVGuia.marcar(c.dataset.guiaId, guiaStore); guiaRefreshCfg(); }
+  }
+  // aviso discreto, sem bloquear nada: só aparece se o tour existe e a pessoa ainda não viu nem dispensou
+  function guiaMostrarConvite(id){
+    const tour = TVGuia.porId(id); if(!tour) return;
+    if(!guiaUI.conv){
+      const c = document.createElement('div'); c.id = 'guia-convite'; c.className = 'guia-convite'; c.setAttribute('role', 'region'); c.setAttribute('aria-label', 'Dica rápida'); c.hidden = true;
+      document.body.appendChild(c); guiaUI.conv = c;
+      c.addEventListener('click', e => {
+        const b = e.target.closest('[data-guia-conv]'); if(!b) return;
+        const id2 = c.dataset.guiaId;
+        if(b.dataset.guiaConv === 'sim'){ guiaFecharConvite(false); guiaIniciar(id2); }
+        else guiaFecharConvite(true);
+      });
+    }
+    const c = guiaUI.conv;
+    if(!c.hidden && c.dataset.guiaId !== id) guiaFecharConvite(true);    // pediu outra parte: a anterior vale como "agora não"
+    c.dataset.guiaId = id;
+    c.innerHTML = `<span class="gc-t"><b>Ver dica rápida?</b><small>${esc(tour.titulo)}</small></span><button type="button" class="inv-mini-btn primary" data-guia-conv="sim">Sim</button><button type="button" class="inv-mini-btn" data-guia-conv="nao">Agora não</button>`;
+    c.hidden = false;
+    guiaAncorar();
+    clearInterval(guiaUI.poll);
+    guiaUI.ate = Date.now() + guiaUI.autoMs;
+    // fechou a parte sem responder, ou deixou passar o tempo = "agora não" (o botão ? continua à mão)
+    guiaUI.poll = setInterval(() => { if(!guiaAberto(id) || Date.now() >= guiaUI.ate){ guiaFecharConvite(true); return; } guiaAncorar(); }, 500);
+  }
+  // o aviso fica logo abaixo do botão "?" do painel (longe dos botões de ação); sem "?" à vista, fica embaixo, acima das ações da cena
+  function guiaAncorar(){
+    const c = guiaUI.conv; if(!c || c.hidden) return;
+    document.querySelectorAll('.guia-chama').forEach(x => x.classList.remove('guia-chama'));
+    const id = c.dataset.guiaId, q = (id === 'visao-geral' || id === 'mestre') ? null : guiaAlvo('[data-guia="' + id + '"]');
+    if(!q){ c.classList.remove('anc'); return; }
+    const r = q.getBoundingClientRect();
+    c.style.setProperty('--gc-top', Math.round(r.bottom + 8) + 'px');
+    c.style.setProperty('--gc-right', Math.max(8, Math.round(innerWidth - r.right)) + 'px');
+    c.classList.add('anc'); q.classList.add('guia-chama');
+  }
+  function guiaOferecer(id){
+    if(!TVGuia.convite(id, guiaStore)) return;
+    clearTimeout(guiaUI.timer);
+    guiaUI.timer = setTimeout(() => {
+      if(!TVGuia.convite(id, guiaStore) || F23.modalClose || !guiaAberto(id)) return;
+      if(!TVGuia.passosVisiveis(TVGuia.porId(id), guiaPapel(), guiaExiste).length) return;      // nada para mostrar agora (ex.: ficha sem personagem): não oferece
+      guiaMostrarConvite(id);
+    }, 450);   // depois da animação de abrir, para não competir com ela
+  }
+  function guiaIniciar(id, abrir){
+    const tour = TVGuia.porId(id); if(!tour) return false;
+    guiaFecharConvite(false);
+    if(F23.modalClose) F23.modalClose();
+    if(tour.papel !== 'todos' && tour.papel !== guiaPapel()){ toast('Esta dica é só para ' + (tour.papel === 'mestre' ? 'o mestre' : 'jogadores') + '.'); return false; }
+    TVGuia.marcar(id, guiaStore); guiaRefreshCfg();      // iniciar já conta como visto (o aviso não volta)
+    const pn = GUIA_PAINEL[id];
+    const go = () => {
+      guiaFecharConvite(false);
+      const passos = TVGuia.passosVisiveis(tour, guiaPapel(), guiaExiste);
+      if(!passos.length){ toast('Não há dica para mostrar aqui agora.'); return; }
+      guiaPassos(tour, passos);
+    };
+    let espera = 0;
+    if(abrir && pn && !guiaAberto(id)){ pn.abrir(); espera = 700; }
+    if(pn && pn.prepara && pn.prepara()) espera = Math.max(espera, 300);
+    if(espera) setTimeout(go, espera); else go();
+    return true;
+  }
+  function guiaPassos(tour, passos){
+    let i = 0;
     const draw = () => {
-      const s = steps[i], last = i === steps.length - 1;
+      const s = passos[i], last = i === passos.length - 1;
       document.querySelectorAll('.tour-hl').forEach(x => x.classList.remove('tour-hl'));
-      const target = document.querySelector(s.el); if(target && !target.hidden) target.classList.add('tour-hl');
-      const m = f23Modal(`<div class="f23-card f23-tour" tabindex="-1"><div class="f23-step">Passo ${i + 1} de ${steps.length}</div><h3 id="f23-mt">${esc(s.t)}</h3><p>${esc(s.x)}</p>
-        <div class="f23-actions"><button type="button" class="inv-mini-btn" data-f23="skip">${last ? 'Fechar' : 'Pular'}</button>${i ? '<button type="button" class="inv-mini-btn" data-f23="back">Voltar</button>' : ''}<button type="button" class="inv-mini-btn primary" data-f23="next">${last ? 'Entendi' : 'Próximo'}</button></div></div>`, done);
+      const alvo = guiaAlvo(s.alvo);      // pode ter sumido entre um passo e o outro
+      if(alvo){ alvo.classList.add('tour-hl'); try{ alvo.scrollIntoView({ block:'nearest', inline:'nearest' }); }catch(e){} }
+      const m = f23Modal(`<div class="f23-card f23-tour" data-guia-id="${esc(tour.id)}" tabindex="-1"><div class="f23-step">Passo ${i + 1} de ${passos.length}</div><h3 id="f23-mt">${esc(s.titulo)}</h3><p>${esc(s.texto)}</p>
+        <div class="f23-actions"><button type="button" class="inv-mini-btn" data-f23="skip">${last ? 'Fechar' : 'Pular'}</button>${i ? '<button type="button" class="inv-mini-btn" data-f23="back">Voltar</button>' : ''}<button type="button" class="inv-mini-btn primary" data-f23="next">${last ? 'Entendi' : 'Próximo'}</button></div></div>`);
       m.setAttribute('aria-labelledby', 'f23-mt'); m.classList.add('tour');
+      const r = alvo ? alvo.getBoundingClientRect() : null;
+      m.classList.toggle('top', !!r && r.top + r.height / 2 > innerHeight / 2);    // alvo na metade de baixo: o cartão vai para o alto
       m.querySelector('[data-f23="skip"]').addEventListener('click', () => F23.modalClose());
       const back = m.querySelector('[data-f23="back"]'); if(back) back.addEventListener('click', () => { i--; draw(); });
       m.querySelector('[data-f23="next"]').addEventListener('click', () => { if(last){ F23.modalClose(); return; } i++; draw(); });
-      m.querySelector('[data-f23="next"]').focus();
+      m.querySelector('[data-f23="next"]').focus({ preventScroll:true });
     };
     draw();
   }
+  function guiaWire(){
+    document.addEventListener('click', e => {
+      const t = e.target; if(!t || !t.closest) return;
+      const q = t.closest('[data-guia]'); if(q){ e.preventDefault(); guiaIniciar(q.dataset.guia); return; }
+      const r = t.closest('[data-guia-rever]');
+      if(r){
+        const p = appPopovers.find(x => x.popover.id === 'menu-popover'); if(p) p.close();
+        guiaIniciar(r.dataset.guiaRever, true);
+      }
+    });
+    // primeiro uso: em vez de abrir o passeio sozinho, só oferece a dica (some se a pessoa já viu o passeio antigo)
+    let tries = 0;
+    const go = () => {
+      if(!TVGuia.convite('visao-geral', guiaStore) || F23.modalClose) return;
+      if(document.querySelector('.icon-popover.open, .app-popover.open, .hud-sheet.open') && tries++ < 4){ setTimeout(go, 3000); return; }
+      if(TVGuia.passosVisiveis(TVGuia.porId('visao-geral'), guiaPapel(), guiaExiste).length) guiaMostrarConvite('visao-geral');
+    };
+    setTimeout(go, 1800);
+  }
+  window.__tvGuia = { iniciar:guiaIniciar, forcarPapel:p => { guiaUI.papel = p || null; }, autoMs:ms => { guiaUI.autoMs = ms; }, refresh:guiaRefreshCfg, papel:guiaPapel };   // só para os testes automáticos
 
   // ---- teclado ----
   function f23Key(e){
@@ -10212,7 +10862,6 @@
       const k = b.dataset.cfg;
       if(k === 'adv') f23SetAdv(!f23Adv());
       else if(k === 'keys'){ const p = appPopovers.find(x => x.popover.id === 'menu-popover'); if(p) p.close(); f23Help(); }
-      else if(k === 'tour'){ const p = appPopovers.find(x => x.popover.id === 'menu-popover'); if(p) p.close(); f23Tour(0); }
     });
     hudEl('search-fn').addEventListener('click', e => {
       const b = e.target.closest('[data-fn]'); if(!b) return;
@@ -10225,7 +10874,7 @@
       // composedPath: o botão clicado pode ter sido recriado pelo próprio clique (cena, filtro) e já estar fora do DOM
       const path = e.composedPath ? e.composedPath() : [];
       const inside = ids => path.some(n => n && n.id && ids.indexOf(n.id) >= 0) || ids.some(i => t.closest('#' + i));
-      if(F23.mstrip && !inside(['mstrip', 'mchip-master'])) f23CloseMstrip();
+      if(F23.mstrip && !inside(['mstrip', 'mchip-master', 'guia-convite', 'f23-modal'])) f23CloseMstrip();   // responder ao aviso ou passar o tutorial não fecha a faixa
       if(F23.filt && !inside(['filt-pop', 'mchip-filters'])) f23CloseFilters();
     });
     document.addEventListener('keydown', e => {
@@ -10250,15 +10899,7 @@
     popSync();
     f23Refresh(true);
     f23RenderSearchFns('');
-    if(lsGet(LS_TOUR) == null){
-      let tries = 0;
-      const go = () => {
-        if(lsGet(LS_TOUR) != null || F23.modalClose) return;
-        if(document.querySelector('.icon-popover.open, .app-popover.open, .hud-sheet.open') && tries++ < 4){ setTimeout(go, 3000); return; }
-        f23Tour(0);
-      };
-      setTimeout(go, 1800);
-    }
+    guiaWire();
   }
 
   function hudCampaignChanged(){

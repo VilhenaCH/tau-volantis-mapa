@@ -7,7 +7,7 @@
    - Só GET. Nada de POST/PUT é interceptado. */
 const CACHE = 'tau-app-v1';
 const CDN_CACHE = 'tau-cdn-v1';
-const BASE = ['./', 'index.html', 'style.css', 'app.js', 'tv-icons.js', 'tv-sons.mp3', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'op-atributos.png', 'op-logo.png', 'op-sym-sangue.png', 'op-sym-morte.png', 'op-sym-conhecimento.png', 'op-sym-energia.png', 'op-sym-medo.png'];
+const BASE = ['./', 'index.html', 'style.css', 'app.js', 'tv-armas.js', 'tv-gaveta.js', 'tv-guia.js', 'tv-icons.js', 'tv-sons.mp3', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'op-atributos.png', 'op-logo.png', 'op-sym-sangue.png', 'op-sym-morte.png', 'op-sym-conhecimento.png', 'op-sym-energia.png', 'op-sym-medo.png'];
 const CDN = ['https://unpkg.com/leaflet@1.9.4/', 'https://unpkg.com/leaflet-draw@1.0.4/', 'https://www.gstatic.com/firebasejs/', 'https://fonts.googleapis.com/', 'https://fonts.gstatic.com/'];
 
 self.addEventListener('install', e => {

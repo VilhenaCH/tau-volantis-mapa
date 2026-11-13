@@ -193,6 +193,7 @@
     <div class="toolbar-group">
       <button class="tool-btn" id="tool-token" type="button"><span class="dot" style="background:var(--frost)"></span>Token</button>
       <button class="tool-btn" id="token-select-toggle-btn" type="button"><span class="dot" style="background:var(--frost)"></span>Selecionar Tokens</button>
+      <button class="tool-btn" id="tool-roster" type="button"><span class="dot" style="background:var(--supply, var(--frost))"></span>Personagens (gaveta)</button>
     </div>
     <div class="vs-group-label" data-master-only>Áreas</div>
     <div class="toolbar-group" data-master-only>
@@ -275,7 +276,7 @@
 <div class="app-popover-backdrop" id="feed-backdrop"></div>
 <aside id="feed" aria-label="Feed da mesa">
   <div class="sheet-grab" id="feed-grab" aria-hidden="true"></div>
-  <div class="sheet-head"><b>Mesa</b><button type="button" class="sheet-x" id="feed-close" aria-label="Fechar o feed"></button></div>
+  <div class="sheet-head"><b>Mesa</b><button type="button" class="guia-q" data-guia="mesa" title="Dica rápida" aria-label="Dica rápida: Mesa">?</button><button type="button" class="sheet-x" id="feed-close" aria-label="Fechar o feed"></button></div>
   <div class="mesa-tabs" id="mesa-tabs" role="tablist" aria-label="Mesa"></div>
   <div id="mesa-feed">
     <div class="feed-filters" id="feed-filters" role="group" aria-label="Filtrar o feed"></div>
@@ -307,6 +308,7 @@
   <div id="saque-drawer">
     <div class="drawer-header">
       <h2>Saque
+        <button type="button" class="guia-q" data-guia="saque" title="Dica rápida" aria-label="Dica rápida: Saque">?</button>
         <button type="button" class="drawer-close" id="drawer-close-btn" title="Fechar" aria-label="Fechar">&times;</button>
       </h2>
     </div>
@@ -385,6 +387,7 @@
   <div id="hub-drawer" role="dialog" aria-label="Mesa de jogo">
     <div class="drawer-header">
       <h2><span id="hub-title">Mesa de jogo</span>
+        <button type="button" class="guia-q" id="hub-guia" data-guia="ficha" title="Dica rápida" aria-label="Dica rápida">?</button>
         <button type="button" class="drawer-close" id="hub-drawer-close-btn" title="Fechar" aria-label="Fechar">&times;</button>
       </h2>
     </div>
@@ -395,6 +398,7 @@
     <div id="tac-top">
       <button type="button" class="tac-back" data-tac="back" aria-label="Voltar ao mapa">←</button>
       <div class="tac-ttl"><b id="tac-title">Mapa tático</b><small id="tac-sub"></small></div>
+      <button type="button" class="guia-q" id="tac-guia" data-guia="tatico-mestre" title="Dica rápida" aria-label="Dica rápida: mapa tático">?</button>
     </div>
     <div id="tac-turn" hidden role="status" aria-live="polite"></div>
     <div id="tac-mapwrap">
@@ -414,10 +418,31 @@
   </button>
   <span id="tac-fab-live" class="sr-only" role="status" aria-live="polite"></span>
 
+  <!-- f26: gaveta de personagens (criar, guardar e colocar no mapa quando quiser) -->
+  <div class="drawer-backdrop" id="roster-drawer-backdrop"></div>
+  <div id="roster-drawer" role="dialog" aria-label="Personagens da gaveta">
+    <div class="drawer-header">
+      <h2>Personagens
+        <button type="button" class="guia-q" data-guia="gaveta" title="Dica rápida" aria-label="Dica rápida: Gaveta de personagens">?</button>
+        <button type="button" class="drawer-close" id="roster-drawer-close-btn" title="Fechar" aria-label="Fechar">&times;</button>
+      </h2>
+    </div>
+    <div class="drawer-body">
+      <div class="rs-tabs" id="rs-tabs" role="tablist" aria-label="Filtrar a gaveta"></div>
+      <div class="rs-bar">
+        <input type="text" id="rs-filter" placeholder="Buscar por nome" autocomplete="off" aria-label="Buscar personagem pelo nome" enterkeyhint="search">
+        <button type="button" class="inv-mini-btn primary" data-roster="novo"><span data-ic="plus" data-ic-size="16"></span>Novo</button>
+      </div>
+      <div id="rs-form" hidden></div>
+      <div id="rs-list" class="rs-list"></div>
+    </div>
+  </div>
+
   <div class="drawer-backdrop" id="inv-drawer-backdrop"></div>
   <div id="inv-drawer">
     <div class="drawer-header">
       <h2>Mochila
+        <button type="button" class="guia-q" data-guia="mochila" title="Dica rápida" aria-label="Dica rápida: Mochila">?</button>
         <button type="button" class="drawer-close" id="inv-drawer-close-btn" title="Fechar" aria-label="Fechar">&times;</button>
       </h2>
     </div>
@@ -451,6 +476,9 @@
 <!-- Efeitos sonoros: para desligar de vez, troque true por false. O jogador também liga/desliga em Menu → Som. -->
 <script>window.TV_SOUND = true;</script>
 <script src="tv-icons.js"></script>
+  <script src="tv-armas.js?v=f26"></script>
+  <script src="tv-gaveta.js?v=f26"></script>
+  <script src="tv-guia.js?v=f26"></script>
   <script src="app.js?v=f26"></script>
 </body>
 </html>

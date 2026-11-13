@@ -733,3 +733,64 @@ Medição (Chromium, CPU 4× mais lento, tempo de tarefa na janela da ação): f
 1. Saque: clique num local e veja a roleta no topo do painel; "Pular" encerra na hora.
 2. Fechar/abrir a ficha e a Mesa várias vezes seguidas com o mapa cheio de pins.
 3. Mapa tático (mestre): criar cena, abrir Cena/Token/Combate/Dados, voltar ao mapa.
+
+
+---
+
+# Rodada f26 — armas com munição, gaveta de personagens, ícone da cena tática, tutoriais e painéis vivos
+
+Arquivos novos: `tv-armas.js`, `tv-gaveta.js`, `tv-guia.js` (lógica pura, sem tela), `tests/*.test.js`, `firebase-rules.SUGESTAO-v4.json`. Alterados: `app.js`, `index.html`, `style.css`, `sw.js` (só a lista de arquivos guardados). O `sw.js` continua "rede primeiro", então não precisou trocar a versão do cache.
+
+## ⚠ O que VOCÊ precisa fazer: publicar as regras v4
+A gaveta grava em dois lugares novos do Firebase (`tv-map:roster` e `tv-map:gm-roster`). Sem as regras novas, o Firebase **recusa** a gravação e o app avisa "A gaveta não foi salva… confira as regras". Eu não publico regras por você.
+1. Abra o Console do Firebase → seu projeto → **Realtime Database** → aba **Regras**.
+2. Abra o arquivo `firebase-rules.SUGESTAO-v4.json` deste zip, copie **tudo** e cole no lugar do que está lá.
+3. Clique em **Publicar**. (A v4 é a v3 + duas regras: `roster` pode ser lido e gravado por qualquer membro da campanha; `gm-roster` só pelo mestre.)
+4. Recarregue o app (os arquivos do app já se atualizam sozinhos: o service worker é "rede primeiro").
+Sem Firebase (modo só neste navegador) nada disso é necessário.
+
+Observação de confiança: como nos tokens e nas mochilas, a regra do `roster` vale para a campanha toda; o "só o dono edita o seu personagem" é checado no app, não no banco. Num grupo de confiança isso basta; se um dia quiser travar no banco, dá para acrescentar uma regra `$id` com `ownerId`.
+
+## 1. Armas na ficha e munição automática
+- **2 lugares de arma** na Mochila: *Arma principal* e *Arma secundária*. A arma de fogo mostra o carregador (ex.: 12/12) no quadro.
+- **1 unidade de munição = 1 tiro.** *Atacar* rola ataque e dano juntos e gasta 1 tiro; *Só dano* rola apenas o dano. Sem tiros, o botão vira *Recarregar*, que puxa da Mochila a munição do mesmo calibre (uma por tiro que falta).
+- A ficha (aba **Combate**) e a folha **Rolar** listam as armas empunhadas; NPC também gasta o tiro dele. Dois gastos simultâneos do último tiro não passam do zero.
+- Regras de conta isoladas em `tv-armas.js` (17 testes).
+
+## 2. Aviso "cena tática ativa" → ícone pequeno que pisca
+O banner grande virou um ícone redondo que pisca (3 vezes numa cena nova) acima do d20. Clique abre a cena; **segurar** esconde (reabre por Tático). Quem usa leitor de tela recebe o aviso por região viva.
+
+## 3. Gaveta de personagens
+Marcar → **Personagens** (ou o botão no painel da ficha, ou a Busca).
+- Jogador cria personagens (nome, cor, ficha e mochila próprias) e os **coloca no mapa quando quiser** (toque no mapa ou "No centro"), **guarda** de volta, duplica, edita e exclui. O mestre faz o mesmo com **NPCs prontos**.
+- Interruptor **Modelo** em cada entrada (jogador: desligado; NPC do mestre: ligado): com Modelo ligado, cada vez que vai ao mapa vira uma cópia nova ("Zumbi", "Zumbi 2"…) e o original continua na gaveta.
+- **Limite desta versão:** um personagem *guardado* aparece na gaveta só com um resumo somente leitura (PV, nível…); a Ficha e a Mochila completas dele abrem depois de **Colocar** no mapa. Fazer a ficha abrir direto da gaveta mexeria em dezenas de pontos do app (listas de donos, trocas, saque) e arriscava vazar entradas guardadas — ficou como evolução futura.
+- A aba "No mapa" lista também tokens que já estavam no mapa. O mestre vê as abas **Todos** e **NPCs e modelos**; o jogador vê só **Meus personagens**.
+- Lógica em `tv-gaveta.js` (17 testes); gravação em `tv-map:roster` / `tv-map:gm-roster` (precisa das regras v4).
+
+## 4. Painéis mais vivos, sem pesar
+Kit de movimento único: só `transform`/`opacity` (e cor em pulsos), sempre finito, desligado em "reduzir movimento". Entrada escalonada de **no máximo 3 blocos pequenos**; sublinhado deslizante nas abas da Mesa e da gaveta; números de PV, armas e capacidade pulsam ao mudar; linhas novas do feed entram suaves; barras crescem por `scaleX`; todo botão afunda a 0,97 ao toque. O que mais pesava foi cortado: escalonar 7 blocos custava +28% ao abrir o Saque, então o limite ficou em 3 blocos pequenos e só opacidade.
+
+## 5. Tutoriais por parte
+10 tutoriais: Visão geral, Ficha e armas, Mochila, Saque e pesca, Mesa, Rolagem, Mapa tático (mestre), Mapa tático (jogador), Gaveta de personagens, Ferramentas do mestre.
+- O passeio deixou de abrir sozinho. Na **primeira vez** que a pessoa abre cada parte aparece um aviso pequeno e discreto, colado ao botão **?** do painel: **"Ver dica rápida?"** — *Sim* / *Agora não*. Ele não bloqueia nada; some sozinho em 12 s ou ao fechar o painel (conta como "agora não").
+- O botão **?** nos cabeçalhos (Ficha, Mochila, Saque, Mesa, Rolar, gaveta, tático, faixa do mestre) abre o tutorial quando quiser.
+- **Ajustes → Tutoriais** lista os tutoriais do seu papel com ✓ nos já vistos e botão *Ver/Rever* (mestre vê 9, jogador 8). O estado fica em `tv-map:guia:<id>` neste aparelho; quem já tinha visto o passeio antigo não recebe o aviso da visão geral.
+- Passos cujo alvo não está na tela são pulados; o tour da Ficha leva para a aba Combate para mostrar armas e munição.
+
+## Como testei
+- Testes de lógica (Node): armas 17/17, gaveta 17/17, tutoriais 18/18.
+- Roteiros automáticos no Chromium (computador 1440×900 e celular 390×844), todos verdes: gaveta, movimento, armas na mochila, ataque com munição, rolagem/dados, ícone tático, tutoriais; mais os roteiros antigos do mapa tático e o de fumaça (sem erro de console).
+- Desempenho (CPU 4× mais lento, 6 pares alternados contra a f25, mediana do tempo de tarefa): fechar ficha 1046→976 ms, reabrir ficha 858→828, fechar Mesa 860→815, **reabrir Mesa 476→551 (+16%, pior quadro igual: 125 ms)**, abrir Saque 434→410, fechar Saque 562→506, abrir Mochila 482→438, fechar Mochila 296→304. A roleta do saque varia de 690 a 1950 ms só pelo sorteio de quantos itens saem (a própria f25 oscila nessa faixa), então não serve de comparação.
+
+## O que NÃO foi verificado — leia antes de jogar
+- Sincronização real entre vários aparelhos com Firebase (os roteiros rodam em modo local); a gaveta compartilhada entre jogadores e o isolamento do `gm-roster` dependem de você publicar a v4 e testar com 2 contas.
+- Toque real em celulares físicos e navegadores como Opera GX/Brave (testei em Chromium com emulação de toque).
+- Só armas de fogo do catálogo **com calibre** contam tiros; armas sem calibre (corpo a corpo, itens personalizados) não têm carregador. Recarregar só usa munição do mesmo calibre; festim e munição sem calibre nunca voltam à Mochila.
+- Leitores de tela: usei rótulos e regiões vivas, mas não testei com NVDA/VoiceOver.
+
+## Para testar no seu aparelho
+1. Mochila: equipe uma pistola em *Arma principal*, abra Ficha → Combate e toque *Atacar* até zerar; veja o botão virar *Recarregar*.
+2. Gaveta: crie um personagem, coloque no mapa com "No centro", guarde, duplique. Como mestre, crie um NPC com Modelo ligado e coloque 3 vezes.
+3. Mestre: ative uma cena tática e veja o ícone pulsar no aparelho do jogador; segure para esconder.
+4. Abra Mochila, Saque, Rolar e a gaveta pela primeira vez e confira o aviso "Ver dica rápida?"; depois veja a lista em Ajustes → Tutoriais.
